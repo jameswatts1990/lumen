@@ -155,6 +155,20 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .page-wrap { position: relative; border-radius: 3px; overflow: hidden; box-shadow: 0 8px 48px rgba(0,0,0,0.6); transition: width 0.2s; }
 .page-wrap canvas { display: block; width: 100%; height: auto; }
 .page-num { position: absolute; bottom: 8px; right: 10px; font-size: 9px; font-family: 'DM Mono', monospace; color: rgba(120,100,70,0.6); }
+.textLayer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0.82;
+  pointer-events: none;
+  user-select: none;
+}
+.textLayer span {
+  position: absolute;
+  transform-origin: 0 0;
+  white-space: pre;
+  color: transparent;
+}
 
 /* Overlays */
 .ruler { position: fixed; pointer-events: none; z-index: 200; display: none; }
@@ -484,14 +498,9 @@ async function renderPage(n) {
   canvas.height = vp.height;
   await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
 
-  // Text layer container
   const textDiv = document.createElement('div');
   textDiv.className = 'textLayer';
-  textDiv.style.cssText = `
-    position:absolute;inset:0;overflow:hidden;
-    font-size:${vp.height * 0.01}px;
-    line-height:1;
-  `;
+  await buildTextLayer(page, textDiv, vp);
 
   const pg = document.createElement('div');
   pg.className = 'page-num';
@@ -503,6 +512,25 @@ async function renderPage(n) {
   rInner.appendChild(wrap);
 }
 
+async function buildTextLayer(page, textDiv, viewport) {
+  const textContent = await page.getTextContent();
+  textDiv.innerHTML = '';
+  const pageHeight = viewport.height;
+  textContent.items.forEach(item => {
+    const span = document.createElement('span');
+    span.textContent = item.str;
+    const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+    const x = tx[4];
+    const y = pageHeight - tx[5];
+    span.style.left = `${x}px`;
+    span.style.top = `${y}px`;
+    span.style.fontSize = `${Math.hypot(tx[0], tx[1]).toFixed(2)}px`;
+    span.style.fontFamily = item.fontName || 'serif';
+    span.style.transform = `scaleX(${Math.hypot(tx[2], tx[3]) / Math.hypot(tx[0], tx[1]) || 1})`;
+    textDiv.appendChild(span);
+  });
+}
+
 async function reRender() {
   if (!pdf || rendering) return;
   rendering = true;
@@ -511,12 +539,15 @@ async function reRender() {
     const n = i + 1;
     const page = await pdf.getPage(n);
     const canvas = wraps[i].querySelector('canvas');
+    const textDiv = wraps[i].querySelector('.textLayer');
     const vp = page.getViewport({ scale: zoom });
     canvas.width = vp.width; canvas.height = vp.height;
     await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+    await buildTextLayer(page, textDiv, vp);
   }
   applyMaxWidth();
   applyFilters();
+  applyTextLayer();
   rendering = false;
 }
 
@@ -541,21 +572,27 @@ function applyFilters() {
 }
 
 function applyTextLayer() {
-  /* The textLayer divs are styling hooks — font customisation is applied
-     as CSS vars on the inner text nodes from the PDF text content. */
+  if (!pdf) return;
+
   const font   = document.getElementById('fontSel').value;
   const tsize  = document.getElementById('tsizeR').value;
   const lh     = document.getElementById('lhR').value;
   const ls     = document.getElementById('lsR').value;
   const ws     = document.getElementById('wsR').value;
+  const mode = MODES[currentMode];
+  const useOverlay = font !== 'inherit' || Number(tsize) !== 100 || Number(lh) !== 1.5 || Number(ls) !== 0 || Number(ws) !== 0;
 
   rInner.querySelectorAll('.textLayer').forEach(tl => {
+    tl.style.opacity = useOverlay ? '1' : '0.82';
+    tl.style.mixBlendMode = currentMode === 'day' || currentMode === 'sepia' ? 'multiply' : 'screen';
+    tl.style.filter = mode.filter || 'none';
     tl.style.fontFamily    = font === 'inherit' ? '' : font;
-    tl.style.fontSize      = tsize + '%';
+    tl.style.fontSize      = `${tsize}%`;
     tl.style.lineHeight    = lh;
-    tl.style.letterSpacing = ls + 'px';
-    tl.style.wordSpacing   = ws + 'px';
+    tl.style.letterSpacing = `${ls}px`;
+    tl.style.wordSpacing   = `${ws}px`;
   });
+
 }
 
 /* ── Slider wiring ── */
@@ -568,6 +605,7 @@ function wire(id, valId, suffix, fmt, cb) {
     if (cb) cb(v);
   }
   sl.addEventListener('input', update);
+  sl.addEventListener('change', update);
   update();
 }
 
@@ -662,6 +700,8 @@ function debounce(fn, ms) {
 
 /* ── Init ── */
 document.getElementById('tintR').addEventListener('input', updateTint);
+toggleProg();
+updateTint();
 </script>
 </body>
 </html>
