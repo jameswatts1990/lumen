@@ -233,14 +233,30 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .nav-pop .sec-label,
 .nav-pop .sec-hint,
 .nav-pop .nav-jump,
+.nav-pop .nav-quick,
 .nav-pop .outline-list,
 .nav-pop .outline-empty {
   padding-left: 14px;
   padding-right: 14px;
 }
+.nav-pop .sec-label {
+  padding-top: 12px;
+}
 .nav-pop .outline-list,
 .nav-pop .outline-empty {
   padding-bottom: 14px;
+}
+.nav-quick {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding-bottom: 8px;
+}
+.nav-quick-btn {
+  min-height: 34px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1;
 }
 
 /* Status bar */
@@ -687,6 +703,12 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   <div class="sec">
     <div class="sec-label">Navigation</div>
     <div class="sec-hint">Jump to a page, or use section links from your PDF outline when available.</div>
+    <div class="nav-quick">
+      <button class="pbtn nav-quick-btn" id="pageUpBtn" type="button" title="Go up one page" aria-label="Go up one page" disabled>↑</button>
+      <button class="pbtn nav-quick-btn" id="pageDownBtn" type="button" title="Go down one page" aria-label="Go down one page" disabled>↓</button>
+      <button class="pbtn nav-quick-btn" id="scrollTopBtn" type="button" title="Go to start of document" aria-label="Go to start of document" disabled>⇤</button>
+      <button class="pbtn nav-quick-btn" id="scrollBottomBtn" type="button" title="Go to end of document" aria-label="Go to end of document" disabled>⇥</button>
+    </div>
     <div class="nav-jump">
       <input class="nav-input" id="pageJumpIn" type="number" min="1" step="1" placeholder="Page #" aria-label="Page number input" disabled>
       <button class="pbtn nav-go" id="pageJumpBtn" type="button" disabled>Go</button>
@@ -1261,8 +1283,13 @@ function applyTextLayer() {
 function setPageJumpAvailability(enabled) {
   const input = document.getElementById('pageJumpIn');
   const btn = document.getElementById('pageJumpBtn');
+  const quickIds = ['pageUpBtn', 'pageDownBtn', 'scrollTopBtn', 'scrollBottomBtn'];
   input.disabled = !enabled;
   btn.disabled = !enabled;
+  quickIds.forEach(id => {
+    const ctl = document.getElementById(id);
+    if (ctl) ctl.disabled = !enabled;
+  });
   if (enabled && pdf) {
     input.max = String(pdf.numPages);
     input.value = '1';
@@ -1282,6 +1309,17 @@ function goToPage(n) {
   pageWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
   document.getElementById('pageJumpIn').value = String(target);
   setNavigationMenuOpen(false);
+}
+
+function navigatePage(delta) {
+  if (!pdf) return;
+  const base = Number.isFinite(currentPage) && currentPage > 0 ? currentPage : 1;
+  goToPage(base + delta);
+}
+
+function goToDocumentEdge(edge) {
+  if (!pdf) return;
+  goToPage(edge === 'bottom' ? pdf.numPages : 1);
 }
 
 function flattenOutline(items, depth = 0) {
@@ -1736,6 +1774,10 @@ document.getElementById('pageJumpBtn').addEventListener('click', () => {
 document.getElementById('pageJumpIn').addEventListener('keydown', e => {
   if (e.key === 'Enter') goToPage(e.target.value);
 });
+document.getElementById('pageUpBtn').addEventListener('click', () => navigatePage(-1));
+document.getElementById('pageDownBtn').addEventListener('click', () => navigatePage(1));
+document.getElementById('scrollTopBtn').addEventListener('click', () => goToDocumentEdge('top'));
+document.getElementById('scrollBottomBtn').addEventListener('click', () => goToDocumentEdge('bottom'));
 
 document.getElementById('chunkUpBtn').addEventListener('click', () => stepChunk(-1));
 document.getElementById('chunkDownBtn').addEventListener('click', () => stepChunk(1));
