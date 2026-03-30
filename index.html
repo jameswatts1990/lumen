@@ -333,6 +333,11 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
           <input type="range" id="focusR" min="20" max="90" value="72" step="1">
           <span class="ctrl-val" id="focusV">72%</span>
         </div>
+        <div class="ctrl">
+          <span class="ctrl-lbl">Depth</span>
+          <input type="range" id="focusDepthR" min="80" max="420" value="220" step="10">
+          <span class="ctrl-val" id="focusDepthV">220px</span>
+        </div>
         <div class="sec-hint" style="padding-top:2px;">Lower for gentle focus, higher for stronger edge dimming</div>
 
         <div class="trow">
@@ -421,6 +426,7 @@ let scrollSI = null;
 let scrollSpeed = 2.5;
 let currentMode = 'day';
 let rendering = false;
+let focusDepth = 220;
 
 const reader = document.getElementById('reader');
 const rInner = document.getElementById('rInner');
@@ -633,6 +639,7 @@ wire('lsR',     'lsV',    'px', v => v.toFixed(2)+'px', () => applyTextLayer());
 wire('wsR',     'wsV',    'px', v => v.toFixed(1)+'px', () => applyTextLayer());
 wire('scrollSR','scrollSV','', v => v.toFixed(1), v => { scrollSpeed = v; });
 wire('focusR',  'focusV', '%', null, v => updateFocusVignette(v));
+wire('focusDepthR', 'focusDepthV', 'px', null, v => updateFocusDepth(v));
 
 /* ── Tint ── */
 function updateTint() {
@@ -667,6 +674,12 @@ function updateFocusVignette(v) {
     `linear-gradient(to bottom, rgba(0,0,0,${alpha.toFixed(2)}), transparent)`;
   document.getElementById('focBot').style.background =
     `linear-gradient(to top, rgba(0,0,0,${alpha.toFixed(2)}), transparent)`;
+}
+
+function updateFocusDepth(v) {
+  focusDepth = Math.max(80, Math.min(420, Number(v)));
+  document.getElementById('focTop').style.height = `${focusDepth}px`;
+  document.getElementById('focBot').style.height = `${focusDepth}px`;
 }
 
 function toggleFocus() {
@@ -718,6 +731,7 @@ reader.addEventListener('mouseleave', () => { if (scrolling) startScroll(); });
 document.getElementById('tintR').addEventListener('input', updateTint);
 toggleProg();
 updateTint();
+updateFocusDepth(focusDepth);
 </script>
 </body>
 </html>
