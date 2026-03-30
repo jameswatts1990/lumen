@@ -779,8 +779,31 @@ let currentPage = 0;
 let chunkCenterY = 0;
 const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
 const DEFAULT_PROFILE_ID = 'default';
+const DEFAULT_SETTINGS = {
+  mode: 'day',
+  zoom: 100,
+  brightness: 100,
+  contrast: 100,
+  gap: 16,
+  typographyOverlay: false,
+  font: 'native',
+  textSize: 100,
+  lineHeight: 1.5,
+  letterSpacing: 0,
+  wordSpacing: 0,
+  ruler: false,
+  paragraphShading: false,
+  focusMode: false,
+  focusVignette: 72,
+  focusDepth: 220,
+  tint: 0,
+  progressBar: true,
+  autoScrollSpeed: 2.5,
+  chunkMode: false,
+  chunkHeight: 2
+};
 const BUILTIN_PROFILES = [
-  { id: DEFAULT_PROFILE_ID, name: 'Default', settings: null },
+  { id: DEFAULT_PROFILE_ID, name: 'Default', settings: DEFAULT_SETTINGS },
   {
     id: 'gentle-focus',
     name: 'Gentle Focus',
