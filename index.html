@@ -426,8 +426,16 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         <div class="sec-label">Typography Overlay <span class="sci">✦</span></div>
         <div class="sec-hint">Applied as a readable text layer for improved font comfort</div>
 
+        <div class="trow" style="padding-top: 2px;">
+          <div class="trow-info">
+            <div class="trow-lbl">Typography overlay</div>
+            <div class="trow-sub">Use a custom text layer for font and spacing adjustments</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="typoOverlayT" checked onchange="toggleTypographyOverlay()"><span class="tog-tk"></span></label>
+        </div>
+
         <div style="padding: 4px 0 2px;">
-          <select class="fsel" id="fontSel" onchange="applyTextLayer()">
+          <select class="fsel" id="fontSel" onchange="handleFontSelectionChange()">
             <option value="native">— PDF Native Font —</option>
             <option value="georgia">Georgia (Serif)</option>
             <option value="lora">Lora (Literary Serif)</option>
@@ -729,6 +737,7 @@ function captureSettings() {
     brightness: Number(document.getElementById('briR').value),
     contrast: Number(document.getElementById('conR').value),
     gap: Number(document.getElementById('gapR').value),
+    typographyOverlay: document.getElementById('typoOverlayT').checked,
     font: document.getElementById('fontSel').value,
     textSize: Number(document.getElementById('tsizeR').value),
     lineHeight: Number(document.getElementById('lhR').value),
@@ -766,8 +775,15 @@ function applySettings(profile) {
   if (settings.font !== undefined) {
     const fontSel = document.getElementById('fontSel');
     fontSel.value = normalizeFontKey(settings.font);
-    applyTextLayer();
   }
+  const overlayToggle = document.getElementById('typoOverlayT');
+  if (settings.typographyOverlay !== undefined) {
+    overlayToggle.checked = Boolean(settings.typographyOverlay);
+  } else if (settings.font !== undefined) {
+    overlayToggle.checked = normalizeFontKey(settings.font) !== 'native';
+  }
+  syncTypographyOverlayControls();
+  applyTextLayer();
   setRangeValue('tsizeR', settings.textSize);
   setRangeValue('lhR', settings.lineHeight);
   setRangeValue('lsR', settings.letterSpacing);
@@ -1063,43 +1079,87 @@ function applyFilters() {
   applyTextLayer();
 }
 
+function syncTypographyOverlayControls() {
+  const overlayEnabled = document.getElementById('typoOverlayT').checked;
+  const controls = ['tsizeR', 'lhR', 'lsR', 'wsR'];
+  controls.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !overlayEnabled;
+  });
+}
+
+function toggleTypographyOverlay() {
+  syncTypographyOverlayControls();
+  applyTextLayer();
+}
+
+function handleFontSelectionChange() {
+  const fontKey = normalizeFontKey(document.getElementById('fontSel').value);
+  if (fontKey === 'native') {
+    document.getElementById('typoOverlayT').checked = false;
+    syncTypographyOverlayControls();
+  }
+  applyTextLayer();
+}
+
 function applyTextLayer() {
   if (!pdf) return;
 
-  const font   = document.getElementById('fontSel').value;
-  const fontStack = FONT_STACKS[normalizeFontKey(font)] || FONT_STACKS.native;
-  const tsize  = document.getElementById('tsizeR').value;
-  const lh     = document.getElementById('lhR').value;
-  const ls     = document.getElementById('lsR').value;
-  const ws     = document.getElementById('wsR').value;
+  const fontKey = normalizeFontKey(document.getElementById('fontSel').value);
+  const overlayToggle = document.getElementById('typoOverlayT');
+  if (fontKey === 'native' && overlayToggle.checked) {
+    overlayToggle.checked = false;
+    syncTypographyOverlayControls();
+  }
+  const overlayEnabled = overlayToggle.checked && fontKey !== 'native';
+  const fontStack = FONT_STACKS[fontKey] || FONT_STACKS.native;
+  const tsize  = Number(document.getElementById('tsizeR').value);
+  const lh     = Number(document.getElementById('lhR').value);
+  const ls     = Number(document.getElementById('lsR').value);
+  const ws     = Number(document.getElementById('wsR').value);
   const overlayColors = {
     day: 'rgba(32, 22, 12, 0.6)',
     sepia: 'rgba(50, 36, 19, 0.6)',
     dark: 'rgba(237, 230, 216, 0.72)',
     night: 'rgba(237, 230, 216, 0.76)'
   };
-  const overlayActive = font !== 'inherit' || Number(tsize) !== 100 || Number(lh) !== 1.5 || Number(ls) !== 0 || Number(ws) !== 0;
-  const nativeMode = !overlayActive;
 
   rInner.querySelectorAll('.textLayer').forEach(tl => {
-    tl.classList.toggle('inactive', nativeMode);
-    tl.style.opacity = overlayActive ? '1' : '0';
+    tl.classList.toggle('inactive', !overlayEnabled);
+    tl.style.opacity = overlayEnabled ? '1' : '0';
+    tl.style.visibility = overlayEnabled ? 'visible' : 'hidden';
     tl.style.mixBlendMode = 'normal';
+
+    if (!overlayEnabled) {
+      tl.style.lineHeight = '';
+      tl.style.letterSpacing = '';
+      tl.style.wordSpacing = '';
+      tl.querySelectorAll('span').forEach(span => {
+        const baseFontSize = Number(span.dataset.baseFontSize || 12);
+        const baseScaleX = Number(span.dataset.baseScaleX || 1);
+        span.style.fontSize = `${baseFontSize}px`;
+        span.style.fontFamily = span.dataset.baseFontFamily || 'serif';
+        span.style.transform = `scaleX(${baseScaleX})`;
+      });
+      return;
+    }
+
     tl.style.setProperty('--overlay-text-color', overlayColors[currentMode] || overlayColors.day);
-    tl.style.lineHeight    = lh;
+    tl.style.lineHeight = String(lh);
     tl.style.letterSpacing = `${ls}px`;
-    tl.style.wordSpacing   = `${ws}px`;
+    tl.style.wordSpacing = `${ws}px`;
     tl.querySelectorAll('span').forEach(span => {
       const baseFontSize = Number(span.dataset.baseFontSize || 12);
       const baseScaleX = Number(span.dataset.baseScaleX || 1);
-      span.style.fontSize = `${(baseFontSize * (Number(tsize) / 100)).toFixed(2)}px`;
-      span.style.fontFamily = font === 'native' ? (span.dataset.baseFontFamily || 'serif') : fontStack;
+      span.style.fontSize = `${(baseFontSize * (tsize / 100)).toFixed(2)}px`;
+      span.style.fontFamily = fontStack;
       span.style.transform = `scaleX(${baseScaleX})`;
     });
   });
+
   rInner.querySelectorAll('canvas').forEach(canvas => {
-    canvas.style.opacity = overlayActive ? '0' : '1';
-    canvas.style.visibility = overlayActive ? 'hidden' : 'visible';
+    canvas.style.opacity = overlayEnabled ? '0' : '1';
+    canvas.style.visibility = overlayEnabled ? 'hidden' : 'visible';
   });
 }
 
@@ -1206,6 +1266,8 @@ function debounce(fn, ms) {
 }
 
 /* ── Slider wiring ── */
+syncTypographyOverlayControls();
+
 function wire(id, valId, suffix, fmt, cb) {
   const sl = document.getElementById(id);
   const vl = document.getElementById(valId);
