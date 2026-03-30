@@ -104,6 +104,8 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   background-repeat: no-repeat; background-position: right 10px center;
 }
 .fsel:focus { border-color: var(--accent); }
+.font-preview { margin: 0 20px 10px; padding: 6px 8px; border: 1px solid var(--control-border); border-radius: 6px; background: rgba(22,18,13,0.45); color: var(--text-secondary); font-size: 11px; line-height: 1.35; }
+
 
 /* Toggles */
 .trow { padding: 6px 20px; display: flex; align-items: center; gap: 12px; }
@@ -174,7 +176,8 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .outline-empty { padding: 0 20px 10px; font-size: 11px; color: var(--text-muted); line-height: 1.5; }
 
 /* Status bar */
-.status { padding: 10px 18px; font-size: 10px; font-family: 'DM Mono', monospace; color: var(--text-muted); border-top: 1px solid var(--sidebar-border); display: flex; justify-content: space-between; }
+.status { padding: 10px 18px; font-size: 10px; font-family: 'DM Mono', monospace; color: var(--text-muted); border-top: 1px solid var(--sidebar-border); display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 8px; }
+.status-mode { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: right; }
 .status-shortcuts {
   border: 1px solid var(--control-border);
   background: var(--control-bg);
@@ -437,6 +440,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
             <option value="opendyslexic">OpenDyslexic ✦</option>
             <option value="courier">Courier (Monospace)</option>
           </select>
+          <div class="font-preview" id="fontPreview">Preview: The quick brown fox jumps over 123.</div>
         </div>
 
         <div class="ctrl">
@@ -578,6 +582,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 
     <div class="status">
       <span id="statPages">No document</span>
+      <span id="statMode" class="status-mode">Typography: PDF Native</span>
       <button class="status-shortcuts" id="shortcutHintBtn" type="button" aria-haspopup="dialog" aria-controls="shortcutsOverlay">? shortcuts</button>
       <span id="statScroll">0%</span>
     </div>
@@ -692,12 +697,23 @@ const FONT_STACKS = {
   native: 'inherit',
   georgia: "'Georgia', serif",
   lora: "'Lora', Georgia, serif",
-  palatino: "'Palatino Linotype', serif",
-  verdana: "'Verdana', sans-serif",
-  atkinson: "'Atkinson Hyperlegible', sans-serif",
-  opendyslexic: "'OpenDyslexic', 'OpenDyslexicAlta', 'Atkinson Hyperlegible', Arial, sans-serif",
-  courier: "'Courier New', monospace",
+  palatino: "'Palatino Linotype', 'Book Antiqua', serif",
+  verdana: "'Verdana', 'Trebuchet MS', sans-serif",
+  atkinson: "'Atkinson Hyperlegible', 'Segoe UI', 'Verdana', sans-serif",
+  opendyslexic: "'OpenDyslexic', 'OpenDyslexicAlta', 'Atkinson Hyperlegible', 'Verdana', Arial, sans-serif",
+  courier: "'Courier New', 'DM Mono', monospace",
 };
+const FONT_META = {
+  native: { label: 'PDF Native', previewStack: FONT_STACKS.native },
+  georgia: { label: 'Georgia', previewStack: FONT_STACKS.georgia },
+  lora: { label: 'Lora', previewStack: FONT_STACKS.lora, checkFamily: 'Lora', loadFace: '1em "Lora"' },
+  palatino: { label: 'Palatino', previewStack: FONT_STACKS.palatino },
+  verdana: { label: 'Verdana', previewStack: FONT_STACKS.verdana },
+  atkinson: { label: 'Atkinson Hyperlegible', previewStack: FONT_STACKS.atkinson, checkFamily: 'Atkinson Hyperlegible', loadFace: '1em "Atkinson Hyperlegible"' },
+  opendyslexic: { label: 'OpenDyslexic', previewStack: FONT_STACKS.opendyslexic, checkFamily: 'OpenDyslexic', loadFace: '1em "OpenDyslexic"', fallbackStack: "'Atkinson Hyperlegible', 'Verdana', Arial, sans-serif" },
+  courier: { label: 'Courier New', previewStack: FONT_STACKS.courier },
+};
+let fontResolutionState = { key: 'native', resolvedStack: FONT_STACKS.native, fallback: false };
 const LEGACY_FONT_KEYS = Object.fromEntries(
   Object.entries(FONT_STACKS).map(([key, stack]) => [stack, key])
 );
@@ -1063,11 +1079,59 @@ function applyFilters() {
   applyTextLayer();
 }
 
-function applyTextLayer() {
+
+async function resolveFontStack(fontKey) {
+  const key = normalizeFontKey(fontKey);
+  const meta = FONT_META[key] || FONT_META.native;
+  if (key === 'native' || !meta.checkFamily || !document.fonts) {
+    return { key, resolvedStack: FONT_STACKS[key] || FONT_STACKS.native, fallback: false, label: meta.label };
+  }
+
+  const checkString = `1em "${meta.checkFamily}"`;
+  let available = document.fonts.check(checkString);
+  if (!available) {
+    try {
+      await document.fonts.load(meta.loadFace || checkString);
+      available = document.fonts.check(checkString);
+    } catch (err) {
+      available = false;
+    }
+  }
+  if (available) {
+    return { key, resolvedStack: FONT_STACKS[key] || FONT_STACKS.native, fallback: false, label: meta.label };
+  }
+  return {
+    key,
+    resolvedStack: meta.fallbackStack || "'Verdana', 'Segoe UI', Arial, sans-serif",
+    fallback: true,
+    label: meta.label
+  };
+}
+
+function updateFontStatus(state) {
+  const statMode = document.getElementById('statMode');
+  if (!statMode) return;
+  const suffix = state.fallback ? ' (fallback)' : '';
+  statMode.textContent = `Typography: ${state.label}${suffix}`;
+}
+
+function updateFontPreview(state) {
+  const preview = document.getElementById('fontPreview');
+  if (!preview) return;
+  const stack = state.key === 'native' ? "'Lora', Georgia, serif" : state.resolvedStack;
+  preview.style.fontFamily = stack;
+}
+
+async function applyTextLayer() {
+  const selectedFont = normalizeFontKey(document.getElementById('fontSel').value);
+  const resolvedFont = await resolveFontStack(selectedFont);
+  fontResolutionState = resolvedFont;
+  updateFontStatus(resolvedFont);
+  updateFontPreview(resolvedFont);
   if (!pdf) return;
 
-  const font   = document.getElementById('fontSel').value;
-  const fontStack = FONT_STACKS[normalizeFontKey(font)] || FONT_STACKS.native;
+  const font = resolvedFont.key;
+  const fontStack = resolvedFont.resolvedStack;
   const tsize  = document.getElementById('tsizeR').value;
   const lh     = document.getElementById('lhR').value;
   const ls     = document.getElementById('lsR').value;
@@ -1078,7 +1142,7 @@ function applyTextLayer() {
     dark: 'rgba(237, 230, 216, 0.72)',
     night: 'rgba(237, 230, 216, 0.76)'
   };
-  const overlayActive = font !== 'inherit' || Number(tsize) !== 100 || Number(lh) !== 1.5 || Number(ls) !== 0 || Number(ws) !== 0;
+  const overlayActive = font !== 'native' || Number(tsize) !== 100 || Number(lh) !== 1.5 || Number(ls) !== 0 || Number(ws) !== 0;
   const nativeMode = !overlayActive;
 
   rInner.querySelectorAll('.textLayer').forEach(tl => {
@@ -1549,6 +1613,8 @@ updateFocusDepth(focusDepth);
 setChunkButtonState();
 setPageJumpAvailability(false);
 renderOutlineFallback('Load a PDF to view navigation links.');
+updateFontStatus(fontResolutionState);
+updateFontPreview(fontResolutionState);
 
 document.getElementById('pageJumpBtn').addEventListener('click', () => {
   goToPage(document.getElementById('pageJumpIn').value);
