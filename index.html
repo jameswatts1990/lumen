@@ -55,7 +55,7 @@ html, body { height: 100%; overflow: hidden; background: var(--app-bg); font-fam
   margin: 14px;
   border: 1.5px dashed var(--control-border);
   border-radius: 10px; padding: 18px 14px; text-align: center;
-  cursor: pointer; transition: all 0.2s; color: var(--text-secondary); font-size: 12px; position: relative;
+  cursor: pointer; transition: all 0.2s; color: var(--text-secondary); font-size: 13.5px; position: relative;
 }
 .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
 .upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
@@ -64,13 +64,13 @@ html, body { height: 100%; overflow: hidden; background: var(--app-bg); font-fam
 
 /* Sections */
 .sec { border-bottom: 1px solid var(--sidebar-border); padding: 10px 0; }
-.sec-label { padding: 0 20px 9px; font-size: 9.5px; letter-spacing: 2.5px; text-transform: uppercase; color: #b4a388; font-family: 'DM Mono', monospace; }
-.sec-hint { padding: 0 20px 7px; font-size: 11px; color: var(--text-muted); line-height: 1.55; }
+.sec-label { padding: 0 20px 9px; font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; color: #b4a388; font-family: 'DM Mono', monospace; }
+.sec-hint { padding: 0 20px 7px; font-size: 12.5px; color: var(--text-muted); line-height: 1.55; }
 
 /* Control rows */
 .ctrl { padding: 4px 20px; display: flex; align-items: center; gap: 10px; }
-.ctrl-lbl { font-size: 12.5px; color: #d8ccba; flex: 0 0 96px; }
-.ctrl-val { font-size: 11px; font-family: 'DM Mono', monospace; color: var(--accent); flex: 0 0 46px; text-align: right; }
+.ctrl-lbl { font-size: 14px; color: #d8ccba; flex: 0 0 110px; }
+.ctrl-val { font-size: 12.5px; font-family: 'DM Mono', monospace; color: var(--accent); flex: 0 0 58px; text-align: right; }
 
 /* Sliders */
 input[type=range] {
@@ -88,7 +88,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .presets { display: flex; gap: 6px; padding: 3px 20px 10px; }
 .pbtn {
   flex: 1; padding: 7px 0; background: var(--control-bg); border: 1px solid var(--control-border);
-  border-radius: 6px; color: var(--text-secondary); font-size: 11px; cursor: pointer;
+  border-radius: 6px; color: var(--text-secondary); font-size: 12.5px; cursor: pointer;
   font-family: 'DM Mono', monospace; text-align: center; transition: all 0.15s; letter-spacing: 0.3px;
 }
 .pbtn:hover { border-color: var(--accent); color: var(--accent); }
@@ -98,7 +98,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 /* Select */
 .fsel {
   background: var(--control-bg); border: 1px solid var(--control-border); color: var(--text-primary);
-  border-radius: 6px; padding: 8px 28px 8px 10px; font-size: 12px;
+  border-radius: 6px; padding: 8px 28px 8px 10px; font-size: 13.5px;
   width: calc(100% - 40px); margin: 2px 20px 8px; cursor: pointer; outline: none; appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239a8e7c'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 10px center;
@@ -108,8 +108,8 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 /* Toggles */
 .trow { padding: 6px 20px; display: flex; align-items: center; gap: 12px; }
 .trow-info { flex: 1; }
-.trow-lbl { font-size: 12.5px; color: #d8ccba; }
-.trow-sub { font-size: 10.5px; color: #ab9d87; margin-top: 1px; }
+.trow-lbl { font-size: 14px; color: #d8ccba; }
+.trow-sub { font-size: 12px; color: #ab9d87; margin-top: 1px; }
 .tog { position: relative; width: 34px; height: 19px; flex: 0 0 34px; }
 .tog input { opacity: 0; width: 0; height: 0; position: absolute; }
 .tog-tk {
@@ -131,11 +131,11 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .scbtn { padding: 5px 14px; background: var(--control-bg); border: 1px solid var(--control-border); border-radius: 6px; color: var(--text-primary); font-size: 14px; cursor: pointer; transition: all 0.15s; line-height: 1; }
 .scbtn:hover { border-color: var(--accent); color: var(--accent); }
 .scbtn.on { background: var(--accent); color: #1a1200; border-color: var(--accent); }
-.scbtn-hint { font-size: 10px; color: var(--text-muted); }
+.scbtn-hint { font-size: 11.5px; color: var(--text-muted); }
 
 .chunk-step { padding: 4px 20px 10px; display: flex; align-items: center; gap: 8px; }
 .chunk-step .scbtn { min-width: 44px; font-size: 16px; padding: 6px 10px; }
-.chunk-step-hint { font-size: 10px; color: var(--text-muted); }
+.chunk-step-hint { font-size: 11.5px; color: var(--text-muted); }
 
 /* Navigation */
 .nav-jump { padding: 4px 20px 10px; display: flex; align-items: center; gap: 8px; }
@@ -147,13 +147,13 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   border-radius: 6px;
   color: var(--text-primary);
   padding: 7px 9px;
-  font-size: 12px;
+  font-size: 13.5px;
   font-family: 'DM Mono', monospace;
   outline: none;
 }
 .nav-input:focus { border-color: var(--accent); }
 .nav-input:disabled { opacity: 0.6; cursor: not-allowed; }
-.nav-go { min-width: 48px; font-size: 11px; font-family: 'DM Mono', monospace; padding: 7px 10px; }
+.nav-go { min-width: 48px; font-size: 12.5px; font-family: 'DM Mono', monospace; padding: 7px 10px; }
 .outline-list { list-style: none; padding: 0 20px 10px; display: grid; gap: 2px; }
 .outline-item button {
   width: 100%;
@@ -161,7 +161,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.35;
   padding: 6px 8px;
   border-radius: 6px;
@@ -171,7 +171,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .outline-item[data-depth="1"] button { padding-left: 16px; }
 .outline-item[data-depth="2"] button { padding-left: 24px; }
 .outline-item[data-depth="3"] button { padding-left: 32px; }
-.outline-empty { padding: 0 20px 10px; font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+.outline-empty { padding: 0 20px 10px; font-size: 12.5px; color: var(--text-muted); line-height: 1.5; }
 
 /* Floating navigation menu */
 .nav-fab {
@@ -258,9 +258,25 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   font-size: 14px;
   line-height: 1;
 }
+.nav-pop .pbtn {
+  border-color: #705235;
+  background: rgba(56, 40, 25, 0.9);
+  color: #f2e7d7;
+}
+.nav-pop .pbtn:hover,
+.nav-pop .pbtn:focus-visible {
+  border-color: #d79a5f;
+  background: rgba(87, 60, 37, 0.96);
+  color: #fff7ec;
+  outline: none;
+}
+.nav-pop .pbtn:disabled {
+  opacity: 0.65;
+  color: #d9c7b2;
+}
 
 /* Status bar */
-.status { padding: 10px 18px; font-size: 10px; font-family: 'DM Mono', monospace; color: var(--text-muted); border-top: 1px solid var(--sidebar-border); display: flex; justify-content: space-between; }
+.status { padding: 10px 18px; font-size: 11.5px; font-family: 'DM Mono', monospace; color: var(--text-muted); border-top: 1px solid var(--sidebar-border); display: flex; justify-content: space-between; }
 .status-shortcuts {
   border: 1px solid var(--control-border);
   background: var(--control-bg);
@@ -437,6 +453,9 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .ctrl-group.collapsed {
   max-height: 0;
   opacity: 0;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  border: 0 !important;
   margin-top: 0 !important;
   margin-bottom: 0 !important;
   pointer-events: none;
@@ -661,12 +680,6 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
           <span class="scbtn-hint">Hover reader to pause</span>
         </div>
       </div>
-
-      <div class="sec">
-        <div class="sec-label">Navigation</div>
-        <div class="sec-hint">Use the floating compass button in the reader to jump pages and open the PDF outline.</div>
-      </div>
-
 
     </div><!-- end sidebar-scroll -->
 
