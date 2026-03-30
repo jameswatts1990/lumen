@@ -340,6 +340,41 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   mix-blend-mode: normal;
 }
 
+.flow-layer {
+  display: none;
+  width: min(920px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 26px 28px 34px;
+  border: 1px solid rgba(200, 135, 74, 0.18);
+  border-radius: 14px;
+  background: rgba(23, 17, 11, 0.78);
+  box-shadow: 0 10px 34px rgba(0,0,0,0.4);
+  color: var(--text-primary);
+}
+.flow-layer.on { display: block; }
+.flow-page-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 18px 0 10px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-mid);
+  background: var(--accent-dim);
+  color: var(--text-secondary);
+  font-size: 10px;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  font-family: 'DM Mono', monospace;
+}
+.flow-para {
+  margin: 0 0 0.55em;
+  color: inherit;
+  white-space: normal;
+  text-wrap: pretty;
+}
+.reader-inner.flow-mode .page-wrap { display: none; }
+
 /* Overlays */
 .ruler { position: fixed; pointer-events: none; z-index: 200; display: none; }
 .ruler.on { display: block; }
@@ -543,6 +578,15 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         <div class="sec-label">Typography Overlay <span class="sci">✦</span></div>
         <div class="sec-hint">Applied as a readable text layer for improved font comfort</div>
 
+        <div class="ctrl" style="padding-top: 2px;">
+          <span class="ctrl-lbl">Presentation</span>
+          <div class="presets" style="padding:0; flex:1;">
+            <button class="pbtn on" id="modePdfBtn" type="button" data-reading-mode="pdf">PDF</button>
+            <button class="pbtn" id="modeOverlayBtn" type="button" data-reading-mode="overlay">Overlay</button>
+            <button class="pbtn" id="modeFlowBtn" type="button" data-reading-mode="flow">Flow</button>
+          </div>
+        </div>
+
         <div class="trow" style="padding-top: 2px;">
           <div class="trow-info">
             <div class="trow-lbl">Typography overlay</div>
@@ -694,6 +738,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   <main class="reader" id="reader">
     <div class="prog" id="progBar"><div class="prog-fill" id="progFill"></div></div>
     <div class="reader-inner" id="rInner">
+      <article id="flowLayer" class="flow-layer" aria-live="polite"></article>
       <div class="empty">
         <div class="empty-icon">📖</div>
         <div class="empty-title">Open a document to begin</div>
@@ -776,6 +821,8 @@ let currentMode = 'day';
 let rendering = false;
 let focusDepth = 220;
 let currentPage = 0;
+let readingMode = 'pdf';
+let flowDocCache = null;
 let chunkCenterY = 0;
 const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
 const DEFAULT_PROFILE_ID = 'default';
@@ -786,6 +833,7 @@ const DEFAULT_SETTINGS = {
   contrast: 100,
   gap: 16,
   typographyOverlay: false,
+  readingMode: 'pdf',
   font: 'native',
   textSize: 100,
   lineHeight: 1.5,
@@ -831,6 +879,7 @@ let lastUsedProfileId = DEFAULT_PROFILE_ID;
 
 const reader = document.getElementById('reader');
 const rInner = document.getElementById('rInner');
+const flowLayer = document.getElementById('flowLayer');
 
 /* ── Modes ── */
 const MODES = {
@@ -881,6 +930,7 @@ function captureSettings() {
     contrast: Number(document.getElementById('conR').value),
     gap: Number(document.getElementById('gapR').value),
     typographyOverlay: document.getElementById('typoOverlayT').checked,
+    readingMode,
     font: document.getElementById('fontSel').value,
     textSize: Number(document.getElementById('tsizeR').value),
     lineHeight: Number(document.getElementById('lhR').value),
@@ -924,13 +974,16 @@ function applySettings(profile) {
     fontSel.value = normalizeFontKey(settings.font);
   }
   const overlayToggle = document.getElementById('typoOverlayT');
+  let requestedReadingMode = settings.readingMode;
+  if (!requestedReadingMode) requestedReadingMode = settings.typographyOverlay ? 'overlay' : 'pdf';
+  setReadingMode(requestedReadingMode);
   if (settings.typographyOverlay !== undefined) {
     overlayToggle.checked = Boolean(settings.typographyOverlay);
   } else if (settings.font !== undefined) {
     overlayToggle.checked = normalizeFontKey(settings.font) !== 'native';
   }
   syncTypographyOverlayControls();
-  applyTextLayer();
+  applyReadingMode();
   setRangeValue('tsizeR', settings.textSize);
   setRangeValue('lhR', settings.lineHeight);
   setRangeValue('lsR', settings.letterSpacing);
@@ -1098,6 +1151,10 @@ async function loadPDF(file) {
   document.getElementById('upName').style.display = 'block';
   reader.classList.remove('drop-ready');
   rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Loading pages…</div>';
+  rInner.appendChild(flowLayer);
+  flowLayer.classList.remove('on');
+  flowLayer.innerHTML = '';
+  flowDocCache = null;
   stopScroll();
   scrolling = false;
   const scrollBtn = document.getElementById('scrollBtn');
@@ -1114,10 +1171,11 @@ async function loadPDF(file) {
     setPageJumpAvailability(true);
 
     rInner.innerHTML = '';
+    rInner.appendChild(flowLayer);
     for (let i = 1; i <= pdf.numPages; i++) await renderPage(i);
     await loadOutline();
     applyFilters();
-    applyTextLayer();
+    await applyReadingMode();
     applyMaxWidth();
     applyGap();
     updateProgressAndStatus();
@@ -1198,7 +1256,7 @@ async function reRender() {
   }
   applyMaxWidth();
   applyFilters();
-  applyTextLayer();
+  await applyReadingMode();
   updateProgressAndStatus();
   rendering = false;
 }
@@ -1225,11 +1283,11 @@ function applyFilters() {
   reader.style.background = m.bg;
   rInner.querySelectorAll('canvas').forEach(c => c.style.filter = f);
   rInner.querySelectorAll('.page-wrap').forEach(w => w.style.background = m.bg);
-  applyTextLayer();
+  applyReadingMode();
 }
 
 function syncTypographyOverlayControls() {
-  const overlayEnabled = document.getElementById('typoOverlayT').checked;
+  const overlayEnabled = document.getElementById('typoOverlayT').checked || readingMode === 'flow';
   document.querySelectorAll('.typography-group').forEach(el => el.classList.toggle('collapsed', !overlayEnabled));
   const fontSel = document.getElementById('fontSel');
   if (fontSel) {
@@ -1244,8 +1302,13 @@ function syncTypographyOverlayControls() {
 }
 
 function toggleTypographyOverlay() {
+  if (document.getElementById('typoOverlayT').checked && readingMode !== 'flow') {
+    setReadingMode('overlay');
+  } else if (!document.getElementById('typoOverlayT').checked && readingMode === 'overlay') {
+    setReadingMode('pdf');
+  }
   syncTypographyOverlayControls();
-  applyTextLayer();
+  applyReadingMode();
 }
 
 function handleFontSelectionChange() {
@@ -1254,10 +1317,127 @@ function handleFontSelectionChange() {
     document.getElementById('typoOverlayT').checked = false;
     syncTypographyOverlayControls();
   }
-  applyTextLayer();
+  applyReadingMode();
 }
 
-function applyTextLayer() {
+function setReadingMode(mode) {
+  const normalized = ['pdf', 'overlay', 'flow'].includes(mode) ? mode : 'pdf';
+  readingMode = normalized;
+  document.querySelectorAll('[data-reading-mode]').forEach(btn =>
+    btn.classList.toggle('on', btn.dataset.readingMode === normalized));
+  const overlayToggle = document.getElementById('typoOverlayT');
+  if (normalized === 'overlay') overlayToggle.checked = true;
+  if (normalized === 'pdf') overlayToggle.checked = false;
+  syncTypographyOverlayControls();
+}
+
+function normalizeToken(item) {
+  return (item?.str || '').replace(/\s+/g, ' ').trim();
+}
+
+function buildLineText(tokens) {
+  let output = '';
+  let prev = null;
+  tokens.forEach(token => {
+    if (!token.text) return;
+    if (!prev) {
+      output = token.text;
+      prev = token;
+      return;
+    }
+    const gap = token.x - (prev.x + prev.w);
+    const compactGap = Math.max(1.8, Math.min(8.5, prev.fontSize * 0.2));
+    const punctuationJoin = /^[,.;:!?%)]/.test(token.text);
+    const leftBracketJoin = /[(\["'“]$/.test(prev.text);
+    output += (gap > compactGap && !punctuationJoin && !leftBracketJoin) ? ' ' : '';
+    output += token.text;
+    prev = token;
+  });
+  return output.trim();
+}
+
+async function extractFlowDocument() {
+  if (!pdf) return { pages: [] };
+  if (flowDocCache) return flowDocCache;
+
+  const pages = [];
+  for (let n = 1; n <= pdf.numPages; n++) {
+    const page = await pdf.getPage(n);
+    const viewport = page.getViewport({ scale: 1 });
+    const pageHeight = viewport.height;
+    const content = await page.getTextContent();
+    const lineBuckets = new Map();
+
+    content.items.forEach(item => {
+      const text = normalizeToken(item);
+      if (!text) return;
+      const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+      const x = tx[4];
+      const y = pageHeight - tx[5];
+      const fontSize = Math.max(8, Math.hypot(tx[0], tx[1]));
+      const token = { text, x, y, w: item.width || text.length * fontSize * 0.42, fontSize };
+      const bucket = Math.round(y / 3) * 3;
+      if (!lineBuckets.has(bucket)) lineBuckets.set(bucket, []);
+      lineBuckets.get(bucket).push(token);
+    });
+
+    const lines = [...lineBuckets.entries()]
+      .map(([bucket, tokens]) => {
+        tokens.sort((a, b) => a.x - b.x);
+        return {
+          y: Number(bucket),
+          text: buildLineText(tokens)
+        };
+      })
+      .filter(line => line.text)
+      .sort((a, b) => a.y - b.y);
+
+    const paragraphs = [];
+    let paraBuffer = [];
+    let lastY = null;
+    let baselineGap = 0;
+
+    lines.forEach((line, idx) => {
+      if (idx > 0) {
+        const diff = line.y - lines[idx - 1].y;
+        baselineGap = baselineGap ? (baselineGap * 0.7 + diff * 0.3) : diff;
+      }
+      const dynamicBreak = baselineGap ? Math.max(10, baselineGap * 1.7) : 22;
+      if (lastY !== null && (line.y - lastY) > dynamicBreak && paraBuffer.length) {
+        paragraphs.push(paraBuffer.join(' ').trim());
+        paraBuffer = [];
+      }
+      paraBuffer.push(line.text);
+      lastY = line.y;
+    });
+    if (paraBuffer.length) paragraphs.push(paraBuffer.join(' ').trim());
+    pages.push({ pageNum: n, paragraphs });
+  }
+
+  flowDocCache = { pages };
+  return flowDocCache;
+}
+
+async function renderFlowDocument() {
+  if (!pdf) return;
+  const flowDoc = await extractFlowDocument();
+  flowLayer.innerHTML = '';
+  flowDoc.pages.forEach(page => {
+    const chip = document.createElement('div');
+    chip.className = 'flow-page-chip';
+    chip.textContent = `Page ${page.pageNum}`;
+    flowLayer.appendChild(chip);
+
+    page.paragraphs.forEach(text => {
+      const p = document.createElement('p');
+      p.className = 'flow-para';
+      p.textContent = text;
+      flowLayer.appendChild(p);
+    });
+  });
+}
+
+async function applyReadingMode() {
   if (!pdf) return;
 
   const fontKey = normalizeFontKey(document.getElementById('fontSel').value);
@@ -1267,6 +1447,8 @@ function applyTextLayer() {
     syncTypographyOverlayControls();
   }
   const overlayEnabled = overlayToggle.checked && fontKey !== 'native';
+  const usingOverlay = readingMode === 'overlay' && overlayEnabled;
+  const usingFlow = readingMode === 'flow';
   const fontStack = FONT_STACKS[fontKey] || FONT_STACKS.native;
   const tsize  = Number(document.getElementById('tsizeR').value);
   const lh     = Number(document.getElementById('lhR').value);
@@ -1279,13 +1461,21 @@ function applyTextLayer() {
     night: 'rgba(237, 230, 216, 0.76)'
   };
 
+  rInner.classList.toggle('flow-mode', usingFlow);
+  if (usingFlow) {
+    if (!flowLayer.innerHTML.trim()) await renderFlowDocument();
+    flowLayer.classList.add('on');
+  } else {
+    flowLayer.classList.remove('on');
+  }
+
   rInner.querySelectorAll('.textLayer').forEach(tl => {
-    tl.classList.toggle('disabled', !overlayEnabled);
-    tl.style.opacity = overlayEnabled ? '1' : '';
-    tl.style.visibility = overlayEnabled ? 'visible' : '';
+    tl.classList.toggle('disabled', !usingOverlay);
+    tl.style.opacity = usingOverlay ? '1' : '';
+    tl.style.visibility = usingOverlay ? 'visible' : '';
     tl.style.mixBlendMode = 'normal';
 
-    if (!overlayEnabled) {
+    if (!usingOverlay) {
       tl.style.lineHeight = '';
       tl.style.letterSpacing = '';
       tl.style.wordSpacing = '';
@@ -1313,9 +1503,17 @@ function applyTextLayer() {
   });
 
   rInner.querySelectorAll('canvas').forEach(canvas => {
-    canvas.style.opacity = overlayEnabled ? '0' : '1';
-    canvas.style.visibility = overlayEnabled ? 'hidden' : 'visible';
+    const hideCanvas = usingOverlay || usingFlow;
+    canvas.style.opacity = hideCanvas ? '0' : '1';
+    canvas.style.visibility = hideCanvas ? 'hidden' : 'visible';
   });
+
+  flowLayer.style.fontFamily = fontStack;
+  flowLayer.style.fontSize = `${(18 * (tsize / 100)).toFixed(2)}px`;
+  flowLayer.style.lineHeight = String(lh);
+  flowLayer.style.letterSpacing = `${ls}px`;
+  flowLayer.style.wordSpacing = `${ws}px`;
+  updateProgressAndStatus();
 }
 
 function setPageJumpAvailability(enabled) {
@@ -1342,6 +1540,14 @@ function goToPage(n) {
   const pageNum = Number.parseInt(n, 10);
   if (!Number.isFinite(pageNum)) return;
   const target = Math.min(pdf.numPages, Math.max(1, pageNum));
+  if (readingMode === 'flow') {
+    const chips = flowLayer.querySelectorAll('.flow-page-chip');
+    const targetChip = chips[target - 1];
+    if (targetChip) targetChip.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('pageJumpIn').value = String(target);
+    setNavigationMenuOpen(false);
+    return;
+  }
   const pageWrap = rInner.querySelector(`.page-wrap[data-p="${target}"]`);
   if (!pageWrap) return;
   pageWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1457,10 +1663,10 @@ wire('widthR',  'widthV', '%', null, v => { maxW = Math.round(BASE_PAGE_WIDTH * 
 wire('briR',    'briV',   '%', null, () => applyFilters());
 wire('conR',    'conV',   '%', null, () => applyFilters());
 wire('gapR',    'gapV',   'px', null, v => { gap = v; applyGap(); });
-wire('tsizeR',  'tsizeV', '%', null, () => applyTextLayer());
-wire('lhR',     'lhV',    '',  v => v.toFixed(2), () => applyTextLayer());
-wire('lsR',     'lsV',    'px', v => v.toFixed(2)+'px', () => applyTextLayer());
-wire('wsR',     'wsV',    'px', v => v.toFixed(1)+'px', () => applyTextLayer());
+wire('tsizeR',  'tsizeV', '%', null, () => applyReadingMode());
+wire('lhR',     'lhV',    '',  v => v.toFixed(2), () => applyReadingMode());
+wire('lsR',     'lsV',    'px', v => v.toFixed(2)+'px', () => applyReadingMode());
+wire('wsR',     'wsV',    'px', v => v.toFixed(1)+'px', () => applyReadingMode());
 wire('scrollSR','scrollSV','', v => v.toFixed(1), v => { scrollSpeed = v; });
 wire('focusR',  'focusV', '%', null, v => updateFocusVignette(v));
 wire('focusDepthR', 'focusDepthV', 'px', null, v => updateFocusDepth(v));
@@ -1610,6 +1816,11 @@ function updateCurrentPageStatus() {
     document.getElementById('statPages').textContent = 'No document';
     return;
   }
+  if (readingMode === 'flow') {
+    currentPage = 0;
+    document.getElementById('statPages').textContent = `Flow document • ${pdf.numPages} pages`;
+    return;
+  }
   const wraps = rInner.querySelectorAll('.page-wrap');
   if (!wraps.length) return;
   const viewportAnchor = reader.scrollTop + (reader.clientHeight * 0.35);
@@ -1628,7 +1839,9 @@ function updateProgress() {
   const pct = scrollableHeight > 0 ? (reader.scrollTop / scrollableHeight) * 100 : 0;
   const clampedPct = Math.min(100, Math.max(0, pct));
   document.getElementById('progFill').style.width = clampedPct.toFixed(1) + '%';
-  document.getElementById('statScroll').textContent = Math.round(clampedPct) + '%';
+  document.getElementById('statScroll').textContent = readingMode === 'flow'
+    ? `Doc ${Math.round(clampedPct)}%`
+    : `${Math.round(clampedPct)}%`;
 }
 
 function updateProgressAndStatus() {
@@ -1819,6 +2032,12 @@ document.getElementById('scrollBottomBtn').addEventListener('click', () => goToD
 
 document.getElementById('chunkUpBtn').addEventListener('click', () => stepChunk(-1));
 document.getElementById('chunkDownBtn').addEventListener('click', () => stepChunk(1));
+document.querySelectorAll('[data-reading-mode]').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    setReadingMode(btn.dataset.readingMode);
+    await applyReadingMode();
+  });
+});
 document.addEventListener('keydown', e => {
   if (!chunkModeOn()) return;
   if (e.altKey || e.ctrlKey || e.metaKey) return;
