@@ -171,6 +171,22 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 
 /* Status bar */
 .status { padding: 10px 18px; font-size: 10px; font-family: 'DM Mono', monospace; color: var(--text-muted); border-top: 1px solid var(--sidebar-border); display: flex; justify-content: space-between; }
+.status-shortcuts {
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  border-radius: 6px;
+  padding: 3px 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.status-shortcuts:hover,
+.status-shortcuts:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
 
 /* ─── Reader ─── */
 .reader {
@@ -247,6 +263,77 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   background: linear-gradient(90deg, #c8874a 0%, #e2a86f 100%);
   width: 0%;
   transition: width 0.12s;
+}
+
+.shortcuts-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 410;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(7, 5, 2, 0.65);
+  backdrop-filter: blur(2px);
+}
+.shortcuts-overlay.on { display: flex; }
+.shortcuts-panel {
+  width: min(460px, calc(100vw - 40px));
+  border: 1px solid var(--control-border);
+  border-radius: 12px;
+  background: linear-gradient(160deg, #231e15 0%, #1a150e 100%);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+  padding: 16px 16px 14px;
+}
+.shortcuts-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+.shortcuts-title {
+  font-family: 'Playfair Display', serif;
+  color: var(--accent);
+  font-size: 19px;
+}
+.shortcuts-sub {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-family: 'DM Mono', monospace;
+}
+.shortcuts-close {
+  min-width: 34px;
+  height: 34px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--control-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+}
+.shortcuts-list { list-style: none; display: grid; gap: 8px; }
+.shortcuts-item {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: rgba(22, 18, 13, 0.6);
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.shortcut-key { display: inline-flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+.shortcut-key kbd {
+  border: 1px solid #5d4930;
+  border-bottom-color: #7c613f;
+  border-radius: 5px;
+  background: #221b12;
+  color: #ebd5b8;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  padding: 2px 6px;
 }
 </style>
 </head>
@@ -459,10 +546,16 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         <div class="outline-empty" id="outlineEmpty">Load a PDF to view navigation links.</div>
       </div>
 
+      <div class="sec">
+        <div class="sec-label">Keyboard Shortcuts</div>
+        <div class="sec-hint">Press <strong>?</strong> anytime to open shortcut help.</div>
+      </div>
+
     </div><!-- end sidebar-scroll -->
 
     <div class="status">
       <span id="statPages">No document</span>
+      <button class="status-shortcuts" id="shortcutHintBtn" type="button" aria-haspopup="dialog" aria-controls="shortcutsOverlay">? shortcuts</button>
       <span id="statScroll">0%</span>
     </div>
   </aside>
@@ -495,6 +588,26 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 <div class="focus-top" id="focTop"></div>
 <div class="focus-bot" id="focBot"></div>
 <div class="tint-lay" id="tintLay"></div>
+<div class="shortcuts-overlay" id="shortcutsOverlay" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle" aria-hidden="true">
+  <div class="shortcuts-panel">
+    <div class="shortcuts-head">
+      <div>
+        <div class="shortcuts-title" id="shortcutsTitle">Keyboard Shortcuts</div>
+        <div class="shortcuts-sub">Optimized to avoid collisions with text input fields.</div>
+      </div>
+      <button class="shortcuts-close" id="closeShortcutsBtn" type="button" aria-label="Close keyboard shortcuts panel">✕</button>
+    </div>
+    <ul class="shortcuts-list">
+      <li class="shortcuts-item"><span class="shortcut-key"><kbd>?</kbd></span><span>Show or hide this panel</span></li>
+      <li class="shortcuts-item"><span class="shortcut-key"><kbd>Space</kbd></span><span>Toggle auto-scroll</span></li>
+      <li class="shortcuts-item"><span class="shortcut-key"><kbd>R</kbd></span><span>Toggle reading ruler</span></li>
+      <li class="shortcuts-item"><span class="shortcut-key"><kbd>F</kbd></span><span>Toggle focus mode</span></li>
+      <li class="shortcuts-item"><span class="shortcut-key"><kbd>P</kbd></span><span>Toggle progress bar</span></li>
+      <li class="shortcuts-item"><span class="shortcut-key"><kbd>[</kbd> / <kbd>]</kbd></span><span>Decrease or increase zoom</span></li>
+      <li class="shortcuts-item"><span class="shortcut-key"><kbd>-</kbd> / <kbd>=</kbd></span><span>Decrease or increase column width</span></li>
+    </ul>
+  </div>
+</div>
 
 <script>
 pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -1181,6 +1294,107 @@ function stopScroll() { clearInterval(scrollSI); }
 
 reader.addEventListener('mouseenter', () => { if (scrolling) stopScroll(); });
 reader.addEventListener('mouseleave', () => { if (scrolling) startScroll(); });
+
+/* ── Keyboard shortcuts ── */
+function isTypingTarget(el) {
+  if (!el) return false;
+  const tag = el.tagName ? el.tagName.toLowerCase() : '';
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
+}
+
+function stepRange(id, dir) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const step = Number(el.step) || 1;
+  const min = Number(el.min);
+  const max = Number(el.max);
+  const next = Number(el.value) + (step * dir);
+  const clamped = Math.min(max, Math.max(min, next));
+  if (clamped === Number(el.value)) return;
+  el.value = String(clamped);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function setToggleAndRun(id, fn) {
+  const toggle = document.getElementById(id);
+  if (!toggle) return;
+  toggle.checked = !toggle.checked;
+  fn();
+}
+
+function setShortcutsOpen(open) {
+  const overlay = document.getElementById('shortcutsOverlay');
+  overlay.classList.toggle('on', open);
+  overlay.setAttribute('aria-hidden', String(!open));
+}
+
+function toggleShortcutsPanel() {
+  const overlay = document.getElementById('shortcutsOverlay');
+  setShortcutsOpen(!overlay.classList.contains('on'));
+}
+
+document.getElementById('shortcutHintBtn').addEventListener('click', () => setShortcutsOpen(true));
+document.getElementById('closeShortcutsBtn').addEventListener('click', () => setShortcutsOpen(false));
+document.getElementById('shortcutsOverlay').addEventListener('click', e => {
+  if (e.target.id === 'shortcutsOverlay') setShortcutsOpen(false);
+});
+
+document.addEventListener('keydown', e => {
+  if (e.repeat || e.defaultPrevented) return;
+  const overlayOpen = document.getElementById('shortcutsOverlay').classList.contains('on');
+  const isQuestionMark = e.key === '?' || (e.key === '/' && e.shiftKey);
+  if (isQuestionMark) {
+    e.preventDefault();
+    toggleShortcutsPanel();
+    return;
+  }
+  if (overlayOpen && e.key === 'Escape') {
+    e.preventDefault();
+    setShortcutsOpen(false);
+    return;
+  }
+  if (isTypingTarget(document.activeElement)) return;
+
+  switch (e.key) {
+    case ' ':
+      e.preventDefault();
+      toggleScroll();
+      break;
+    case 'r':
+    case 'R':
+      e.preventDefault();
+      setToggleAndRun('rulerT', toggleRuler);
+      break;
+    case 'f':
+    case 'F':
+      e.preventDefault();
+      setToggleAndRun('focusT', toggleFocus);
+      break;
+    case 'p':
+    case 'P':
+      e.preventDefault();
+      setToggleAndRun('progT', toggleProg);
+      break;
+    case '[':
+      e.preventDefault();
+      stepRange('zoomR', -1);
+      break;
+    case ']':
+      e.preventDefault();
+      stepRange('zoomR', 1);
+      break;
+    case '-':
+      e.preventDefault();
+      stepRange('widthR', -1);
+      break;
+    case '=':
+      e.preventDefault();
+      stepRange('widthR', 1);
+      break;
+    default:
+      break;
+  }
+});
 
 /* ── Init ── */
 document.getElementById('tintR').addEventListener('input', updateTint);
