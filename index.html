@@ -23,7 +23,7 @@
   --control-bg: #252015;
   --control-border: #38301f;
   --slider-track: #38301f;
-  --sw: 290px;
+  --sw: 360px;
 }
 
 html, body { height: 100%; overflow: hidden; background: var(--app-bg); font-family: 'Lora', Georgia, serif; color: var(--text-primary); }
@@ -47,7 +47,7 @@ html, body { height: 100%; overflow: hidden; background: var(--app-bg); font-fam
 .logo-mark { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 12px; color: #1a1200; font-weight: 700; }
 .logo-sub { font-size: 9px; color: var(--text-muted); letter-spacing: 2.5px; text-transform: uppercase; margin-top: 3px; font-family: 'DM Mono', monospace; }
 
-.sidebar-scroll { flex: 1; overflow-y: auto; padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: var(--slider-track) transparent; }
+.sidebar-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: var(--slider-track) transparent; }
 
 /* Upload */
 .upload-zone {
@@ -63,13 +63,13 @@ html, body { height: 100%; overflow: hidden; background: var(--app-bg); font-fam
 
 /* Sections */
 .sec { border-bottom: 1px solid var(--sidebar-border); padding: 10px 0; }
-.sec-label { padding: 0 18px 8px; font-size: 8.5px; letter-spacing: 2.5px; text-transform: uppercase; color: #b4a388; font-family: 'DM Mono', monospace; }
-.sec-hint { padding: 0 18px 6px; font-size: 10px; color: var(--text-muted); line-height: 1.5; }
+.sec-label { padding: 0 20px 9px; font-size: 9.5px; letter-spacing: 2.5px; text-transform: uppercase; color: #b4a388; font-family: 'DM Mono', monospace; }
+.sec-hint { padding: 0 20px 7px; font-size: 11px; color: var(--text-muted); line-height: 1.55; }
 
 /* Control rows */
-.ctrl { padding: 3px 18px; display: flex; align-items: center; gap: 8px; }
-.ctrl-lbl { font-size: 11.5px; color: #d8ccba; flex: 0 0 80px; }
-.ctrl-val { font-size: 10px; font-family: 'DM Mono', monospace; color: var(--accent); flex: 0 0 38px; text-align: right; }
+.ctrl { padding: 4px 20px; display: flex; align-items: center; gap: 10px; }
+.ctrl-lbl { font-size: 12.5px; color: #d8ccba; flex: 0 0 96px; }
+.ctrl-val { font-size: 11px; font-family: 'DM Mono', monospace; color: var(--accent); flex: 0 0 46px; text-align: right; }
 
 /* Sliders */
 input[type=range] {
@@ -84,10 +84,10 @@ input[type=range]::-webkit-slider-thumb {
 input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--accent-dim); }
 
 /* Presets */
-.presets { display: flex; gap: 5px; padding: 2px 18px 8px; }
+.presets { display: flex; gap: 6px; padding: 3px 20px 10px; }
 .pbtn {
-  flex: 1; padding: 5px 0; background: var(--control-bg); border: 1px solid var(--control-border);
-  border-radius: 6px; color: var(--text-secondary); font-size: 10px; cursor: pointer;
+  flex: 1; padding: 7px 0; background: var(--control-bg); border: 1px solid var(--control-border);
+  border-radius: 6px; color: var(--text-secondary); font-size: 11px; cursor: pointer;
   font-family: 'DM Mono', monospace; text-align: center; transition: all 0.15s; letter-spacing: 0.3px;
 }
 .pbtn:hover { border-color: var(--accent); color: var(--accent); }
@@ -96,18 +96,18 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 /* Select */
 .fsel {
   background: var(--control-bg); border: 1px solid var(--control-border); color: var(--text-primary);
-  border-radius: 6px; padding: 5px 28px 5px 10px; font-size: 11px;
-  width: calc(100% - 36px); margin: 2px 18px 6px; cursor: pointer; outline: none; appearance: none;
+  border-radius: 6px; padding: 8px 28px 8px 10px; font-size: 12px;
+  width: calc(100% - 40px); margin: 2px 20px 8px; cursor: pointer; outline: none; appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239a8e7c'/%3E%3C/svg%3E");
   background-repeat: no-repeat; background-position: right 10px center;
 }
 .fsel:focus { border-color: var(--accent); }
 
 /* Toggles */
-.trow { padding: 5px 18px; display: flex; align-items: center; gap: 10px; }
+.trow { padding: 6px 20px; display: flex; align-items: center; gap: 12px; }
 .trow-info { flex: 1; }
-.trow-lbl { font-size: 11.5px; color: #d8ccba; }
-.trow-sub { font-size: 9.5px; color: #ab9d87; margin-top: 1px; }
+.trow-lbl { font-size: 12.5px; color: #d8ccba; }
+.trow-sub { font-size: 10.5px; color: #ab9d87; margin-top: 1px; }
 .tog { position: relative; width: 34px; height: 19px; flex: 0 0 34px; }
 .tog input { opacity: 0; width: 0; height: 0; position: absolute; }
 .tog-tk {
@@ -125,7 +125,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .sci { display: inline-block; width: 13px; height: 13px; border-radius: 50%; background: var(--accent-dim); border: 1px solid var(--accent-mid); color: var(--accent); font-size: 7px; line-height: 11px; text-align: center; margin-left: 4px; cursor: default; font-family: 'DM Mono', monospace; vertical-align: middle; }
 
 /* Autoscroll controls */
-.scroll-ctl { padding: 4px 18px 8px; display: flex; align-items: center; gap: 10px; }
+.scroll-ctl { padding: 4px 20px 10px; display: flex; align-items: center; gap: 10px; }
 .scbtn { padding: 5px 14px; background: var(--control-bg); border: 1px solid var(--control-border); border-radius: 6px; color: var(--text-primary); font-size: 14px; cursor: pointer; transition: all 0.15s; line-height: 1; }
 .scbtn:hover { border-color: var(--accent); color: var(--accent); }
 .scbtn.on { background: var(--accent); color: #1a1200; border-color: var(--accent); }
@@ -139,8 +139,11 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   flex: 1; overflow-y: auto; overflow-x: hidden; position: relative;
   background: #0e0a06;
   scrollbar-width: thin; scrollbar-color: #302820 transparent;
-  transition: background 0.4s;
+  transition: background 0.4s, box-shadow 0.2s;
 }
+.reader.drop-ready { box-shadow: inset 0 0 0 3px rgba(200,135,74,0.45); }
+.reader.drop-ready .empty-title { color: var(--accent); }
+.reader.drop-ready .empty-desc { color: #dcccb3; }
 .reader-inner { min-height: 100%; display: flex; flex-direction: column; align-items: center; padding: 40px 20px; gap: 16px; }
 
 /* Empty state */
@@ -404,7 +407,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
       <div class="empty">
         <div class="empty-icon">📖</div>
         <div class="empty-title">Open a document to begin</div>
-        <div class="empty-desc">Upload any PDF using the panel to the left. All reading enhancements apply instantly.</div>
+        <div class="empty-desc">Upload from the panel on the left, or drag and drop a PDF directly into this reader area.</div>
         <div class="empty-tags">
           <span class="etag">Sepia / Dark mode</span>
           <span class="etag">Reading ruler</span>
@@ -473,6 +476,36 @@ upZone.addEventListener('drop', e => {
   if (isPdfFile(f)) loadPDF(f);
 });
 
+['dragenter', 'dragover'].forEach(evt => {
+  reader.addEventListener(evt, e => {
+    if (pdf) return;
+    e.preventDefault();
+    reader.classList.add('drop-ready');
+  });
+});
+
+['dragleave', 'dragend'].forEach(evt => {
+  reader.addEventListener(evt, e => {
+    if (e.target === reader) reader.classList.remove('drop-ready');
+  });
+});
+
+reader.addEventListener('drop', e => {
+  if (pdf) return;
+  e.preventDefault();
+  reader.classList.remove('drop-ready');
+  const f = e.dataTransfer?.files?.[0];
+  if (isPdfFile(f)) loadPDF(f);
+});
+
+window.addEventListener('dragover', e => {
+  if (!pdf) e.preventDefault();
+});
+
+window.addEventListener('drop', e => {
+  if (!pdf) e.preventDefault();
+});
+
 function isPdfFile(file) {
   if (!file) return false;
   return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
@@ -486,6 +519,7 @@ async function loadPDF(file) {
 
   document.getElementById('upName').textContent = file.name;
   document.getElementById('upName').style.display = 'block';
+  reader.classList.remove('drop-ready');
   rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Loading pages…</div>';
   stopScroll();
   scrolling = false;
