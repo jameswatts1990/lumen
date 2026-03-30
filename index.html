@@ -1078,12 +1078,13 @@ function applyTextLayer() {
     dark: 'rgba(237, 230, 216, 0.72)',
     night: 'rgba(237, 230, 216, 0.76)'
   };
-  const useOverlay = font !== 'native' || Number(tsize) !== 100 || Number(lh) !== 1.5 || Number(ls) !== 0 || Number(ws) !== 0;
+  const overlayActive = font !== 'inherit' || Number(tsize) !== 100 || Number(lh) !== 1.5 || Number(ls) !== 0 || Number(ws) !== 0;
+  const nativeMode = !overlayActive;
 
   rInner.querySelectorAll('.textLayer').forEach(tl => {
-    tl.classList.toggle('inactive', !useOverlay);
-    tl.style.opacity = useOverlay ? '1' : '0.82';
-    tl.style.mixBlendMode = currentMode === 'day' || currentMode === 'sepia' ? 'multiply' : 'screen';
+    tl.classList.toggle('inactive', nativeMode);
+    tl.style.opacity = overlayActive ? '1' : '0';
+    tl.style.mixBlendMode = 'normal';
     tl.style.setProperty('--overlay-text-color', overlayColors[currentMode] || overlayColors.day);
     tl.style.lineHeight    = lh;
     tl.style.letterSpacing = `${ls}px`;
@@ -1097,7 +1098,8 @@ function applyTextLayer() {
     });
   });
   rInner.querySelectorAll('canvas').forEach(canvas => {
-    canvas.style.opacity = useOverlay ? '0.28' : '1';
+    canvas.style.opacity = overlayActive ? '0' : '1';
+    canvas.style.visibility = overlayActive ? 'hidden' : 'visible';
   });
 }
 
