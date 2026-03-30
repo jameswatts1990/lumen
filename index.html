@@ -602,6 +602,12 @@ function applyTextLayer() {
 
 }
 
+/* ── Debounce ── */
+const _dts = {};
+function debounce(fn, ms) {
+  return (...a) => { clearTimeout(_dts[fn]); _dts[fn] = setTimeout(() => fn(...a), ms); };
+}
+
 /* ── Slider wiring ── */
 function wire(id, valId, suffix, fmt, cb) {
   const sl = document.getElementById(id);
@@ -707,12 +713,6 @@ function stopScroll() { clearInterval(scrollSI); }
 
 reader.addEventListener('mouseenter', () => { if (scrolling) stopScroll(); });
 reader.addEventListener('mouseleave', () => { if (scrolling) startScroll(); });
-
-/* ── Debounce ── */
-const _dts = {};
-function debounce(fn, ms) {
-  return (...a) => { clearTimeout(_dts[fn]); _dts[fn] = setTimeout(() => fn(...a), ms); };
-}
 
 /* ── Init ── */
 document.getElementById('tintR').addEventListener('input', updateTint);
