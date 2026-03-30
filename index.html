@@ -27,7 +27,7 @@
   --sw: 360px;
 }
 
-html, body { height: 100%; overflow: hidden; background: var(--app-bg); font-family: 'Lora', Georgia, serif; color: var(--text-primary); }
+html, body { height: 100%; overflow: hidden; background: var(--app-bg); font-family: 'Lora', Georgia, serif; color: var(--text-primary); font-size: 15px; }
 
 /* ─── Layout ─── */
 .app { display: flex; height: 100vh; }
@@ -326,13 +326,13 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 
 .prog {
   position: sticky;
-  top: 0;
+  bottom: 0;
   left: 0;
   right: 0;
-  height: 4px;
+  height: 8px;
   z-index: 300;
   background: rgba(48, 40, 32, 0.9);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.45);
 }
 .prog-fill {
   height: 100%;
@@ -411,6 +411,20 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   font-size: 11px;
   padding: 2px 6px;
 }
+
+.ctrl-group {
+  overflow: hidden;
+  max-height: 420px;
+  opacity: 1;
+  transition: max-height 0.2s ease, opacity 0.18s ease, margin 0.18s ease;
+}
+.ctrl-group.collapsed {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  pointer-events: none;
+}
 </style>
 </head>
 <body>
@@ -437,6 +451,18 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         <div class="upload-fname" id="upName"></div>
       </div>
 
+      <!-- Reading Profiles -->
+      <div class="sec">
+        <div class="sec-label">Reading Profiles</div>
+        <div class="sec-hint">Save your current setup, or switch between curated profiles for different reading needs.</div>
+        <select class="fsel" id="profileSel" aria-label="Reading profile"></select>
+        <div class="presets" style="padding-top: 4px;">
+          <button class="pbtn" id="saveProfileBtn" type="button">Save current</button>
+          <button class="pbtn" id="deleteProfileBtn" type="button">Delete</button>
+        </div>
+      </div>
+
+
       <!-- Background Mode -->
       <div class="sec">
         <div class="sec-label">Background Mode</div>
@@ -449,30 +475,14 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         <div class="sec-hint">Warm/dark modes reduce blue-light exposure & eye fatigue (Phipps-Nelson et al., 2009)</div>
       </div>
 
-      <!-- Reading Profiles -->
-      <div class="sec">
-        <div class="sec-label">Reading Profiles</div>
-        <div class="sec-hint">Save your current setup, or switch between curated profiles for different reading needs.</div>
-        <select class="fsel" id="profileSel" aria-label="Reading profile"></select>
-        <div class="presets" style="padding-top: 4px;">
-          <button class="pbtn" id="saveProfileBtn" type="button">Save current</button>
-          <button class="pbtn" id="deleteProfileBtn" type="button">Delete</button>
-        </div>
-      </div>
-
       <!-- Display -->
       <div class="sec">
         <div class="sec-label">Display <span class="sci" title="Optimal zoom and line width reduce subvocalization load">✦</span></div>
 
         <div class="ctrl">
           <span class="ctrl-lbl">Zoom</span>
-          <input type="range" id="zoomR" min="50" max="200" value="100" step="5">
-          <span class="ctrl-val" id="zoomV">100%</span>
-        </div>
-        <div class="ctrl">
-          <span class="ctrl-lbl">Column Width</span>
-          <input type="range" id="widthR" min="380" max="1100" value="760" step="20">
-          <span class="ctrl-val" id="widthV">760</span>
+          <input type="range" id="widthR" min="60" max="160" value="100" step="5">
+          <span class="ctrl-val" id="widthV">100%</span>
         </div>
         <div class="sec-hint" style="margin-top:4px;">Optimal line length: 50–75 chars/line (Rayner et al., 1998)</div>
 
@@ -506,7 +516,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
           <label class="tog"><input type="checkbox" id="typoOverlayT" checked onchange="toggleTypographyOverlay()"><span class="tog-tk"></span></label>
         </div>
 
-        <div style="padding: 4px 0 2px;">
+        <div style="padding: 4px 0 2px;" id="typoControls" class="ctrl-group typography-group">
           <select class="fsel" id="fontSel" onchange="handleFontSelectionChange()">
             <option value="native">— PDF Native Font —</option>
             <option value="georgia">Georgia (Serif)</option>
@@ -519,27 +529,27 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
           </select>
         </div>
 
-        <div class="ctrl">
+        <div class="ctrl ctrl-group typography-group">
           <span class="ctrl-lbl">Text Size</span>
           <input type="range" id="tsizeR" min="70" max="130" value="100" step="5">
           <span class="ctrl-val" id="tsizeV">100%</span>
         </div>
-        <div class="ctrl">
+        <div class="ctrl ctrl-group typography-group">
           <span class="ctrl-lbl">Line Height</span>
           <input type="range" id="lhR" min="1.0" max="2.2" value="1.5" step="0.05">
           <span class="ctrl-val" id="lhV">1.50</span>
         </div>
-        <div class="ctrl">
+        <div class="ctrl ctrl-group typography-group">
           <span class="ctrl-lbl">Letter Spacing</span>
           <input type="range" id="lsR" min="-0.5" max="3" value="0" step="0.25">
           <span class="ctrl-val" id="lsV">0px</span>
         </div>
-        <div class="ctrl">
+        <div class="ctrl ctrl-group typography-group">
           <span class="ctrl-lbl">Word Spacing</span>
           <input type="range" id="wsR" min="0" max="8" value="0" step="0.5">
           <span class="ctrl-val" id="wsV">0px</span>
         </div>
-        <div class="sec-hint" style="margin-top:4px;">Larger line height & word spacing benefit readers with dyslexia (Zorzi et al., 2012)</div>
+        <div class="sec-hint ctrl-group typography-group" style="margin-top:4px;">Larger line height & word spacing benefit readers with dyslexia (Zorzi et al., 2012)</div>
       </div>
 
       <!-- Focus Tools -->
@@ -570,12 +580,12 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
           <label class="tog"><input type="checkbox" id="chunkT" onchange="toggleChunkMode()"><span class="tog-tk"></span></label>
         </div>
 
-        <div class="ctrl">
+        <div class="ctrl ctrl-group chunk-group">
           <span class="ctrl-lbl">Chunk Height</span>
           <input type="range" id="chunkR" min="1" max="5" value="2" step="1">
           <span class="ctrl-val" id="chunkV">2 lines</span>
         </div>
-        <div class="chunk-step">
+        <div class="chunk-step ctrl-group chunk-group">
           <button class="scbtn" id="chunkUpBtn" type="button" title="Move chunk up (K)" aria-label="Move chunk up">↑</button>
           <button class="scbtn" id="chunkDownBtn" type="button" title="Move chunk down (J)" aria-label="Move chunk down">↓</button>
           <span class="chunk-step-hint">Step with K / J</span>
@@ -589,17 +599,17 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
           <label class="tog"><input type="checkbox" id="focusT" onchange="toggleFocus()"><span class="tog-tk"></span></label>
         </div>
 
-        <div class="ctrl">
+        <div class="ctrl ctrl-group focus-group">
           <span class="ctrl-lbl">Vignette</span>
           <input type="range" id="focusR" min="20" max="90" value="72" step="1">
           <span class="ctrl-val" id="focusV">72%</span>
         </div>
-        <div class="ctrl">
+        <div class="ctrl ctrl-group focus-group">
           <span class="ctrl-lbl">Depth</span>
           <input type="range" id="focusDepthR" min="80" max="420" value="220" step="10">
           <span class="ctrl-val" id="focusDepthV">220px</span>
         </div>
-        <div class="sec-hint" style="padding-top:2px;">Lower for gentle focus, higher for stronger edge dimming</div>
+        <div class="sec-hint ctrl-group focus-group" style="padding-top:2px;">Lower for gentle focus, higher for stronger edge dimming</div>
 
         <div class="trow">
           <div class="trow-info">
@@ -641,10 +651,6 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         <div class="sec-hint">Use the floating compass button in the reader to jump pages and open the PDF outline.</div>
       </div>
 
-      <div class="sec">
-        <div class="sec-label">Keyboard Shortcuts</div>
-        <div class="sec-hint">Press <strong>?</strong> anytime to open shortcut help.</div>
-      </div>
 
     </div><!-- end sidebar-scroll -->
 
@@ -713,8 +719,8 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
       <li class="shortcuts-item"><span class="shortcut-key"><kbd>R</kbd></span><span>Toggle reading ruler</span></li>
       <li class="shortcuts-item"><span class="shortcut-key"><kbd>F</kbd></span><span>Toggle focus mode</span></li>
       <li class="shortcuts-item"><span class="shortcut-key"><kbd>P</kbd></span><span>Toggle progress bar</span></li>
-      <li class="shortcuts-item"><span class="shortcut-key"><kbd>[</kbd> / <kbd>]</kbd></span><span>Decrease or increase zoom</span></li>
-      <li class="shortcuts-item"><span class="shortcut-key"><kbd>-</kbd> / <kbd>=</kbd></span><span>Decrease or increase column width</span></li>
+      <li class="shortcuts-item"><span class="shortcut-key"><kbd>-</kbd> / <kbd>=</kbd></span><span>Decrease or increase zoom</span></li>
+      <li class="shortcuts-item"><span class="shortcut-key"><kbd>J</kbd> / <kbd>K</kbd></span><span>Step chunk down or up (when chunking is on)</span></li>
     </ul>
   </div>
 </div>
@@ -725,8 +731,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
 
 /* ── State ── */
 let pdf = null;
-let zoom = 1.0;
-let maxW = 760;
+const BASE_PAGE_WIDTH = 760;
+let maxW = BASE_PAGE_WIDTH;
 let gap = 16;
 let scrolling = false;
 let scrollSI = null;
@@ -811,7 +817,7 @@ function getProfileById(id) {
 function captureSettings() {
   return {
     mode: currentMode,
-    zoom: Number(document.getElementById('zoomR').value),
+    zoom: Math.round((maxW / BASE_PAGE_WIDTH) * 100),
     width: Number(document.getElementById('widthR').value),
     brightness: Number(document.getElementById('briR').value),
     contrast: Number(document.getElementById('conR').value),
@@ -846,8 +852,12 @@ function setRangeValue(id, value) {
 function applySettings(profile) {
   const settings = profile?.settings || profile || {};
   if (settings.mode && MODES[settings.mode]) setMode(settings.mode);
-  setRangeValue('zoomR', settings.zoom);
-  setRangeValue('widthR', settings.width);
+  if (settings.zoom !== undefined) {
+    setRangeValue('widthR', settings.zoom);
+  } else if (settings.width !== undefined) {
+    const legacyZoom = Math.round((Number(settings.width) / BASE_PAGE_WIDTH) * 100);
+    setRangeValue('widthR', legacyZoom);
+  }
   setRangeValue('briR', settings.brightness);
   setRangeValue('conR', settings.contrast);
   setRangeValue('gapR', settings.gap);
@@ -1160,6 +1170,12 @@ function applyFilters() {
 
 function syncTypographyOverlayControls() {
   const overlayEnabled = document.getElementById('typoOverlayT').checked;
+  document.querySelectorAll('.typography-group').forEach(el => el.classList.toggle('collapsed', !overlayEnabled));
+  const fontSel = document.getElementById('fontSel');
+  if (fontSel) {
+    fontSel.disabled = !overlayEnabled;
+    fontSel.closest('#typoControls')?.classList.toggle('collapsed', !overlayEnabled);
+  }
   const controls = ['tsizeR', 'lhR', 'lsR', 'wsR'];
   controls.forEach(id => {
     const el = document.getElementById(id);
@@ -1361,8 +1377,7 @@ function wire(id, valId, suffix, fmt, cb) {
   update();
 }
 
-wire('zoomR',   'zoomV',  '%', null, v => { zoom = v/100; debounce(reRender, 350)(); });
-wire('widthR',  'widthV', 'px', null, v => { maxW = v; applyMaxWidth(); });
+wire('widthR',  'widthV', '%', null, v => { maxW = Math.round(BASE_PAGE_WIDTH * (v / 100)); applyMaxWidth(); });
 wire('briR',    'briV',   '%', null, () => applyFilters());
 wire('conR',    'conV',   '%', null, () => applyFilters());
 wire('gapR',    'gapV',   'px', null, v => { gap = v; applyGap(); });
@@ -1465,6 +1480,8 @@ function stepChunk(direction) {
 function toggleChunkMode() {
   ensureChunkAnchor();
   setChunkButtonState();
+  const on = chunkModeOn();
+  document.querySelectorAll('.chunk-group').forEach(el => el.classList.toggle('collapsed', !on));
   toggleRuler();
   updateChunkOverlay();
 }
@@ -1505,6 +1522,7 @@ function updateFocusDepth(v) {
 
 function toggleFocus() {
   const on = document.getElementById('focusT').checked;
+  document.querySelectorAll('.focus-group').forEach(el => el.classList.toggle('collapsed', !on));
   document.getElementById('focTop').classList.toggle('on', on);
   document.getElementById('focBot').classList.toggle('on', on);
 }
@@ -1685,14 +1703,6 @@ document.addEventListener('keydown', e => {
     case 'P':
       e.preventDefault();
       setToggleAndRun('progT', toggleProg);
-      break;
-    case '[':
-      e.preventDefault();
-      stepRange('zoomR', -1);
-      break;
-    case ']':
-      e.preventDefault();
-      stepRange('zoomR', 1);
       break;
     case '-':
       e.preventDefault();
