@@ -133,6 +133,42 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .scbtn.on { background: var(--accent); color: #1a1200; border-color: var(--accent); }
 .scbtn-hint { font-size: 10px; color: var(--text-muted); }
 
+/* Navigation */
+.nav-jump { padding: 4px 20px 10px; display: flex; align-items: center; gap: 8px; }
+.nav-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--control-bg);
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  padding: 7px 9px;
+  font-size: 12px;
+  font-family: 'DM Mono', monospace;
+  outline: none;
+}
+.nav-input:focus { border-color: var(--accent); }
+.nav-input:disabled { opacity: 0.6; cursor: not-allowed; }
+.nav-go { min-width: 48px; font-size: 11px; font-family: 'DM Mono', monospace; padding: 7px 10px; }
+.outline-list { list-style: none; padding: 0 20px 10px; display: grid; gap: 2px; }
+.outline-item button {
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.outline-item button:hover { border-color: var(--control-border); background: var(--control-bg); color: var(--text-primary); }
+.outline-item[data-depth="1"] button { padding-left: 16px; }
+.outline-item[data-depth="2"] button { padding-left: 24px; }
+.outline-item[data-depth="3"] button { padding-left: 32px; }
+.outline-empty { padding: 0 20px 10px; font-size: 11px; color: var(--text-muted); line-height: 1.5; }
+
 /* Status bar */
 .status { padding: 10px 18px; font-size: 10px; font-family: 'DM Mono', monospace; color: var(--text-muted); border-top: 1px solid var(--sidebar-border); display: flex; justify-content: space-between; }
 
@@ -410,6 +446,19 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         </div>
       </div>
 
+      <!-- Navigation -->
+      <div class="sec">
+        <div class="sec-label">Navigation</div>
+        <div class="sec-hint">Jump to a page, or use section links from your PDF outline when available.</div>
+        <div class="nav-jump">
+          <input class="nav-input" id="pageJumpIn" type="number" min="1" step="1" placeholder="Page #" aria-label="Page number input" disabled>
+          <button class="pbtn nav-go" id="pageJumpBtn" type="button" disabled>Go</button>
+        </div>
+        <div class="sec-hint" style="padding-top:0;">Outline</div>
+        <ul class="outline-list" id="outlineList" hidden></ul>
+        <div class="outline-empty" id="outlineEmpty">Load a PDF to view navigation links.</div>
+      </div>
+
     </div><!-- end sidebar-scroll -->
 
     <div class="status">
@@ -462,6 +511,7 @@ let scrollSpeed = 2.5;
 let currentMode = 'day';
 let rendering = false;
 let focusDepth = 220;
+let currentPage = 0;
 const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
 const DEFAULT_PROFILE_ID = 'default';
 const BUILTIN_PROFILES = [
@@ -733,24 +783,30 @@ async function loadPDF(file) {
   scrollBtn.textContent = '▶';
   scrollBtn.classList.remove('on');
   reader.scrollTop = 0;
+  currentPage = 0;
+  setPageJumpAvailability(false);
+  renderOutlineFallback('Loading outline…');
 
   try {
     const buf = await file.arrayBuffer();
     pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-    document.getElementById('statPages').textContent = `${pdf.numPages} pages`;
+    setPageJumpAvailability(true);
 
     rInner.innerHTML = '';
     for (let i = 1; i <= pdf.numPages; i++) await renderPage(i);
+    await loadOutline();
     applyFilters();
     applyTextLayer();
     applyMaxWidth();
     applyGap();
-    updateProgress();
+    updateProgressAndStatus();
   } catch (err) {
     console.error('Failed to load PDF:', err);
     pdf = null;
     document.getElementById('statPages').textContent = 'No document';
     rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Unable to load this PDF. Try another file.</div>';
+    setPageJumpAvailability(false);
+    renderOutlineFallback('Outline unavailable for this document.');
   }
 }
 
@@ -822,7 +878,7 @@ async function reRender() {
   applyMaxWidth();
   applyFilters();
   applyTextLayer();
-  updateProgress();
+  updateProgressAndStatus();
   rendering = false;
 }
 
@@ -882,6 +938,102 @@ function applyTextLayer() {
   rInner.querySelectorAll('canvas').forEach(canvas => {
     canvas.style.opacity = useOverlay ? '0.28' : '1';
   });
+}
+
+function setPageJumpAvailability(enabled) {
+  const input = document.getElementById('pageJumpIn');
+  const btn = document.getElementById('pageJumpBtn');
+  input.disabled = !enabled;
+  btn.disabled = !enabled;
+  if (enabled && pdf) {
+    input.max = String(pdf.numPages);
+    input.value = '1';
+  } else {
+    input.value = '';
+    input.removeAttribute('max');
+  }
+}
+
+function goToPage(n) {
+  if (!pdf) return;
+  const pageNum = Number.parseInt(n, 10);
+  if (!Number.isFinite(pageNum)) return;
+  const target = Math.min(pdf.numPages, Math.max(1, pageNum));
+  const pageWrap = rInner.querySelector(`.page-wrap[data-p="${target}"]`);
+  if (!pageWrap) return;
+  pageWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  document.getElementById('pageJumpIn').value = String(target);
+}
+
+function flattenOutline(items, depth = 0) {
+  if (!Array.isArray(items)) return [];
+  return items.flatMap(item => {
+    const own = [{ title: item?.title?.trim() || 'Untitled section', dest: item?.dest, depth }];
+    const children = flattenOutline(item?.items, depth + 1);
+    return own.concat(children);
+  });
+}
+
+async function resolveOutlinePage(dest) {
+  if (!dest || !pdf) return null;
+  let targetDest = dest;
+  if (typeof targetDest === 'string') targetDest = await pdf.getDestination(targetDest);
+  if (!Array.isArray(targetDest) || !targetDest.length) return null;
+  const ref = targetDest[0];
+  if (typeof ref === 'object' && ref !== null) {
+    const index = await pdf.getPageIndex(ref);
+    return index + 1;
+  }
+  if (typeof ref === 'number') return ref + 1;
+  return null;
+}
+
+function renderOutlineFallback(message) {
+  const list = document.getElementById('outlineList');
+  const empty = document.getElementById('outlineEmpty');
+  list.innerHTML = '';
+  list.hidden = true;
+  empty.textContent = message;
+}
+
+async function loadOutline() {
+  if (!pdf) return;
+  try {
+    const outline = await pdf.getOutline();
+    if (!outline?.length) {
+      renderOutlineFallback('No outline available in this PDF.');
+      return;
+    }
+    const flatItems = flattenOutline(outline).slice(0, 200);
+    const resolved = await Promise.all(flatItems.map(async item => ({
+      ...item,
+      page: await resolveOutlinePage(item.dest)
+    })));
+    const usable = resolved.filter(item => Number.isFinite(item.page));
+    if (!usable.length) {
+      renderOutlineFallback('Outline found, but section destinations are unavailable.');
+      return;
+    }
+    const list = document.getElementById('outlineList');
+    const empty = document.getElementById('outlineEmpty');
+    list.innerHTML = '';
+    usable.forEach(item => {
+      const li = document.createElement('li');
+      li.className = 'outline-item';
+      li.dataset.depth = String(Math.min(item.depth, 3));
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = item.title;
+      btn.addEventListener('click', () => goToPage(item.page));
+      li.appendChild(btn);
+      list.appendChild(li);
+    });
+    list.hidden = false;
+    empty.textContent = '';
+  } catch (err) {
+    console.warn('Unable to read outline:', err);
+    renderOutlineFallback('Unable to load outline for this document.');
+  }
 }
 
 /* ── Debounce ── */
@@ -965,6 +1117,25 @@ function toggleFocus() {
 }
 
 /* ── Progress bar ── */
+function updateCurrentPageStatus() {
+  if (!pdf) {
+    currentPage = 0;
+    document.getElementById('statPages').textContent = 'No document';
+    return;
+  }
+  const wraps = rInner.querySelectorAll('.page-wrap');
+  if (!wraps.length) return;
+  const viewportAnchor = reader.scrollTop + (reader.clientHeight * 0.35);
+  let visiblePage = 1;
+  for (const wrap of wraps) {
+    if (wrap.offsetTop <= viewportAnchor) visiblePage = Number(wrap.dataset.p);
+    else break;
+  }
+  currentPage = visiblePage;
+  document.getElementById('statPages').textContent = `Page ${currentPage} / ${pdf.numPages}`;
+  document.getElementById('pageJumpIn').value = String(currentPage);
+}
+
 function updateProgress() {
   const scrollableHeight = reader.scrollHeight - reader.clientHeight;
   const pct = scrollableHeight > 0 ? (reader.scrollTop / scrollableHeight) * 100 : 0;
@@ -973,12 +1144,17 @@ function updateProgress() {
   document.getElementById('statScroll').textContent = Math.round(clampedPct) + '%';
 }
 
-reader.addEventListener('scroll', updateProgress);
+function updateProgressAndStatus() {
+  updateProgress();
+  updateCurrentPageStatus();
+}
+
+reader.addEventListener('scroll', updateProgressAndStatus);
 
 function toggleProg() {
   document.getElementById('progBar').style.display =
     document.getElementById('progT').checked ? 'block' : 'none';
-  updateProgress();
+  updateProgressAndStatus();
 }
 
 /* ── Auto-scroll ── */
@@ -1008,10 +1184,19 @@ reader.addEventListener('mouseleave', () => { if (scrolling) startScroll(); });
 
 /* ── Init ── */
 document.getElementById('tintR').addEventListener('input', updateTint);
-window.addEventListener('resize', updateProgress);
+window.addEventListener('resize', updateProgressAndStatus);
 toggleProg();
 updateTint();
 updateFocusDepth(focusDepth);
+setPageJumpAvailability(false);
+renderOutlineFallback('Load a PDF to view navigation links.');
+
+document.getElementById('pageJumpBtn').addEventListener('click', () => {
+  goToPage(document.getElementById('pageJumpIn').value);
+});
+document.getElementById('pageJumpIn').addEventListener('keydown', e => {
+  if (e.key === 'Enter') goToPage(e.target.value);
+});
 
 /* ── Profile system init ── */
 loadProfilesState();
