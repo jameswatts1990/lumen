@@ -428,14 +428,14 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 
         <div style="padding: 4px 0 2px;">
           <select class="fsel" id="fontSel" onchange="applyTextLayer()">
-            <option value="inherit">— PDF Native Font —</option>
-            <option value="'Georgia', serif">Georgia (Serif)</option>
-            <option value="'Lora', Georgia, serif">Lora (Literary Serif)</option>
-            <option value="'Palatino Linotype', serif">Palatino (Classic)</option>
-            <option value="'Verdana', sans-serif">Verdana (Web Legible)</option>
-            <option value="'Atkinson Hyperlegible', sans-serif">Atkinson Hyperlegible ✦</option>
-            <option value="'OpenDyslexic', serif">OpenDyslexic ✦</option>
-            <option value="'Courier New', monospace">Courier (Monospace)</option>
+            <option value="native">— PDF Native Font —</option>
+            <option value="georgia">Georgia (Serif)</option>
+            <option value="lora">Lora (Literary Serif)</option>
+            <option value="palatino">Palatino (Classic)</option>
+            <option value="verdana">Verdana (Web Legible)</option>
+            <option value="atkinson">Atkinson Hyperlegible ✦</option>
+            <option value="opendyslexic">OpenDyslexic ✦</option>
+            <option value="courier">Courier (Monospace)</option>
           </select>
         </div>
 
@@ -656,22 +656,22 @@ const BUILTIN_PROFILES = [
   {
     id: 'gentle-focus',
     name: 'Gentle Focus',
-    settings: { mode: 'sepia', zoom: 105, width: 760, brightness: 96, contrast: 98, gap: 20, font: "'Lora', Georgia, serif", textSize: 105, lineHeight: 1.7, letterSpacing: 0.25, wordSpacing: 1, ruler: false, paragraphShading: false, focusMode: true, focusVignette: 58, focusDepth: 210, tint: 14, progressBar: true, autoScrollSpeed: 2, chunkMode: false, chunkHeight: 2 }
+    settings: { mode: 'sepia', zoom: 105, width: 760, brightness: 96, contrast: 98, gap: 20, font: 'lora', textSize: 105, lineHeight: 1.7, letterSpacing: 0.25, wordSpacing: 1, ruler: false, paragraphShading: false, focusMode: true, focusVignette: 58, focusDepth: 210, tint: 14, progressBar: true, autoScrollSpeed: 2, chunkMode: false, chunkHeight: 2 }
   },
   {
     id: 'dyslexia-friendly',
     name: 'Dyslexia Friendly',
-    settings: { mode: 'day', zoom: 110, width: 820, brightness: 100, contrast: 104, gap: 24, font: "'Atkinson Hyperlegible', sans-serif", textSize: 115, lineHeight: 1.9, letterSpacing: 0.75, wordSpacing: 2.5, ruler: true, paragraphShading: true, focusMode: false, focusVignette: 62, focusDepth: 220, tint: 8, progressBar: true, autoScrollSpeed: 1.5, chunkMode: false, chunkHeight: 2 }
+    settings: { mode: 'day', zoom: 110, width: 820, brightness: 100, contrast: 104, gap: 24, font: 'atkinson', textSize: 115, lineHeight: 1.9, letterSpacing: 0.75, wordSpacing: 2.5, ruler: true, paragraphShading: true, focusMode: false, focusVignette: 62, focusDepth: 220, tint: 8, progressBar: true, autoScrollSpeed: 1.5, chunkMode: false, chunkHeight: 2 }
   },
   {
     id: 'adhd-flow',
     name: 'ADHD Flow',
-    settings: { mode: 'sepia', zoom: 110, width: 680, brightness: 95, contrast: 102, gap: 28, font: "'Verdana', sans-serif", textSize: 110, lineHeight: 1.75, letterSpacing: 0.25, wordSpacing: 1.5, ruler: true, paragraphShading: true, focusMode: true, focusVignette: 68, focusDepth: 180, tint: 16, progressBar: true, autoScrollSpeed: 2.8, chunkMode: true, chunkHeight: 2 }
+    settings: { mode: 'sepia', zoom: 110, width: 680, brightness: 95, contrast: 102, gap: 28, font: 'verdana', textSize: 110, lineHeight: 1.75, letterSpacing: 0.25, wordSpacing: 1.5, ruler: true, paragraphShading: true, focusMode: true, focusVignette: 68, focusDepth: 180, tint: 16, progressBar: true, autoScrollSpeed: 2.8, chunkMode: true, chunkHeight: 2 }
   },
   {
     id: 'high-contrast-calm',
     name: 'High Contrast Calm',
-    settings: { mode: 'dark', zoom: 120, width: 780, brightness: 90, contrast: 130, gap: 20, font: "'Verdana', sans-serif", textSize: 112, lineHeight: 1.8, letterSpacing: 0.5, wordSpacing: 1.5, ruler: false, paragraphShading: false, focusMode: true, focusVignette: 70, focusDepth: 250, tint: 12, progressBar: true, autoScrollSpeed: 1.8, chunkMode: false, chunkHeight: 2 }
+    settings: { mode: 'dark', zoom: 120, width: 780, brightness: 90, contrast: 130, gap: 20, font: 'verdana', textSize: 112, lineHeight: 1.8, letterSpacing: 0.5, wordSpacing: 1.5, ruler: false, paragraphShading: false, focusMode: true, focusVignette: 70, focusDepth: 250, tint: 12, progressBar: true, autoScrollSpeed: 1.8, chunkMode: false, chunkHeight: 2 }
   }
 ];
 const BUILTIN_PROFILE_MAP = new Map(BUILTIN_PROFILES.map(p => [p.id, p]));
@@ -688,6 +688,25 @@ const MODES = {
   dark:  { bg: '#202020', filter: 'invert(1) hue-rotate(180deg) brightness(88%)' },
   night: { bg: '#180f04', filter: 'sepia(70%) brightness(62%) contrast(88%)' },
 };
+const FONT_STACKS = {
+  native: 'inherit',
+  georgia: "'Georgia', serif",
+  lora: "'Lora', Georgia, serif",
+  palatino: "'Palatino Linotype', serif",
+  verdana: "'Verdana', sans-serif",
+  atkinson: "'Atkinson Hyperlegible', sans-serif",
+  opendyslexic: "'OpenDyslexic', 'OpenDyslexicAlta', 'Atkinson Hyperlegible', Arial, sans-serif",
+  courier: "'Courier New', monospace",
+};
+const LEGACY_FONT_KEYS = Object.fromEntries(
+  Object.entries(FONT_STACKS).map(([key, stack]) => [stack, key])
+);
+
+function normalizeFontKey(fontValue) {
+  if (typeof fontValue !== 'string' || !fontValue.trim()) return 'native';
+  if (Object.hasOwn(FONT_STACKS, fontValue)) return fontValue;
+  return LEGACY_FONT_KEYS[fontValue] || 'native';
+}
 
 function setMode(m) {
   currentMode = m;
@@ -746,7 +765,7 @@ function applySettings(profile) {
   setRangeValue('gapR', settings.gap);
   if (settings.font !== undefined) {
     const fontSel = document.getElementById('fontSel');
-    fontSel.value = settings.font;
+    fontSel.value = normalizeFontKey(settings.font);
     applyTextLayer();
   }
   setRangeValue('tsizeR', settings.textSize);
@@ -1048,6 +1067,7 @@ function applyTextLayer() {
   if (!pdf) return;
 
   const font   = document.getElementById('fontSel').value;
+  const fontStack = FONT_STACKS[normalizeFontKey(font)] || FONT_STACKS.native;
   const tsize  = document.getElementById('tsizeR').value;
   const lh     = document.getElementById('lhR').value;
   const ls     = document.getElementById('lsR').value;
@@ -1058,7 +1078,7 @@ function applyTextLayer() {
     dark: 'rgba(237, 230, 216, 0.72)',
     night: 'rgba(237, 230, 216, 0.76)'
   };
-  const useOverlay = font !== 'inherit' || Number(tsize) !== 100 || Number(lh) !== 1.5 || Number(ls) !== 0 || Number(ws) !== 0;
+  const useOverlay = font !== 'native' || Number(tsize) !== 100 || Number(lh) !== 1.5 || Number(ls) !== 0 || Number(ws) !== 0;
 
   rInner.querySelectorAll('.textLayer').forEach(tl => {
     tl.classList.toggle('inactive', !useOverlay);
@@ -1072,7 +1092,7 @@ function applyTextLayer() {
       const baseFontSize = Number(span.dataset.baseFontSize || 12);
       const baseScaleX = Number(span.dataset.baseScaleX || 1);
       span.style.fontSize = `${(baseFontSize * (Number(tsize) / 100)).toFixed(2)}px`;
-      span.style.fontFamily = font === 'inherit' ? (span.dataset.baseFontFamily || 'serif') : font;
+      span.style.fontFamily = font === 'native' ? (span.dataset.baseFontFamily || 'serif') : fontStack;
       span.style.transform = `scaleX(${baseScaleX})`;
     });
   });
