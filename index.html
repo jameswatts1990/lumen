@@ -92,6 +92,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 }
 .pbtn:hover { border-color: var(--accent); color: var(--accent); }
 .pbtn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.pbtn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* Select */
 .fsel {
@@ -238,6 +239,17 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
           <button class="pbtn"    data-mode="night"  onclick="setMode('night')">Night</button>
         </div>
         <div class="sec-hint">Warm/dark modes reduce blue-light exposure & eye fatigue (Phipps-Nelson et al., 2009)</div>
+      </div>
+
+      <!-- Reading Profiles -->
+      <div class="sec">
+        <div class="sec-label">Reading Profiles</div>
+        <div class="sec-hint">Save your current setup, or switch between curated profiles for different reading needs.</div>
+        <select class="fsel" id="profileSel" aria-label="Reading profile"></select>
+        <div class="presets" style="padding-top: 4px;">
+          <button class="pbtn" id="saveProfileBtn" type="button">Save current</button>
+          <button class="pbtn" id="deleteProfileBtn" type="button">Delete</button>
+        </div>
       </div>
 
       <!-- Display -->
@@ -441,6 +453,34 @@ let scrollSpeed = 2.5;
 let currentMode = 'day';
 let rendering = false;
 let focusDepth = 220;
+const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
+const DEFAULT_PROFILE_ID = 'default';
+const BUILTIN_PROFILES = [
+  { id: DEFAULT_PROFILE_ID, name: 'Default', settings: null },
+  {
+    id: 'gentle-focus',
+    name: 'Gentle Focus',
+    settings: { mode: 'sepia', zoom: 105, width: 760, brightness: 96, contrast: 98, gap: 20, font: "'Lora', Georgia, serif", textSize: 105, lineHeight: 1.7, letterSpacing: 0.25, wordSpacing: 1, ruler: false, paragraphShading: false, focusMode: true, focusVignette: 58, focusDepth: 210, tint: 14, progressBar: true, autoScrollSpeed: 2 }
+  },
+  {
+    id: 'dyslexia-friendly',
+    name: 'Dyslexia Friendly',
+    settings: { mode: 'day', zoom: 110, width: 820, brightness: 100, contrast: 104, gap: 24, font: "'Atkinson Hyperlegible', sans-serif", textSize: 115, lineHeight: 1.9, letterSpacing: 0.75, wordSpacing: 2.5, ruler: true, paragraphShading: true, focusMode: false, focusVignette: 62, focusDepth: 220, tint: 8, progressBar: true, autoScrollSpeed: 1.5 }
+  },
+  {
+    id: 'adhd-flow',
+    name: 'ADHD Flow',
+    settings: { mode: 'sepia', zoom: 110, width: 680, brightness: 95, contrast: 102, gap: 28, font: "'Verdana', sans-serif", textSize: 110, lineHeight: 1.75, letterSpacing: 0.25, wordSpacing: 1.5, ruler: true, paragraphShading: true, focusMode: true, focusVignette: 68, focusDepth: 180, tint: 16, progressBar: true, autoScrollSpeed: 2.8 }
+  },
+  {
+    id: 'high-contrast-calm',
+    name: 'High Contrast Calm',
+    settings: { mode: 'dark', zoom: 120, width: 780, brightness: 90, contrast: 130, gap: 20, font: "'Verdana', sans-serif", textSize: 112, lineHeight: 1.8, letterSpacing: 0.5, wordSpacing: 1.5, ruler: false, paragraphShading: false, focusMode: true, focusVignette: 70, focusDepth: 250, tint: 12, progressBar: true, autoScrollSpeed: 1.8 }
+  }
+];
+const BUILTIN_PROFILE_MAP = new Map(BUILTIN_PROFILES.map(p => [p.id, p]));
+let customProfiles = {};
+let lastUsedProfileId = DEFAULT_PROFILE_ID;
 
 const reader = document.getElementById('reader');
 const rInner = document.getElementById('rInner');
@@ -458,6 +498,166 @@ function setMode(m) {
   document.querySelectorAll('.pbtn[data-mode]').forEach(b =>
     b.classList.toggle('on', b.dataset.mode === m));
   applyFilters();
+}
+
+function getProfileById(id) {
+  if (BUILTIN_PROFILE_MAP.has(id)) return BUILTIN_PROFILE_MAP.get(id);
+  if (customProfiles[id]) return customProfiles[id];
+  return BUILTIN_PROFILE_MAP.get(DEFAULT_PROFILE_ID);
+}
+
+function captureSettings() {
+  return {
+    mode: currentMode,
+    zoom: Number(document.getElementById('zoomR').value),
+    width: Number(document.getElementById('widthR').value),
+    brightness: Number(document.getElementById('briR').value),
+    contrast: Number(document.getElementById('conR').value),
+    gap: Number(document.getElementById('gapR').value),
+    font: document.getElementById('fontSel').value,
+    textSize: Number(document.getElementById('tsizeR').value),
+    lineHeight: Number(document.getElementById('lhR').value),
+    letterSpacing: Number(document.getElementById('lsR').value),
+    wordSpacing: Number(document.getElementById('wsR').value),
+    ruler: document.getElementById('rulerT').checked,
+    paragraphShading: document.getElementById('shadeT').checked,
+    focusMode: document.getElementById('focusT').checked,
+    focusVignette: Number(document.getElementById('focusR').value),
+    focusDepth: Number(document.getElementById('focusDepthR').value),
+    tint: Number(document.getElementById('tintR').value),
+    progressBar: document.getElementById('progT').checked,
+    autoScrollSpeed: Number(document.getElementById('scrollSR').value),
+  };
+}
+
+function setRangeValue(id, value) {
+  if (value === undefined || value === null) return;
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.value = String(value);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function applySettings(profile) {
+  const settings = profile?.settings || profile || {};
+  if (settings.mode && MODES[settings.mode]) setMode(settings.mode);
+  setRangeValue('zoomR', settings.zoom);
+  setRangeValue('widthR', settings.width);
+  setRangeValue('briR', settings.brightness);
+  setRangeValue('conR', settings.contrast);
+  setRangeValue('gapR', settings.gap);
+  if (settings.font !== undefined) {
+    const fontSel = document.getElementById('fontSel');
+    fontSel.value = settings.font;
+    applyTextLayer();
+  }
+  setRangeValue('tsizeR', settings.textSize);
+  setRangeValue('lhR', settings.lineHeight);
+  setRangeValue('lsR', settings.letterSpacing);
+  setRangeValue('wsR', settings.wordSpacing);
+
+  if (settings.ruler !== undefined) document.getElementById('rulerT').checked = Boolean(settings.ruler);
+  if (settings.paragraphShading !== undefined) document.getElementById('shadeT').checked = Boolean(settings.paragraphShading);
+  toggleRuler();
+  if (settings.focusMode !== undefined) document.getElementById('focusT').checked = Boolean(settings.focusMode);
+  toggleFocus();
+  setRangeValue('focusR', settings.focusVignette);
+  setRangeValue('focusDepthR', settings.focusDepth);
+  if (settings.progressBar !== undefined) document.getElementById('progT').checked = Boolean(settings.progressBar);
+  toggleProg();
+  setRangeValue('tintR', settings.tint);
+  updateTint();
+  setRangeValue('scrollSR', settings.autoScrollSpeed);
+}
+
+function saveProfilesState() {
+  localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify({
+    customProfiles,
+    lastUsedProfileId
+  }));
+}
+
+function loadProfilesState() {
+  try {
+    const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    customProfiles = parsed?.customProfiles && typeof parsed.customProfiles === 'object' ? parsed.customProfiles : {};
+    lastUsedProfileId = typeof parsed?.lastUsedProfileId === 'string' ? parsed.lastUsedProfileId : DEFAULT_PROFILE_ID;
+  } catch (err) {
+    console.warn('Unable to load reading profiles:', err);
+    customProfiles = {};
+    lastUsedProfileId = DEFAULT_PROFILE_ID;
+  }
+}
+
+function refreshProfileSelect() {
+  const sel = document.getElementById('profileSel');
+  const customIds = Object.keys(customProfiles).sort((a, b) => customProfiles[a].name.localeCompare(customProfiles[b].name));
+  sel.innerHTML = '';
+
+  const suggestedGroup = document.createElement('optgroup');
+  suggestedGroup.label = 'Suggested';
+  BUILTIN_PROFILES.forEach(profile => {
+    const opt = document.createElement('option');
+    opt.value = profile.id;
+    opt.textContent = profile.name;
+    suggestedGroup.appendChild(opt);
+  });
+  sel.appendChild(suggestedGroup);
+
+  if (customIds.length) {
+    const customGroup = document.createElement('optgroup');
+    customGroup.label = 'Saved';
+    customIds.forEach(id => {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = customProfiles[id].name;
+      customGroup.appendChild(opt);
+    });
+    sel.appendChild(customGroup);
+  }
+
+  if (!getProfileById(lastUsedProfileId)) lastUsedProfileId = DEFAULT_PROFILE_ID;
+  sel.value = lastUsedProfileId;
+  updateProfileActionState();
+}
+
+function updateProfileActionState() {
+  const id = document.getElementById('profileSel').value;
+  document.getElementById('deleteProfileBtn').disabled = !customProfiles[id];
+}
+
+function useProfile(profileId) {
+  const profile = getProfileById(profileId);
+  if (!profile) return;
+  applySettings(profile);
+  lastUsedProfileId = profileId;
+  document.getElementById('profileSel').value = profileId;
+  updateProfileActionState();
+  saveProfilesState();
+}
+
+function handleSaveProfile() {
+  const nameRaw = window.prompt('Name this reading profile:', '');
+  if (nameRaw === null) return;
+  const name = nameRaw.trim().slice(0, 40);
+  if (!name) return;
+  const id = `custom-${Date.now()}`;
+  customProfiles[id] = { id, name, settings: captureSettings() };
+  lastUsedProfileId = id;
+  refreshProfileSelect();
+  useProfile(id);
+}
+
+function handleDeleteProfile() {
+  const sel = document.getElementById('profileSel');
+  const id = sel.value;
+  if (!customProfiles[id]) return;
+  delete customProfiles[id];
+  lastUsedProfileId = DEFAULT_PROFILE_ID;
+  refreshProfileSelect();
+  useProfile(DEFAULT_PROFILE_ID);
 }
 
 /* ── File upload ── */
@@ -752,6 +952,14 @@ window.addEventListener('resize', updateProgress);
 toggleProg();
 updateTint();
 updateFocusDepth(focusDepth);
+
+/* ── Profile system init ── */
+loadProfilesState();
+refreshProfileSelect();
+document.getElementById('profileSel').addEventListener('change', e => useProfile(e.target.value));
+document.getElementById('saveProfileBtn').addEventListener('click', handleSaveProfile);
+document.getElementById('deleteProfileBtn').addEventListener('click', handleDeleteProfile);
+useProfile(lastUsedProfileId);
 </script>
 </body>
 </html>
