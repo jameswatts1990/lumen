@@ -133,6 +133,10 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .scbtn.on { background: var(--accent); color: #1a1200; border-color: var(--accent); }
 .scbtn-hint { font-size: 10px; color: var(--text-muted); }
 
+.chunk-step { padding: 4px 20px 10px; display: flex; align-items: center; gap: 8px; }
+.chunk-step .scbtn { min-width: 44px; font-size: 16px; padding: 6px 10px; }
+.chunk-step-hint { font-size: 10px; color: var(--text-muted); }
+
 /* Navigation */
 .nav-jump { padding: 4px 20px 10px; display: flex; align-items: center; gap: 8px; }
 .nav-input {
@@ -219,7 +223,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 /* Overlays */
 .ruler { position: fixed; pointer-events: none; z-index: 200; display: none; }
 .ruler.on { display: block; }
-.ruler-line { position: fixed; left: var(--sw); right: 0; height: 2px; background: rgba(200,135,74,0.5); box-shadow: 0 0 10px rgba(200,135,74,0.3); pointer-events: none; z-index: 200; display: none; }
+.ruler-line { position: fixed; left: var(--sw); right: 0; height: 2px; background: var(--accent-mid); box-shadow: 0 0 10px var(--accent-dim); pointer-events: none; z-index: 200; display: none; }
 .ruler-line.on { display: block; }
 .ruler-shade-top { position: fixed; left: var(--sw); right: 0; top: 0; pointer-events: none; z-index: 199; background: rgba(0,0,0,0.55); display: none; }
 .ruler-shade-bot { position: fixed; left: var(--sw); right: 0; bottom: 0; pointer-events: none; z-index: 199; background: rgba(0,0,0,0.55); display: none; }
@@ -393,6 +397,25 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 
         <div class="trow">
           <div class="trow-info">
+            <div class="trow-lbl">Chunking Mode <span class="sci">✦</span></div>
+            <div class="trow-sub">Keeps a narrow reading band fixed while you step</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="chunkT" onchange="toggleChunkMode()"><span class="tog-tk"></span></label>
+        </div>
+
+        <div class="ctrl">
+          <span class="ctrl-lbl">Chunk Height</span>
+          <input type="range" id="chunkR" min="1" max="5" value="2" step="1">
+          <span class="ctrl-val" id="chunkV">2 lines</span>
+        </div>
+        <div class="chunk-step">
+          <button class="scbtn" id="chunkUpBtn" type="button" title="Move chunk up (K)" aria-label="Move chunk up">↑</button>
+          <button class="scbtn" id="chunkDownBtn" type="button" title="Move chunk down (J)" aria-label="Move chunk down">↓</button>
+          <span class="chunk-step-hint">Step with K / J</span>
+        </div>
+
+        <div class="trow">
+          <div class="trow-info">
             <div class="trow-lbl">Focus Mode <span class="sci">✦</span></div>
             <div class="trow-sub">Dims top & bottom edges</div>
           </div>
@@ -512,6 +535,7 @@ let currentMode = 'day';
 let rendering = false;
 let focusDepth = 220;
 let currentPage = 0;
+let chunkCenterY = 0;
 const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
 const DEFAULT_PROFILE_ID = 'default';
 const BUILTIN_PROFILES = [
@@ -519,22 +543,22 @@ const BUILTIN_PROFILES = [
   {
     id: 'gentle-focus',
     name: 'Gentle Focus',
-    settings: { mode: 'sepia', zoom: 105, width: 760, brightness: 96, contrast: 98, gap: 20, font: "'Lora', Georgia, serif", textSize: 105, lineHeight: 1.7, letterSpacing: 0.25, wordSpacing: 1, ruler: false, paragraphShading: false, focusMode: true, focusVignette: 58, focusDepth: 210, tint: 14, progressBar: true, autoScrollSpeed: 2 }
+    settings: { mode: 'sepia', zoom: 105, width: 760, brightness: 96, contrast: 98, gap: 20, font: "'Lora', Georgia, serif", textSize: 105, lineHeight: 1.7, letterSpacing: 0.25, wordSpacing: 1, ruler: false, paragraphShading: false, focusMode: true, focusVignette: 58, focusDepth: 210, tint: 14, progressBar: true, autoScrollSpeed: 2, chunkMode: false, chunkHeight: 2 }
   },
   {
     id: 'dyslexia-friendly',
     name: 'Dyslexia Friendly',
-    settings: { mode: 'day', zoom: 110, width: 820, brightness: 100, contrast: 104, gap: 24, font: "'Atkinson Hyperlegible', sans-serif", textSize: 115, lineHeight: 1.9, letterSpacing: 0.75, wordSpacing: 2.5, ruler: true, paragraphShading: true, focusMode: false, focusVignette: 62, focusDepth: 220, tint: 8, progressBar: true, autoScrollSpeed: 1.5 }
+    settings: { mode: 'day', zoom: 110, width: 820, brightness: 100, contrast: 104, gap: 24, font: "'Atkinson Hyperlegible', sans-serif", textSize: 115, lineHeight: 1.9, letterSpacing: 0.75, wordSpacing: 2.5, ruler: true, paragraphShading: true, focusMode: false, focusVignette: 62, focusDepth: 220, tint: 8, progressBar: true, autoScrollSpeed: 1.5, chunkMode: false, chunkHeight: 2 }
   },
   {
     id: 'adhd-flow',
     name: 'ADHD Flow',
-    settings: { mode: 'sepia', zoom: 110, width: 680, brightness: 95, contrast: 102, gap: 28, font: "'Verdana', sans-serif", textSize: 110, lineHeight: 1.75, letterSpacing: 0.25, wordSpacing: 1.5, ruler: true, paragraphShading: true, focusMode: true, focusVignette: 68, focusDepth: 180, tint: 16, progressBar: true, autoScrollSpeed: 2.8 }
+    settings: { mode: 'sepia', zoom: 110, width: 680, brightness: 95, contrast: 102, gap: 28, font: "'Verdana', sans-serif", textSize: 110, lineHeight: 1.75, letterSpacing: 0.25, wordSpacing: 1.5, ruler: true, paragraphShading: true, focusMode: true, focusVignette: 68, focusDepth: 180, tint: 16, progressBar: true, autoScrollSpeed: 2.8, chunkMode: true, chunkHeight: 2 }
   },
   {
     id: 'high-contrast-calm',
     name: 'High Contrast Calm',
-    settings: { mode: 'dark', zoom: 120, width: 780, brightness: 90, contrast: 130, gap: 20, font: "'Verdana', sans-serif", textSize: 112, lineHeight: 1.8, letterSpacing: 0.5, wordSpacing: 1.5, ruler: false, paragraphShading: false, focusMode: true, focusVignette: 70, focusDepth: 250, tint: 12, progressBar: true, autoScrollSpeed: 1.8 }
+    settings: { mode: 'dark', zoom: 120, width: 780, brightness: 90, contrast: 130, gap: 20, font: "'Verdana', sans-serif", textSize: 112, lineHeight: 1.8, letterSpacing: 0.5, wordSpacing: 1.5, ruler: false, paragraphShading: false, focusMode: true, focusVignette: 70, focusDepth: 250, tint: 12, progressBar: true, autoScrollSpeed: 1.8, chunkMode: false, chunkHeight: 2 }
   }
 ];
 const BUILTIN_PROFILE_MAP = new Map(BUILTIN_PROFILES.map(p => [p.id, p]));
@@ -586,6 +610,8 @@ function captureSettings() {
     tint: Number(document.getElementById('tintR').value),
     progressBar: document.getElementById('progT').checked,
     autoScrollSpeed: Number(document.getElementById('scrollSR').value),
+    chunkMode: document.getElementById('chunkT').checked,
+    chunkHeight: Number(document.getElementById('chunkR').value),
   };
 }
 
@@ -617,6 +643,8 @@ function applySettings(profile) {
 
   if (settings.ruler !== undefined) document.getElementById('rulerT').checked = Boolean(settings.ruler);
   if (settings.paragraphShading !== undefined) document.getElementById('shadeT').checked = Boolean(settings.paragraphShading);
+  if (settings.chunkMode !== undefined) document.getElementById('chunkT').checked = Boolean(settings.chunkMode);
+  setRangeValue('chunkR', settings.chunkHeight);
   toggleRuler();
   if (settings.focusMode !== undefined) document.getElementById('focusT').checked = Boolean(settings.focusMode);
   toggleFocus();
@@ -1068,6 +1096,7 @@ wire('wsR',     'wsV',    'px', v => v.toFixed(1)+'px', () => applyTextLayer());
 wire('scrollSR','scrollSV','', v => v.toFixed(1), v => { scrollSpeed = v; });
 wire('focusR',  'focusV', '%', null, v => updateFocusVignette(v));
 wire('focusDepthR', 'focusDepthV', 'px', null, v => updateFocusDepth(v));
+wire('chunkR', 'chunkV', ' lines', v => `${Math.round(v)} line${Math.round(v) === 1 ? '' : 's'}`, () => updateChunkOverlay());
 
 /* ── Tint ── */
 function updateTint() {
@@ -1079,7 +1108,92 @@ function updateTint() {
 }
 
 /* ── Reading ruler ── */
+function chunkModeOn() {
+  return document.getElementById('chunkT').checked;
+}
+
+function parseCssColor(value, alphaFallback = 0.14) {
+  const raw = (value || '').trim();
+  if (!raw) return `rgba(200,135,74,${alphaFallback})`;
+  if (raw.startsWith('rgba(') || raw.startsWith('rgb(')) return raw;
+  if (raw.startsWith('#')) {
+    const hex = raw.slice(1);
+    const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
+    if (full.length === 6) {
+      const r = Number.parseInt(full.slice(0, 2), 16);
+      const g = Number.parseInt(full.slice(2, 4), 16);
+      const b = Number.parseInt(full.slice(4, 6), 16);
+      return `rgba(${r},${g},${b},${alphaFallback})`;
+    }
+  }
+  return raw;
+}
+
+function estimatedLineHeightPx() {
+  const textSize = Number(document.getElementById('tsizeR').value) / 100;
+  const lh = Number(document.getElementById('lhR').value);
+  return Math.max(18, 16 * textSize * lh);
+}
+
+function getChunkHeightPx() {
+  const lines = Number(document.getElementById('chunkR').value) || 2;
+  return Math.max(24, Math.round(lines * estimatedLineHeightPx()));
+}
+
+function ensureChunkAnchor() {
+  if (!chunkCenterY) chunkCenterY = Math.round(window.innerHeight * 0.42);
+  const minY = 72;
+  const maxY = window.innerHeight - 72;
+  chunkCenterY = Math.min(maxY, Math.max(minY, chunkCenterY));
+}
+
+function setChunkButtonState() {
+  const enabled = chunkModeOn();
+  document.getElementById('chunkUpBtn').disabled = !enabled;
+  document.getElementById('chunkDownBtn').disabled = !enabled;
+}
+
+function updateChunkOverlay() {
+  const rl = document.getElementById('rulerLine');
+  const shadeTop = document.getElementById('rShadeTop');
+  const shadeBot = document.getElementById('rShadeBot');
+  if (!chunkModeOn()) return;
+  ensureChunkAnchor();
+  const chunkHeight = getChunkHeightPx();
+  const half = Math.round(chunkHeight / 2);
+  const y = chunkCenterY;
+  const rootStyles = getComputedStyle(document.documentElement);
+  const accentDim = parseCssColor(rootStyles.getPropertyValue('--accent-dim'), 0.12);
+  const accentMid = parseCssColor(rootStyles.getPropertyValue('--accent-mid'), 0.35);
+
+  rl.style.top = `${y}px`;
+  rl.style.height = `${Math.max(2, Math.round(chunkHeight * 0.08))}px`;
+  rl.style.background = accentMid;
+  rl.style.boxShadow = `0 0 10px ${accentDim}`;
+
+  shadeTop.style.height = `${Math.max(0, y - half)}px`;
+  shadeBot.style.height = `${Math.max(0, window.innerHeight - y - half)}px`;
+  shadeTop.style.background = `linear-gradient(to bottom, rgba(8,6,4,0.76), ${accentDim})`;
+  shadeBot.style.background = `linear-gradient(to top, rgba(8,6,4,0.76), ${accentDim})`;
+}
+
+function stepChunk(direction) {
+  if (!chunkModeOn()) return;
+  ensureChunkAnchor();
+  chunkCenterY += direction * getChunkHeightPx();
+  ensureChunkAnchor();
+  updateChunkOverlay();
+}
+
+function toggleChunkMode() {
+  ensureChunkAnchor();
+  setChunkButtonState();
+  toggleRuler();
+  updateChunkOverlay();
+}
+
 reader.addEventListener('mousemove', e => {
+  if (chunkModeOn()) return;
   const rl = document.getElementById('rulerLine');
   rl.style.top = e.clientY + 'px';
   const sh = 80;
@@ -1090,9 +1204,11 @@ reader.addEventListener('mousemove', e => {
 function toggleRuler() {
   const on  = document.getElementById('rulerT').checked;
   const shd = document.getElementById('shadeT').checked;
-  document.getElementById('rulerLine').classList.toggle('on', on);
-  document.getElementById('rShadeTop').classList.toggle('on', on && shd);
-  document.getElementById('rShadeBot').classList.toggle('on', on && shd);
+  const chunkOn = chunkModeOn();
+  document.getElementById('rulerLine').classList.toggle('on', on || chunkOn);
+  document.getElementById('rShadeTop').classList.toggle('on', shd || chunkOn);
+  document.getElementById('rShadeBot').classList.toggle('on', shd || chunkOn);
+  if (chunkOn) updateChunkOverlay();
 }
 
 /* ── Focus mode ── */
@@ -1149,7 +1265,10 @@ function updateProgressAndStatus() {
   updateCurrentPageStatus();
 }
 
-reader.addEventListener('scroll', updateProgressAndStatus);
+reader.addEventListener('scroll', () => {
+  updateProgressAndStatus();
+  updateChunkOverlay();
+});
 
 function toggleProg() {
   document.getElementById('progBar').style.display =
@@ -1184,10 +1303,14 @@ reader.addEventListener('mouseleave', () => { if (scrolling) startScroll(); });
 
 /* ── Init ── */
 document.getElementById('tintR').addEventListener('input', updateTint);
-window.addEventListener('resize', updateProgressAndStatus);
+window.addEventListener('resize', () => {
+  updateProgressAndStatus();
+  updateChunkOverlay();
+});
 toggleProg();
 updateTint();
 updateFocusDepth(focusDepth);
+setChunkButtonState();
 setPageJumpAvailability(false);
 renderOutlineFallback('Load a PDF to view navigation links.');
 
@@ -1198,6 +1321,23 @@ document.getElementById('pageJumpIn').addEventListener('keydown', e => {
   if (e.key === 'Enter') goToPage(e.target.value);
 });
 
+document.getElementById('chunkUpBtn').addEventListener('click', () => stepChunk(-1));
+document.getElementById('chunkDownBtn').addEventListener('click', () => stepChunk(1));
+document.addEventListener('keydown', e => {
+  if (!chunkModeOn()) return;
+  if (e.altKey || e.ctrlKey || e.metaKey) return;
+  const tag = (e.target?.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return;
+  if (e.key === 'j' || e.key === 'J') {
+    e.preventDefault();
+    stepChunk(1);
+  }
+  if (e.key === 'k' || e.key === 'K') {
+    e.preventDefault();
+    stepChunk(-1);
+  }
+});
+
 /* ── Profile system init ── */
 loadProfilesState();
 refreshProfileSelect();
@@ -1205,6 +1345,7 @@ document.getElementById('profileSel').addEventListener('change', e => useProfile
 document.getElementById('saveProfileBtn').addEventListener('click', handleSaveProfile);
 document.getElementById('deleteProfileBtn').addEventListener('click', handleDeleteProfile);
 useProfile(lastUsedProfileId);
+toggleChunkMode();
 </script>
 </body>
 </html>
