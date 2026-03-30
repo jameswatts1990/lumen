@@ -529,7 +529,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
             <div class="trow-lbl">Typography overlay</div>
             <div class="trow-sub">Use a custom text layer for font and spacing adjustments</div>
           </div>
-          <label class="tog"><input type="checkbox" id="typoOverlayT" checked onchange="toggleTypographyOverlay()"><span class="tog-tk"></span></label>
+          <label class="tog"><input type="checkbox" id="typoOverlayT" onchange="toggleTypographyOverlay()"><span class="tog-tk"></span></label>
         </div>
 
         <div style="padding: 4px 0 2px;" id="typoControls" class="ctrl-group typography-group">
@@ -1021,7 +1021,6 @@ upZone.addEventListener('drop', e => {
 
 ['dragenter', 'dragover'].forEach(evt => {
   reader.addEventListener(evt, e => {
-    if (pdf) return;
     e.preventDefault();
     reader.classList.add('drop-ready');
   });
@@ -1034,7 +1033,6 @@ upZone.addEventListener('drop', e => {
 });
 
 reader.addEventListener('drop', e => {
-  if (pdf) return;
   e.preventDefault();
   reader.classList.remove('drop-ready');
   const f = e.dataTransfer?.files?.[0];
@@ -1042,11 +1040,11 @@ reader.addEventListener('drop', e => {
 });
 
 window.addEventListener('dragover', e => {
-  if (!pdf) e.preventDefault();
+  e.preventDefault();
 });
 
 window.addEventListener('drop', e => {
-  if (!pdf) e.preventDefault();
+  e.preventDefault();
 });
 
 function isPdfFile(file) {
@@ -1104,7 +1102,7 @@ async function renderPage(n) {
   wrap.dataset.p = n;
 
   const canvas = document.createElement('canvas');
-  const vp = page.getViewport({ scale: zoom });
+  const vp = page.getViewport({ scale: getRenderScale() });
   canvas.width = vp.width;
   canvas.height = vp.height;
   await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
@@ -1157,7 +1155,7 @@ async function reRender() {
     const page = await pdf.getPage(n);
     const canvas = wraps[i].querySelector('canvas');
     const textDiv = wraps[i].querySelector('.textLayer');
-    const vp = page.getViewport({ scale: zoom });
+    const vp = page.getViewport({ scale: getRenderScale() });
     canvas.width = vp.width; canvas.height = vp.height;
     await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
     await buildTextLayer(page, textDiv, vp);
@@ -1173,6 +1171,10 @@ function applyMaxWidth() {
   rInner.querySelectorAll('.page-wrap').forEach(w => {
     w.style.width = maxW + 'px';
   });
+}
+
+function getRenderScale() {
+  return maxW / BASE_PAGE_WIDTH;
 }
 
 function applyGap() {
