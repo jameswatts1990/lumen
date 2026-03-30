@@ -231,9 +231,11 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   color: var(--overlay-text-color, rgba(237, 230, 216, 0.5));
   text-shadow: 0 0 0.6px rgba(0,0,0,0.2);
 }
-.textLayer.inactive span {
-  color: transparent;
-  text-shadow: none;
+.textLayer.disabled {
+  display: none;
+  opacity: 0;
+  visibility: hidden;
+  mix-blend-mode: normal;
 }
 
 /* Overlays */
@@ -1015,7 +1017,7 @@ async function renderPage(n) {
 async function buildTextLayer(page, textDiv, viewport) {
   const textContent = await page.getTextContent();
   textDiv.innerHTML = '';
-  textDiv.classList.add('inactive');
+  textDiv.classList.add('disabled');
   const pageHeight = viewport.height;
   textContent.items.forEach(item => {
     const span = document.createElement('span');
@@ -1125,9 +1127,9 @@ function applyTextLayer() {
   };
 
   rInner.querySelectorAll('.textLayer').forEach(tl => {
-    tl.classList.toggle('inactive', !overlayEnabled);
-    tl.style.opacity = overlayEnabled ? '1' : '0';
-    tl.style.visibility = overlayEnabled ? 'visible' : 'hidden';
+    tl.classList.toggle('disabled', !overlayEnabled);
+    tl.style.opacity = overlayEnabled ? '1' : '';
+    tl.style.visibility = overlayEnabled ? 'visible' : '';
     tl.style.mixBlendMode = 'normal';
 
     if (!overlayEnabled) {
