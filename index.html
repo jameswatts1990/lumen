@@ -186,8 +186,22 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .tint-lay { position: fixed; left: var(--sw); right: 0; top: 0; bottom: 0; pointer-events: none; z-index: 170; display: none; }
 .tint-lay.on { display: block; }
 
-.prog { position: fixed; top: 0; left: var(--sw); right: 0; height: 2px; z-index: 300; background: var(--sidebar-border); }
-.prog-fill { height: 100%; background: var(--accent); width: 0%; transition: width 0.12s; }
+.prog {
+  position: sticky;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  z-index: 300;
+  background: rgba(48, 40, 32, 0.9);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.45);
+}
+.prog-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #c8874a 0%, #e2a86f 100%);
+  width: 0%;
+  transition: width 0.12s;
+}
 </style>
 </head>
 <body>
@@ -485,6 +499,7 @@ async function loadPDF(file) {
     applyTextLayer();
     applyMaxWidth();
     applyGap();
+    updateProgress();
   } catch (err) {
     console.error('Failed to load PDF:', err);
     pdf = null;
@@ -555,6 +570,7 @@ async function reRender() {
   applyMaxWidth();
   applyFilters();
   applyTextLayer();
+  updateProgress();
   rendering = false;
 }
 
@@ -676,17 +692,20 @@ function toggleFocus() {
 }
 
 /* ── Progress bar ── */
-reader.addEventListener('scroll', () => {
+function updateProgress() {
   const scrollableHeight = reader.scrollHeight - reader.clientHeight;
   const pct = scrollableHeight > 0 ? (reader.scrollTop / scrollableHeight) * 100 : 0;
   const clampedPct = Math.min(100, Math.max(0, pct));
   document.getElementById('progFill').style.width = clampedPct.toFixed(1) + '%';
   document.getElementById('statScroll').textContent = Math.round(clampedPct) + '%';
-});
+}
+
+reader.addEventListener('scroll', updateProgress);
 
 function toggleProg() {
   document.getElementById('progBar').style.display =
     document.getElementById('progT').checked ? 'block' : 'none';
+  updateProgress();
 }
 
 /* ── Auto-scroll ── */
@@ -716,6 +735,7 @@ reader.addEventListener('mouseleave', () => { if (scrolling) startScroll(); });
 
 /* ── Init ── */
 document.getElementById('tintR').addEventListener('input', updateTint);
+window.addEventListener('resize', updateProgress);
 toggleProg();
 updateTint();
 </script>
