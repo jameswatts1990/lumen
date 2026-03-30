@@ -173,6 +173,76 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .outline-item[data-depth="3"] button { padding-left: 32px; }
 .outline-empty { padding: 0 20px 10px; font-size: 11px; color: var(--text-muted); line-height: 1.5; }
 
+/* Floating navigation menu */
+.nav-fab {
+  position: fixed;
+  top: 22px;
+  left: calc(var(--sw) + 18px);
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1px solid var(--accent-mid);
+  background: linear-gradient(165deg, rgba(44, 33, 21, 0.96), rgba(26, 20, 12, 0.96));
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
+  cursor: pointer;
+  z-index: 420;
+  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.nav-fab:hover,
+.nav-fab:focus-visible {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5);
+  outline: none;
+}
+.nav-fab.on {
+  background: linear-gradient(165deg, rgba(54, 38, 24, 0.98), rgba(31, 22, 13, 0.98));
+}
+.nav-pop {
+  position: fixed;
+  top: 76px;
+  left: calc(var(--sw) + 18px);
+  width: min(340px, calc(100vw - var(--sw) - 38px));
+  max-height: min(70vh, 620px);
+  overflow-y: auto;
+  border: 1px solid var(--control-border);
+  border-radius: 12px;
+  background: linear-gradient(160deg, #231e15 0%, #1a150e 100%);
+  box-shadow: 0 18px 50px rgba(0,0,0,0.58);
+  z-index: 419;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.98);
+  transform-origin: top left;
+  pointer-events: none;
+  transition: opacity 0.18s, transform 0.18s;
+}
+.nav-pop.on {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+.nav-pop .sec {
+  border-bottom: none;
+  padding: 0;
+}
+.nav-pop .sec-label,
+.nav-pop .sec-hint,
+.nav-pop .nav-jump,
+.nav-pop .outline-list,
+.nav-pop .outline-empty {
+  padding-left: 14px;
+  padding-right: 14px;
+}
+.nav-pop .outline-list,
+.nav-pop .outline-empty {
+  padding-bottom: 14px;
+}
+
 /* Status bar */
 .status { padding: 10px 18px; font-size: 10px; font-family: 'DM Mono', monospace; color: var(--text-muted); border-top: 1px solid var(--sidebar-border); display: flex; justify-content: space-between; }
 .status-shortcuts {
@@ -566,17 +636,9 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         </div>
       </div>
 
-      <!-- Navigation -->
       <div class="sec">
         <div class="sec-label">Navigation</div>
-        <div class="sec-hint">Jump to a page, or use section links from your PDF outline when available.</div>
-        <div class="nav-jump">
-          <input class="nav-input" id="pageJumpIn" type="number" min="1" step="1" placeholder="Page #" aria-label="Page number input" disabled>
-          <button class="pbtn nav-go" id="pageJumpBtn" type="button" disabled>Go</button>
-        </div>
-        <div class="sec-hint" style="padding-top:0;">Outline</div>
-        <ul class="outline-list" id="outlineList" hidden></ul>
-        <div class="outline-empty" id="outlineEmpty">Load a PDF to view navigation links.</div>
+        <div class="sec-hint">Use the floating compass button in the reader to jump pages and open the PDF outline.</div>
       </div>
 
       <div class="sec">
@@ -612,6 +674,21 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
       </div>
     </div>
   </main>
+</div>
+
+<button class="nav-fab" id="navFabBtn" type="button" aria-haspopup="dialog" aria-controls="navPopout" aria-expanded="false" aria-label="Open navigation menu">🧭</button>
+<div class="nav-pop" id="navPopout" role="dialog" aria-label="Navigation menu" aria-hidden="true">
+  <div class="sec">
+    <div class="sec-label">Navigation</div>
+    <div class="sec-hint">Jump to a page, or use section links from your PDF outline when available.</div>
+    <div class="nav-jump">
+      <input class="nav-input" id="pageJumpIn" type="number" min="1" step="1" placeholder="Page #" aria-label="Page number input" disabled>
+      <button class="pbtn nav-go" id="pageJumpBtn" type="button" disabled>Go</button>
+    </div>
+    <div class="sec-hint" style="padding-top:0;">Outline</div>
+    <ul class="outline-list" id="outlineList" hidden></ul>
+    <div class="outline-empty" id="outlineEmpty">Load a PDF to view navigation links.</div>
+  </div>
 </div>
 
 <!-- Overlay elements -->
@@ -1188,6 +1265,7 @@ function goToPage(n) {
   if (!pageWrap) return;
   pageWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
   document.getElementById('pageJumpIn').value = String(target);
+  setNavigationMenuOpen(false);
 }
 
 function flattenOutline(items, depth = 0) {
@@ -1538,15 +1616,38 @@ function toggleShortcutsPanel() {
   setShortcutsOpen(!overlay.classList.contains('on'));
 }
 
+function setNavigationMenuOpen(open) {
+  const pop = document.getElementById('navPopout');
+  const btn = document.getElementById('navFabBtn');
+  pop.classList.toggle('on', open);
+  pop.setAttribute('aria-hidden', String(!open));
+  btn.classList.toggle('on', open);
+  btn.setAttribute('aria-expanded', String(open));
+}
+
+function toggleNavigationMenu() {
+  const pop = document.getElementById('navPopout');
+  setNavigationMenuOpen(!pop.classList.contains('on'));
+}
+
 document.getElementById('shortcutHintBtn').addEventListener('click', () => setShortcutsOpen(true));
 document.getElementById('closeShortcutsBtn').addEventListener('click', () => setShortcutsOpen(false));
 document.getElementById('shortcutsOverlay').addEventListener('click', e => {
   if (e.target.id === 'shortcutsOverlay') setShortcutsOpen(false);
 });
+document.getElementById('navFabBtn').addEventListener('click', () => toggleNavigationMenu());
+document.addEventListener('click', e => {
+  const pop = document.getElementById('navPopout');
+  const btn = document.getElementById('navFabBtn');
+  if (!pop.classList.contains('on')) return;
+  if (pop.contains(e.target) || btn.contains(e.target)) return;
+  setNavigationMenuOpen(false);
+});
 
 document.addEventListener('keydown', e => {
   if (e.repeat || e.defaultPrevented) return;
   const overlayOpen = document.getElementById('shortcutsOverlay').classList.contains('on');
+  const navOpen = document.getElementById('navPopout').classList.contains('on');
   const isQuestionMark = e.key === '?' || (e.key === '/' && e.shiftKey);
   if (isQuestionMark) {
     e.preventDefault();
@@ -1556,6 +1657,11 @@ document.addEventListener('keydown', e => {
   if (overlayOpen && e.key === 'Escape') {
     e.preventDefault();
     setShortcutsOpen(false);
+    return;
+  }
+  if (navOpen && e.key === 'Escape') {
+    e.preventDefault();
+    setNavigationMenuOpen(false);
     return;
   }
   if (isTypingTarget(document.activeElement)) return;
