@@ -303,6 +303,26 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .chunk-step { padding: 4px 20px 10px; display: flex; align-items: center; gap: 8px; }
 .chunk-step .scbtn { min-width: 44px; font-size: 16px; padding: 6px 10px; }
 .chunk-step-hint { font-size: 11.5px; color: var(--text-muted); }
+.session-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 4px 20px 8px; }
+.session-btn { padding: 7px 0; font-size: 12px; }
+.session-btn.on { background: var(--accent); color: #1a1200; border-color: var(--accent); }
+.session-meta { padding: 0 20px 8px; font-size: 11.5px; color: var(--text-muted); line-height: 1.45; }
+.micro-goals { padding: 0 20px 8px; display: grid; gap: 6px; }
+.goal-item { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-secondary); }
+.goal-item input[type=checkbox] { accent-color: var(--accent); }
+.resume-card {
+  margin: 0 20px 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--control-bg);
+  padding: 8px 10px;
+  display: none;
+}
+.resume-card.on { display: block; }
+.resume-title { font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: #b4a388; font-family: 'DM Mono', monospace; margin-bottom: 4px; }
+.resume-text { font-size: 12px; color: var(--text-secondary); line-height: 1.4; margin-bottom: 6px; }
+.resume-row { display: flex; gap: 6px; }
+.resume-row .pbtn { flex: 1; }
 
 /* Navigation */
 .nav-jump { padding: 4px 20px 10px; display: flex; align-items: center; gap: 8px; }
@@ -632,6 +652,11 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   backdrop-filter: blur(2px);
 }
 .shortcuts-overlay.on { display: flex; }
+body.low-interruption-active .shortcuts-overlay,
+body.low-interruption-active .nav-pop,
+body.low-interruption-active .chunk-indicator {
+  display: none !important;
+}
 .shortcuts-panel {
   width: min(460px, calc(100vw - 40px));
   border: 1px solid var(--control-border);
@@ -834,6 +859,46 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         <div class="presets" style="padding-top: 4px;">
           <button class="pbtn" id="saveProfileBtn" type="button">Save current</button>
           <button class="pbtn" id="deleteProfileBtn" type="button">Delete</button>
+        </div>
+      </div>
+
+      <!-- Session Support -->
+      <div class="sec">
+        <div class="sec-label">Session Support</div>
+        <div class="sec-hint">Timebox reading, set micro-goals, and quickly resume where you left off.</div>
+        <div class="session-grid">
+          <button class="pbtn session-btn" id="session10Btn" type="button" data-minutes="10">10 min</button>
+          <button class="pbtn session-btn" id="session20Btn" type="button" data-minutes="20">20 min</button>
+          <button class="pbtn session-btn" id="session30Btn" type="button" data-minutes="30">30 min</button>
+        </div>
+        <div class="ctrl">
+          <span class="ctrl-lbl">Break cue</span>
+          <select class="fsel" id="breakReminderSel" aria-label="Break reminder cadence" style="margin: 0; width: auto; flex: 1;">
+            <option value="0">Off</option>
+            <option value="5">Every 5 min</option>
+            <option value="10">Every 10 min</option>
+          </select>
+        </div>
+        <div class="micro-goals" id="microGoals">
+          <label class="goal-item"><input type="checkbox" data-goal="1">Scan headings first</label>
+          <label class="goal-item"><input type="checkbox" data-goal="2">Read one section fully</label>
+          <label class="goal-item"><input type="checkbox" data-goal="3">Write one takeaway</label>
+        </div>
+        <div class="trow">
+          <div class="trow-info">
+            <div class="trow-lbl">Low interruption mode</div>
+            <div class="trow-sub">Hide non-essential overlays while timer is active</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="lowInterruptT"><span class="tog-tk"></span></label>
+        </div>
+        <div class="session-meta" id="sessionMeta">No active session.</div>
+        <div class="resume-card" id="resumeCard" aria-live="polite">
+          <div class="resume-title">Resume previous spot</div>
+          <div class="resume-text" id="resumeText">No saved position yet.</div>
+          <div class="resume-row">
+            <button class="pbtn" id="resumeRestoreBtn" type="button">Restore</button>
+            <button class="pbtn" id="resumeDismissBtn" type="button">Dismiss</button>
+          </div>
         </div>
       </div>
 
@@ -1154,6 +1219,8 @@ let textDoc = null;
 let chunkCenterY = 0;
 const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
 const SETTINGS_STORAGE_KEY = 'lumen.settings.v1';
+const SESSION_SUPPORT_STORAGE_KEY = 'lumen.session-support.v1';
+const DOC_PROGRESS_STORAGE_KEY = 'lumen.doc-progress.v1';
 const DEFAULT_PROFILE_ID = 'default';
 const DEFAULT_SETTINGS = {
   mode: 'day',
@@ -1205,6 +1272,17 @@ const BUILTIN_PROFILES = [
 const BUILTIN_PROFILE_MAP = new Map(BUILTIN_PROFILES.map(p => [p.id, p]));
 let customProfiles = {};
 let lastUsedProfileId = DEFAULT_PROFILE_ID;
+let sessionSupportState = {
+  durationMin: 0,
+  sessionEndTs: 0,
+  breakEveryMin: 0,
+  lastBreakNoticeTs: 0,
+  lowInterruption: false,
+  microGoals: { 1: false, 2: false, 3: false }
+};
+let sessionTick = null;
+let currentDocMeta = null;
+let pendingResumeState = null;
 
 const reader = document.getElementById('reader');
 const rInner = document.getElementById('rInner');
@@ -1542,6 +1620,7 @@ function useProfile(profileId) {
   document.getElementById('profileSel').value = profileId;
   updateProfileActionState();
   saveProfilesState();
+  saveDocProgress();
 }
 
 function handleSaveProfile() {
@@ -1564,6 +1643,186 @@ function handleDeleteProfile() {
   lastUsedProfileId = DEFAULT_PROFILE_ID;
   refreshProfileSelect();
   useProfile(DEFAULT_PROFILE_ID);
+}
+
+function formatSessionDate(ts) {
+  if (!ts) return '—';
+  return new Date(ts).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function getCurrentDocId() {
+  return currentDocMeta?.id || null;
+}
+
+function loadDocProgressMap() {
+  try {
+    const raw = localStorage.getItem(DOC_PROGRESS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (err) {
+    console.warn('Unable to load document progress:', err);
+    return {};
+  }
+}
+
+function saveDocProgressMap(nextMap) {
+  localStorage.setItem(DOC_PROGRESS_STORAGE_KEY, JSON.stringify(nextMap));
+}
+
+function saveDocProgress() {
+  const docId = getCurrentDocId();
+  if (!docId || (!pdf && !textDoc)) return;
+  const map = loadDocProgressMap();
+  map[docId] = {
+    scrollTop: Math.round(reader.scrollTop),
+    page: currentPage || 1,
+    profileId: lastUsedProfileId,
+    readingMode,
+    savedAt: Date.now(),
+    label: currentDocMeta?.label || currentDocMeta?.name || 'Document'
+  };
+  saveDocProgressMap(map);
+}
+
+function refreshResumeCard() {
+  const card = document.getElementById('resumeCard');
+  const text = document.getElementById('resumeText');
+  if (!pendingResumeState) {
+    card.classList.remove('on');
+    text.textContent = 'No saved position yet.';
+    return;
+  }
+  const info = pendingResumeState;
+  text.textContent = `Last page ${info.page || 1} • ${info.profileId || DEFAULT_PROFILE_ID} profile • ${formatSessionDate(info.savedAt)}`;
+  card.classList.add('on');
+}
+
+async function restoreSavedPosition() {
+  if (!pendingResumeState) return;
+  const info = pendingResumeState;
+  if (info.profileId && getProfileById(info.profileId)) useProfile(info.profileId);
+  if (info.readingMode && info.readingMode !== readingMode) {
+    setReadingMode(info.readingMode);
+    await applyReadingMode();
+  }
+  requestAnimationFrame(() => {
+    reader.scrollTop = Number(info.scrollTop) || 0;
+    updateProgressAndStatus();
+  });
+  pendingResumeState = null;
+  refreshResumeCard();
+}
+
+function maybeOfferResumeForCurrentDoc() {
+  const docId = getCurrentDocId();
+  if (!docId) return;
+  const saved = loadDocProgressMap()[docId];
+  if (!saved) {
+    pendingResumeState = null;
+    refreshResumeCard();
+    return;
+  }
+  pendingResumeState = saved;
+  refreshResumeCard();
+}
+
+function setCurrentDocumentMeta(meta) {
+  currentDocMeta = meta;
+  maybeOfferResumeForCurrentDoc();
+}
+
+function loadSessionSupportState() {
+  try {
+    const raw = localStorage.getItem(SESSION_SUPPORT_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return;
+    sessionSupportState = {
+      ...sessionSupportState,
+      ...parsed,
+      microGoals: { ...sessionSupportState.microGoals, ...(parsed.microGoals || {}) }
+    };
+  } catch (err) {
+    console.warn('Unable to load session support settings:', err);
+  }
+}
+
+function saveSessionSupportState() {
+  localStorage.setItem(SESSION_SUPPORT_STORAGE_KEY, JSON.stringify(sessionSupportState));
+}
+
+function updateLowInterruptionMode() {
+  const on = Boolean(sessionSupportState.lowInterruption && sessionSupportState.sessionEndTs > Date.now());
+  document.body.classList.toggle('low-interruption-active', on);
+  if (on) {
+    setShortcutsOpen(false);
+    setNavigationMenuOpen(false);
+  }
+}
+
+function getRemainingSessionMs() {
+  return Math.max(0, Number(sessionSupportState.sessionEndTs || 0) - Date.now());
+}
+
+function updateSessionMeta() {
+  const meta = document.getElementById('sessionMeta');
+  const remainingMs = getRemainingSessionMs();
+  const goalDone = Object.values(sessionSupportState.microGoals).filter(Boolean).length;
+  if (remainingMs <= 0) {
+    meta.textContent = `No active session. Micro-goals: ${goalDone}/3 complete.`;
+    document.querySelectorAll('.session-btn').forEach(btn => btn.classList.remove('on'));
+    updateLowInterruptionMode();
+    return;
+  }
+  const min = Math.floor(remainingMs / 60000);
+  const sec = Math.floor((remainingMs % 60000) / 1000);
+  meta.textContent = `Session running • ${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')} left • Goals ${goalDone}/3`;
+}
+
+function stopSessionTimer(clearSchedule = true) {
+  if (sessionTick) {
+    clearInterval(sessionTick);
+    sessionTick = null;
+  }
+  if (clearSchedule) {
+    sessionSupportState.sessionEndTs = 0;
+    sessionSupportState.durationMin = 0;
+    sessionSupportState.lastBreakNoticeTs = 0;
+    saveSessionSupportState();
+  }
+  updateSessionMeta();
+  updateLowInterruptionMode();
+}
+
+function startSessionTimer(minutes) {
+  stopSessionTimer(false);
+  sessionSupportState.durationMin = minutes;
+  sessionSupportState.sessionEndTs = Date.now() + (minutes * 60 * 1000);
+  sessionSupportState.lastBreakNoticeTs = Date.now();
+  saveSessionSupportState();
+  updateSessionMeta();
+  updateLowInterruptionMode();
+  document.querySelectorAll('.session-btn').forEach(btn => {
+    btn.classList.toggle('on', Number(btn.dataset.minutes) === minutes);
+  });
+  sessionTick = setInterval(() => {
+    const remaining = getRemainingSessionMs();
+    if (remaining <= 0) {
+      stopSessionTimer();
+      return;
+    }
+    const breakEvery = Number(sessionSupportState.breakEveryMin || 0);
+    if (breakEvery > 0 && (Date.now() - sessionSupportState.lastBreakNoticeTs) >= breakEvery * 60 * 1000) {
+      sessionSupportState.lastBreakNoticeTs = Date.now();
+      const meta = document.getElementById('sessionMeta');
+      meta.textContent = 'Break cue: unclench jaw, breathe, and reset posture.';
+      saveSessionSupportState();
+    } else {
+      updateSessionMeta();
+    }
+    updateProgressAndStatus();
+  }, 1000);
 }
 
 /* ── File upload ── */
@@ -1822,6 +2081,11 @@ async function loadSourceFile(file) {
 
   const raw = await file.text();
   const plainText = stripToPlainText(raw, file.name);
+  setCurrentDocumentMeta({
+    id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
+    label: file.name,
+    type: 'text-file'
+  });
   return loadTextDocument(plainText, file.name, `File · ${file.name}`);
 }
 
@@ -1857,6 +2121,11 @@ async function loadFromUrl() {
   const rawUrl = (input.value || '').trim();
   if (!rawUrl) return;
   const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+  setCurrentDocumentMeta({
+    id: `url:${url}`,
+    label: url,
+    type: 'url'
+  });
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -1876,6 +2145,11 @@ async function loadPDF(file) {
   }
 
   textDoc = null;
+  setCurrentDocumentMeta({
+    id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
+    label: file.name,
+    type: 'pdf-file'
+  });
   document.getElementById('upName').textContent = file.name;
   document.getElementById('upName').style.display = 'block';
   reader.classList.remove('drop-ready');
@@ -2065,6 +2339,7 @@ function setReadingMode(mode) {
   toggleRuler();
   toggleChunkMode();
   saveSettings();
+  saveDocProgress();
 }
 
 function normalizeToken(item) {
@@ -2625,9 +2900,13 @@ function updateProgress() {
   const pct = scrollableHeight > 0 ? (reader.scrollTop / scrollableHeight) * 100 : 0;
   const clampedPct = Math.min(100, Math.max(0, pct));
   document.getElementById('progFill').style.width = clampedPct.toFixed(1) + '%';
-  document.getElementById('statScroll').textContent = readingMode === 'flow'
+  const base = readingMode === 'flow'
     ? `Doc ${Math.round(clampedPct)}%`
     : `${Math.round(clampedPct)}%`;
+  const remainingMs = getRemainingSessionMs();
+  const goalDone = Object.values(sessionSupportState.microGoals).filter(Boolean).length;
+  const sessionCue = remainingMs > 0 ? ` • ⏱ ${Math.ceil(remainingMs / 60000)}m` : '';
+  document.getElementById('statScroll').textContent = `${base}${sessionCue} • goals ${goalDone}/3`;
 }
 
 function updateProgressAndStatus() {
@@ -2638,6 +2917,7 @@ function updateProgressAndStatus() {
 reader.addEventListener('scroll', () => {
   updateProgressAndStatus();
   updateChunkOverlay();
+  saveDocProgress();
 });
 
 function toggleProg() {
@@ -2823,6 +3103,33 @@ document.addEventListener('keydown', e => {
   }
 });
 
+document.querySelectorAll('.session-btn').forEach(btn => {
+  btn.addEventListener('click', () => startSessionTimer(Number(btn.dataset.minutes)));
+});
+document.getElementById('breakReminderSel').addEventListener('change', e => {
+  sessionSupportState.breakEveryMin = Number(e.target.value) || 0;
+  sessionSupportState.lastBreakNoticeTs = Date.now();
+  saveSessionSupportState();
+});
+document.getElementById('lowInterruptT').addEventListener('change', e => {
+  sessionSupportState.lowInterruption = e.target.checked;
+  saveSessionSupportState();
+  updateLowInterruptionMode();
+});
+document.querySelectorAll('#microGoals input[type="checkbox"]').forEach(box => {
+  box.addEventListener('change', () => {
+    sessionSupportState.microGoals[box.dataset.goal] = box.checked;
+    saveSessionSupportState();
+    updateSessionMeta();
+    updateProgressAndStatus();
+  });
+});
+document.getElementById('resumeRestoreBtn').addEventListener('click', () => restoreSavedPosition());
+document.getElementById('resumeDismissBtn').addEventListener('click', () => {
+  pendingResumeState = null;
+  refreshResumeCard();
+});
+
 /* ── Init ── */
 document.getElementById('tintR').addEventListener('input', updateTint);
 window.addEventListener('resize', () => {
@@ -2880,12 +3187,24 @@ document.addEventListener('keydown', e => {
 
 /* ── Profile system init ── */
 const persistedSettings = loadSettings();
+loadSessionSupportState();
 loadProfilesState();
 refreshProfileSelect();
 document.getElementById('profileSel').addEventListener('change', e => useProfile(e.target.value));
 document.getElementById('saveProfileBtn').addEventListener('click', handleSaveProfile);
 document.getElementById('deleteProfileBtn').addEventListener('click', handleDeleteProfile);
 useProfile(lastUsedProfileId);
+document.getElementById('breakReminderSel').value = String(sessionSupportState.breakEveryMin || 0);
+document.getElementById('lowInterruptT').checked = Boolean(sessionSupportState.lowInterruption);
+document.querySelectorAll('#microGoals input[type="checkbox"]').forEach(box => {
+  box.checked = Boolean(sessionSupportState.microGoals[box.dataset.goal]);
+});
+if (sessionSupportState.sessionEndTs > Date.now() && sessionSupportState.durationMin) {
+  startSessionTimer(Number(sessionSupportState.durationMin));
+} else {
+  stopSessionTimer();
+}
+refreshResumeCard();
 ensureCriticalFontsReady().then(() => {
   if (readingMode !== 'pdf') updateStyles();
 });
