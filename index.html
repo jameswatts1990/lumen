@@ -4015,6 +4015,90 @@ function detectFlowHeading(line) {
   return null;
 }
 
+function getLineTextCasingRatio(text) {
+  const letters = String(text || '').match(/[A-Za-z]/g) || [];
+  if (!letters.length) return 0;
+  const upperLetters = letters.filter(char => char === char.toUpperCase()).length;
+  return upperLetters / letters.length;
+}
+
+function scoreHeadingCandidate(line, neighbors = {}, pageStats = {}) {
+  if (!line || !line.text) return { kind: 'paragraph', score: 0 };
+  const text = normalizeFlowSentence(line.text);
+  if (!text) return { kind: 'paragraph', score: 0 };
+  const wordCount = text.split(/\s+/).length;
+  const punctuationEnded = /[.?!]$/.test(text);
+  const regexCue = detectFlowHeading(text);
+  const sectionLike = /^((\d+(\.\d+)*)|([IVXLCM]+))[\].:)\s-]+\S+/i.test(text);
+  const titleCaseLike = /^[A-Z0-9][A-Za-z0-9'’"“”(),/&\-]+(?:\s+[A-Z0-9][A-Za-z0-9'’"“”(),/&\-]+){0,9}$/.test(text);
+  const allCapsLike = /^[A-Z0-9][A-Z0-9\s\-—:&/]{3,}$/.test(text);
+  const endsWithColon = /:$/.test(text);
+  const prevLine = neighbors.prev || null;
+  const nextLine = neighbors.next || null;
+
+  const relativeFontSize = Number(line.relativeFontSize) || 1;
+  const textCasingRatio = Number(line.textCasingRatio) || 0;
+  const precedingWhitespace = Number(line.precedingWhitespace) || 0;
+  const followingWhitespace = Number(line.followingWhitespace) || 0;
+  const centerednessScore = Number(line.centerednessScore) || 0;
+  const medianGap = Number(pageStats.medianLineGap) || 12;
+
+  let score = 0;
+
+  if (relativeFontSize >= 1.32) score += 2.2;
+  else if (relativeFontSize >= 1.16) score += 1.35;
+  else if (relativeFontSize >= 1.08) score += 0.55;
+
+  if (precedingWhitespace >= medianGap * 1.1) score += 0.95;
+  else if (precedingWhitespace >= medianGap * 0.6) score += 0.45;
+
+  if (followingWhitespace >= medianGap * 1.1) score += 0.75;
+  else if (followingWhitespace >= medianGap * 0.6) score += 0.35;
+
+  if (centerednessScore >= 0.7) score += 0.9;
+  else if (centerednessScore >= 0.55) score += 0.45;
+
+  if (wordCount >= 2 && wordCount <= 12) score += 0.45;
+  if (wordCount > 16) score -= 1.2;
+  if (punctuationEnded) score -= 0.75;
+
+  if (textCasingRatio >= 0.55 && textCasingRatio <= 0.92) score += 0.45;
+  if (textCasingRatio > 0.96 && wordCount >= 3 && wordCount <= 10) score += 0.3;
+
+  // Regex cues are intentionally weak; styling and spacing dominate.
+  if (regexCue) score += 0.55;
+  if (sectionLike) score += 0.35;
+  if (titleCaseLike) score += 0.3;
+  if (endsWithColon) score += 0.25;
+  if (allCapsLike) score += 0.2;
+
+  // Suppress frequent false positives.
+  const shortAllCapsLabel = textCasingRatio >= 0.97 && wordCount <= 3 && !sectionLike && !endsWithColon;
+  const legalStampLike = /^(page\s+\d+(\s+of\s+\d+)?|confidential|draft|copyright\b|all rights reserved|do not distribute|privileged and confidential|for internal use only)\b/i.test(text);
+  const tableHeaderLike = (
+    /[|]/.test(text) ||
+    /^\s*[A-Z][A-Z0-9/%\-]{1,}\s+(?:[A-Z][A-Z0-9/%\-]{1,}\s+){1,6}[A-Z][A-Z0-9/%\-]{1,}\s*$/.test(text)
+  ) && wordCount <= 8 && textCasingRatio >= 0.85;
+  const uniformRowPair = Boolean(
+    nextLine &&
+    Math.abs((nextLine.lineWidth || 0) - (line.lineWidth || 0)) < Math.max(28, (pageStats.pageWidth || 800) * 0.06) &&
+    Math.abs((nextLine.relativeFontSize || 1) - relativeFontSize) < 0.05 &&
+    (Number(nextLine.precedingWhitespace) || 0) < medianGap * 0.35
+  );
+
+  if (shortAllCapsLabel && relativeFontSize < 1.2 && centerednessScore < 0.72) return { kind: 'paragraph', score: score - 2.5, suppressed: 'short_all_caps_label' };
+  if (legalStampLike) return { kind: 'paragraph', score: score - 3.2, suppressed: 'legal_stamp' };
+  if (tableHeaderLike && (uniformRowPair || centerednessScore < 0.45)) return { kind: 'paragraph', score: score - 3, suppressed: 'table_header' };
+
+  if (prevLine && Math.abs((prevLine.relativeFontSize || 1) - relativeFontSize) < 0.02 && precedingWhitespace < medianGap * 0.2 && wordCount > 10) {
+    score -= 0.65;
+  }
+
+  if (score >= 3.65) return { kind: relativeFontSize >= 1.24 ? 'h2' : 'h3', score };
+  if (score >= 2.4) return { kind: 'h3', score };
+  return { kind: 'paragraph', score };
+}
+
 function detectFlowListItem(line) {
   const trimmed = normalizeFlowSentence(line);
   if (!trimmed) return null;
@@ -4053,29 +4137,49 @@ function splitFlowCompositeLine(line) {
   return segments;
 }
 
-function buildFlowBlocks(textSegments) {
+function buildFlowBlocks(textSegments, pageStats = {}) {
   const blocks = [];
+  const sourceLines = [];
   (textSegments || []).forEach(segment => {
-    const lines = String(segment || '')
+    if (segment && typeof segment === 'object' && typeof segment.text === 'string') {
+      const compositeLines = splitFlowCompositeLine(segment.text)
+        .map(text => normalizeFlowSentence(text))
+        .filter(Boolean);
+      compositeLines.forEach(text => sourceLines.push({ ...segment, text }));
+      return;
+    }
+    String(segment || '')
       .split(/\n+/)
       .flatMap(line => splitFlowCompositeLine(line))
       .map(line => normalizeFlowSentence(line))
-      .filter(Boolean);
-    if (!lines.length) return;
+      .filter(Boolean)
+      .forEach(text => sourceLines.push({ text }));
+  });
 
-    lines.forEach(line => {
-      const listItem = detectFlowListItem(line);
-      if (listItem) {
-        blocks.push({ type: 'list-item', text: listItem });
-        return;
-      }
-      const heading = detectFlowHeading(line);
-      if (heading) {
-        blocks.push({ type: 'heading', text: heading.text, level: heading.level });
-        return;
-      }
-      blocks.push({ type: 'paragraph', text: line });
-    });
+  sourceLines.forEach((line, idx) => {
+    const text = normalizeFlowSentence(line.text);
+    if (!text) return;
+    const lineObj = { ...line, text };
+    const neighbors = {
+      prev: sourceLines[idx - 1] || null,
+      next: sourceLines[idx + 1] || null
+    };
+    const headingClassification = scoreHeadingCandidate(lineObj, neighbors, pageStats);
+    const listItem = detectFlowListItem(lineObj.text);
+    if (listItem) {
+      blocks.push({ type: 'list-item', text: listItem });
+      return;
+    }
+
+    if (headingClassification.kind === 'h2' || headingClassification.kind === 'h3') {
+      blocks.push({
+        type: 'heading',
+        text: normalizeFlowSentence(lineObj.text).replace(/:$/, ''),
+        level: headingClassification.kind === 'h2' ? 2 : 3
+      });
+      return;
+    }
+    blocks.push({ type: 'paragraph', text: lineObj.text });
   });
   return blocks;
 }
@@ -4911,15 +5015,45 @@ async function extractFlowDocument() {
         clusters: [lines]
       };
     const orderedLines = layoutModel.orderedLines;
+    const pageMedianFontSize = computeMedian(orderedLines.map(line => line.fontSizeMedian).filter(Number.isFinite)) || 12;
+    const pageLineGaps = orderedLines
+      .slice(1)
+      .map((line, idx) => Math.max(0, line.y - orderedLines[idx].y))
+      .filter(gap => Number.isFinite(gap) && gap > 0);
+    const pageMedianLineGap = computeMedian(pageLineGaps) || 12;
+    const pageStats = {
+      pageWidth: viewport.width,
+      medianFontSize: pageMedianFontSize,
+      medianLineGap: pageMedianLineGap,
+      lineCount: orderedLines.length
+    };
+    const enrichedLines = orderedLines.map((line, idx) => {
+      const prev = idx > 0 ? orderedLines[idx - 1] : null;
+      const next = idx < orderedLines.length - 1 ? orderedLines[idx + 1] : null;
+      const precedingGap = prev ? Math.max(0, line.y - prev.y) : pageMedianLineGap;
+      const followingGap = next ? Math.max(0, next.y - line.y) : pageMedianLineGap;
+      const lineCenterX = (line.xMin + line.xMax) / 2;
+      const pageCenterX = viewport.width / 2;
+      const centerDistance = Math.abs(lineCenterX - pageCenterX);
+      const centerednessScore = Math.max(0, 1 - (centerDistance / Math.max(40, viewport.width / 2)));
+      return {
+        ...line,
+        relativeFontSize: line.fontSizeMedian / Math.max(1, pageMedianFontSize),
+        textCasingRatio: getLineTextCasingRatio(line.text),
+        precedingWhitespace: Math.max(0, precedingGap - pageMedianLineGap),
+        followingWhitespace: Math.max(0, followingGap - pageMedianLineGap),
+        centerednessScore
+      };
+    });
 
     const paragraphs = [];
     let paraBuffer = [];
     let lastY = null;
     let baselineGap = 0;
 
-    orderedLines.forEach((line, idx) => {
+    enrichedLines.forEach((line, idx) => {
       if (idx > 0) {
-        const diff = line.y - orderedLines[idx - 1].y;
+        const diff = line.y - enrichedLines[idx - 1].y;
         baselineGap = baselineGap ? (baselineGap * 0.7 + diff * 0.3) : diff;
       }
       const dynamicBreak = baselineGap ? Math.max(10, baselineGap * 1.7) : 22;
@@ -4934,8 +5068,10 @@ async function extractFlowDocument() {
     pages.push({
       pageNum: n,
       paragraphs,
+      lines: enrichedLines,
+      pageStats,
       layoutConfidence: Number(layoutModel.layoutConfidence.toFixed(3)),
-      lineCount: orderedLines.length,
+      lineCount: enrichedLines.length,
       clusterCount: layoutModel.clusters.length,
       usedLegacyOrdering: !shouldUseColumnAwareLayout,
       usedSingleColumnFallback: layoutModel.usedFallback
@@ -4957,7 +5093,7 @@ async function renderFlowDocument() {
     chip.dataset.page = String(page.pageNum);
     chip.textContent = `Page ${page.pageNum}`;
     flowLayer.appendChild(chip);
-    renderFlowBlocks(buildFlowBlocks(page.paragraphs), page.pageNum);
+    renderFlowBlocks(buildFlowBlocks(page.lines?.length ? page.lines : page.paragraphs, page.pageStats || {}), page.pageNum);
   });
   flowChunkIndex = 0;
   updateFlowHighlight();
