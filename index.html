@@ -268,6 +268,9 @@ body.sidebar-collapsed .sidebar-toggle { left: 8px; }
   opacity: 0.88;
   pointer-events: none;
 }
+.sec.is-disabled .sec-inner {
+  opacity: 0.62;
+}
 
 /* Control rows */
 .ctrl { padding: 4px 20px; display: flex; align-items: center; gap: 10px; }
@@ -1182,6 +1185,21 @@ body.low-interruption-active .session-timer-overlay {
         </div>
       </div>
 
+
+      <!-- Email Thread Order -->
+      <div class="sec is-collapsed" id="emailOrderSection">
+        <div class="sec-label">Email Thread Order</div>
+        <div class="sec-hint">Choose how thread replies stack in flow mode. Newest-first matches the latest-response reading rhythm used by default.</div>
+        <select class="fsel" id="emailOrderSel" aria-label="Email thread order">
+          <option value="newest-first">Newest → Oldest</option>
+          <option value="oldest-first">Oldest → Newest</option>
+        </select>
+        <div class="presets" style="padding-top: 2px;">
+          <button class="pbtn" type="button" data-email-order="newest-first">Newest → Oldest</button>
+          <button class="pbtn" type="button" data-email-order="oldest-first">Oldest → Newest</button>
+        </div>
+      </div>
+
       <!-- Session Support -->
       <div class="sec is-collapsed">
         <div class="sec-label">Session Support</div>
@@ -1415,35 +1433,6 @@ body.low-interruption-active .session-timer-overlay {
           <li><code>F4</code> Peripheral dimming can reduce distraction for some users, while others rely on peripheral context cues. Target: mixed; preference-dependent across dyslexia and non-dyslexia readers. (Rayner, 1998; Schneps et al., 2013; Godwin et al., 2015)</li>
           <li><code>A1</code> Auto pacing can lower regressions and improve rhythm for practice sessions, but comprehension can decline if speed is mismatched. Target: adults and adolescents; use with frequent comprehension checks. (Juola et al., 1982; Beymer et al., 2008; Godwin et al., 2015)</li>
         </ol>
-        <div class="sec-hint" style="padding-top:2px;">References</div>
-        <ol class="refs-list">
-          <li>Beymer, D., Russell, D., & Orton, P. (2008). An eye tracking study of how font size and reading speed affect online reading. <em>CHI '08</em>.</li>
-          <li>Bernard, M., et al. (2002). A comparison of popular online fonts: Which size and type is best? <em>Usability News</em>, 4(1).</li>
-          <li>Borkin, M. A., et al. (2016). Beyond memorability: Visualization recognition and recall. <em>TVCG</em>, 22(1), 519-528.</li>
-          <li>Buchner, A., Mayr, S., & Brandt, M. (2009). The advantage of positive text-background polarity in text readability. <em>Ergonomics</em>, 52(7), 882-893.</li>
-          <li>Burkhart, K., & Phelps, J. R. (2009). Amber lenses to block blue light and improve sleep: A randomized trial. <em>Chronobiology International</em>, 26(8), 1602-1612.</li>
-          <li>Cajochen, C., et al. (2011). Evening exposure to LED-backlit computer screens affects circadian physiology and cognitive performance. <em>Journal of Applied Physiology</em>, 110(5), 1432-1438.</li>
-          <li>Chang, A.-M., Aeschbach, D., Duffy, J. F., & Czeisler, C. A. (2015). Evening use of light-emitting eReaders negatively affects sleep. <em>PNAS</em>, 112(4), 1232-1237.</li>
-          <li>Dyson, M. C., & Kipping, G. J. (1998). The effects of line length and method of movement on patterns of reading from screen. <em>Visible Language</em>, 32(2), 150-181.</li>
-          <li>Godwin, H. J., et al. (2015). Why use dynamic text presentation? Insights from reading and visual search. <em>Attention, Perception, & Psychophysics</em>, 77, 706-724.</li>
-          <li>Hale, L., & Guan, S. (2015). Screen time and sleep among school-aged children and adolescents: A systematic review. <em>Sleep Medicine Reviews</em>, 21, 50-58.</li>
-          <li>Juola, J. F., Ward, N. J., & McNamara, T. (1982). Visual search and reading of rapid serial visual presentation text. <em>Journal of Experimental Psychology: General</em>, 111(2), 208-227.</li>
-          <li>Kim, Y.-S. G., et al. (2014). Which aspects of fluency matter in reading comprehension? <em>Reading and Writing</em>, 27, 1459-1480.</li>
-          <li>Korat, O., Levin, I., Ben-Simhon, K., & Turgeman, M. (2013). E-book as facilitator of vocabulary and story comprehension for children at risk for learning disabilities. <em>European Journal of Special Needs Education</em>, 29(4), 451-463.</li>
-          <li>Kuster, S. M., et al. (2018). The font type does not affect reading performance in dyslexia. <em>Annals of Dyslexia</em>, 68, 184-204.</li>
-          <li>Ostrin, L. A., Abbott, K. S., & Queener, H. M. (2017). Attenuation of short wavelengths alters sleep and the ipRGC pupil response. <em>Ophthalmic and Physiological Optics</em>, 37(4), 440-450.</li>
-          <li>Perea, M., Panadero, V., Moret-Tatay, C., & Gómez, P. (2012). The effects of inter-letter spacing in visual-word recognition. <em>Acta Psychologica</em>, 141(2), 177-181.</li>
-          <li>Rayner, K. (1998). Eye movements in reading and information processing: 20 years of research. <em>Psychological Bulletin</em>, 124(3), 372-422.</li>
-          <li>Rello, L., & Baeza-Yates, R. (2013). Good fonts for dyslexia. <em>ASSETS '13</em>.</li>
-          <li>Ritchie, S. J., Della Sala, S., & McIntosh, R. D. (2011). Irlen colored overlays do not alleviate reading difficulties. <em>Psychological Science</em>, 22(12), 1505-1512.</li>
-          <li>Ritchey, K. D., & Goeke, J. L. (2006). Orton-Gillingham and O-G-based reading instruction: A review. <em>The Journal of Special Education</em>, 40(3), 171-183.</li>
-          <li>Schneps, M. H., et al. (2013). Shorter lines facilitate reading in those who struggle. <em>PLoS ONE</em>, 8(8), e71161.</li>
-          <li>Sherman, J., et al. (2013). Text chunking and comprehension in developing readers. <em>Reading Psychology</em>, 34(4), 356-379.</li>
-          <li>van den Boer, M., & Hakvoort, B. E. (2015). Inter-letter spacing and text length effects for children with dyslexia. <em>Journal of Experimental Child Psychology</em>, 139, 35-51.</li>
-          <li>Wery, J. J., & Diliberto, J. A. (2017). The effect of a specialized dyslexia font on reading rate and accuracy. <em>Annals of Dyslexia</em>, 67, 114-127.</li>
-          <li>Wise, B. W., et al. (2010). Effectiveness of word-by-word and phrase-based computer reading supports. <em>Journal of Educational Computing Research</em>, 42(2), 219-238.</li>
-          <li>Zorzi, M., et al. (2012). Extra-large letter spacing improves reading in dyslexia. <em>PNAS</em>, 109(28), 11455-11459.</li>
-        </ol>
       </div>
 
     </div><!-- end sidebar-scroll -->
@@ -1585,6 +1574,8 @@ let currentPage = 0;
 let readingMode = 'pdf';
 let flowDocCache = null;
 let textDoc = null;
+let emailThreadModel = null;
+let emailThreadOrder = 'newest-first';
 let chunkCenterY = 0;
 let flowChunkIndex = 0;
 const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
@@ -1620,7 +1611,8 @@ const DEFAULT_SETTINGS = {
   chunkMode: false,
   chunkHeight: 2,
   flowAutoSplit: false,
-  flowSplitLines: 2
+  flowSplitLines: 2,
+  emailThreadOrder: 'newest-first'
 };
 const BUILTIN_PROFILES = [
   {
@@ -1910,6 +1902,7 @@ function captureSettings() {
     chunkHeight: Number(document.getElementById('chunkR').value),
     flowAutoSplit: document.getElementById('flowSplitT').checked,
     flowSplitLines: Number(document.getElementById('flowSplitLinesR').value),
+    emailThreadOrder,
   };
 }
 
@@ -1963,6 +1956,7 @@ function applySettings(profile) {
   setRangeValue('tintR', settings.tint);
   updateTint();
   setRangeValue('scrollSR', settings.autoScrollSpeed);
+  setEmailThreadOrder(settings.emailThreadOrder, { rerender: true, persist: false });
 }
 
 function saveProfilesState() {
@@ -2003,7 +1997,7 @@ function registerSettingsPersistence() {
   const ids = [
     'widthR', 'briR', 'conR', 'gapR', 'fontSel', 'tsizeR', 'lhR', 'lsR', 'wsR',
     'rulerT', 'shadeT', 'focusT', 'focusR', 'focusDepthR', 'progT', 'tintR',
-    'scrollSR', 'chunkT', 'chunkR', 'flowSplitT', 'flowSplitLinesR', 'lowInterruptT', 'profileSel'
+    'scrollSR', 'chunkT', 'chunkR', 'flowSplitT', 'flowSplitLinesR', 'lowInterruptT', 'profileSel', 'emailOrderSel'
   ];
   ids.forEach(id => {
     const el = document.getElementById(id);
@@ -2760,7 +2754,16 @@ function parseEmailToThread(raw, filename = '') {
   };
 }
 
-function buildEmailThreadPlainText(parsedThread) {
+function getOrderedEmailMessages(parsedThread, order = emailThreadOrder) {
+  const messages = Array.isArray(parsedThread?.messages) ? [...parsedThread.messages] : [];
+  return order === 'oldest-first' ? messages.reverse() : messages;
+}
+
+function normalizeEmailThreadOrder(value) {
+  return value === 'oldest-first' ? 'oldest-first' : 'newest-first';
+}
+
+function buildEmailThreadPlainText(parsedThread, order = emailThreadOrder) {
   const subject = parsedThread?.sourceMeta?.subject ? `Subject: ${parsedThread.sourceMeta.subject}` : '';
   const intro = [
     'Email Thread',
@@ -2768,7 +2771,7 @@ function buildEmailThreadPlainText(parsedThread) {
     parsedThread?.sourceMeta?.totalMessages ? `Messages parsed: ${parsedThread.sourceMeta.totalMessages}` : ''
   ].filter(Boolean).join('\n');
 
-  const blocks = (parsedThread?.messages || []).map((message, idx) => {
+  const blocks = getOrderedEmailMessages(parsedThread, order).map((message, idx) => {
     const sender = message.sender || 'Unknown sender';
     const date = message.date || 'Unknown date';
     return `Message ${idx + 1}\nFrom: ${sender}\nDate: ${date}\n\n${message.body}`;
@@ -2796,13 +2799,13 @@ async function loadEmailFile(file) {
   }
 
   const parsedThread = parseEmailToThread(raw, file.name);
-  const threadText = buildEmailThreadPlainText(parsedThread);
   setCurrentDocumentMeta({
     id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
     label: file.name,
     type: 'email-file'
   });
-  return loadTextDocument(threadText, file.name, `Email · ${file.name}`);
+  emailThreadModel = parsedThread;
+  return reRenderEmailThreadFromModel(file.name, `Email · ${file.name}`, { persist: true });
 }
 
 function tryParseUrl(rawUrl) {
@@ -3053,6 +3056,82 @@ function renderTextFlowFromPlainText(text, originLabel = 'Text source') {
   };
 }
 
+async function reRenderEmailThreadFromModel(displayName, sourceLabel, options = {}) {
+  if (!emailThreadModel) return;
+  const nextOrder = normalizeEmailThreadOrder(options.order ?? emailThreadOrder);
+  const preserveScroll = options.preserveScroll !== false;
+  const persistDoc = options.persist !== false;
+  const previousRatio = preserveScroll && reader.scrollHeight > reader.clientHeight
+    ? reader.scrollTop / Math.max(1, reader.scrollHeight - reader.clientHeight)
+    : 0;
+
+  const threadText = buildEmailThreadPlainText(emailThreadModel, nextOrder);
+  emailThreadOrder = nextOrder;
+  refreshEmailThreadOrderControls();
+  const extracted = renderTextFlowFromPlainText(threadText, sourceLabel || `Email · ${displayName || emailThreadModel?.sourceMeta?.filename || 'Thread'}`);
+  textDoc = {
+    ...(textDoc || {}),
+    title: displayName || textDoc?.title || emailThreadModel?.sourceMeta?.filename || 'Email thread',
+    sourceLabel: sourceLabel || textDoc?.sourceLabel || `Email · ${displayName || 'Thread'}`,
+    isEmailThread: true,
+    ...extracted
+  };
+
+  if (!rInner.contains(flowLayer)) rInner.appendChild(flowLayer);
+  flowLayer.classList.add('on');
+  rInner.classList.add('flow-mode');
+  setPageJumpAvailability(true);
+  if (readingMode !== 'flow') setReadingMode('flow');
+  await applyReadingMode();
+  applyMaxWidth();
+  applyGap();
+  renderOutlineFallback('Outline is only available for PDFs.');
+
+  if (preserveScroll) {
+    const maxScroll = Math.max(0, reader.scrollHeight - reader.clientHeight);
+    reader.scrollTop = maxScroll * Math.max(0, Math.min(1, previousRatio));
+  }
+  updateProgressAndStatus();
+
+  if (persistDoc) {
+    await savePersistedDocument({
+      type: 'text',
+      content: threadText,
+      displayName: textDoc.title,
+      sourceLabel: textDoc.sourceLabel,
+      docMeta: currentDocMeta || null
+    });
+  }
+}
+
+function refreshEmailThreadOrderControls() {
+  const section = document.getElementById('emailOrderSection');
+  const select = document.getElementById('emailOrderSel');
+  if (!section || !select) return;
+  const active = normalizeEmailThreadOrder(emailThreadOrder);
+  const enabled = Boolean(emailThreadModel);
+  section.classList.toggle('is-disabled', !enabled);
+  select.disabled = !enabled;
+  select.value = active;
+  document.querySelectorAll('.pbtn[data-email-order]').forEach(btn => {
+    const on = btn.dataset.emailOrder === active;
+    btn.classList.toggle('on', on);
+    btn.disabled = !enabled;
+  });
+}
+
+function setEmailThreadOrder(nextOrder, options = {}) {
+  const normalized = normalizeEmailThreadOrder(nextOrder);
+  const shouldPersist = options.persist !== false;
+  const shouldRerender = options.rerender !== false;
+  emailThreadOrder = normalized;
+  refreshEmailThreadOrderControls();
+  if (shouldPersist) queuePersistSettings();
+  if (shouldRerender && emailThreadModel) {
+    reRenderEmailThreadFromModel(textDoc?.title || emailThreadModel?.sourceMeta?.filename || 'Email thread', textDoc?.sourceLabel || `Email · ${emailThreadModel?.sourceMeta?.filename || 'Thread'}`, { order: normalized, preserveScroll: true, persist: false });
+  }
+}
+
 async function loadSourceFile(file) {
   if (isPdfFile(file)) return loadPDF(file);
   const lowerName = (file?.name || '').toLowerCase();
@@ -3085,9 +3164,10 @@ async function loadSourceFile(file) {
   return loadTextDocument(plainText, file.name, `File · ${file.name}`);
 }
 
-async function loadTextDocument(plainText, displayName, sourceLabel) {
+async function loadTextDocument(plainText, displayName, sourceLabel, options = {}) {
   pdf = null;
   flowDocCache = null;
+  emailThreadModel = options.emailThreadModel || null;
   stopScroll();
   scrolling = false;
   const scrollBtn = document.getElementById('scrollBtn');
@@ -3095,7 +3175,7 @@ async function loadTextDocument(plainText, displayName, sourceLabel) {
   scrollBtn.classList.remove('on');
   reader.scrollTop = 0;
   const extracted = renderTextFlowFromPlainText(plainText, sourceLabel);
-  textDoc = { title: displayName, sourceLabel, ...extracted };
+  textDoc = { title: displayName, sourceLabel, isEmailThread: Boolean(options.emailThreadModel), ...extracted };
   document.getElementById('upName').textContent = displayName;
   document.getElementById('upName').style.display = 'block';
   reader.classList.remove('drop-ready');
@@ -3110,6 +3190,7 @@ async function loadTextDocument(plainText, displayName, sourceLabel) {
   applyGap();
   renderOutlineFallback('Outline is only available for PDFs.');
   updateProgressAndStatus();
+  refreshEmailThreadOrderControls();
   await savePersistedDocument({
     type: 'text',
     content: String(plainText || ''),
@@ -3145,6 +3226,8 @@ async function loadPDF(file) {
   }
 
   textDoc = null;
+  emailThreadModel = null;
+  refreshEmailThreadOrderControls();
   setCurrentDocumentMeta({
     id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
     label: file.name,
@@ -3200,6 +3283,8 @@ async function loadPDF(file) {
 
 async function loadPDFBytes(bytes, name = 'Recovered PDF') {
   textDoc = null;
+  emailThreadModel = null;
+  refreshEmailThreadOrderControls();
   document.getElementById('upName').textContent = name;
   document.getElementById('upName').style.display = 'block';
   reader.classList.remove('drop-ready');
@@ -3238,6 +3323,7 @@ async function loadPDFBytes(bytes, name = 'Recovered PDF') {
 function resetLoadedDocumentUI() {
   pdf = null;
   textDoc = null;
+  emailThreadModel = null;
   flowDocCache = null;
   currentDocMeta = null;
   pendingResumeState = null;
@@ -3275,6 +3361,7 @@ function resetLoadedDocumentUI() {
   updateProgressAndStatus();
   setPageJumpAvailability(false);
   renderOutlineFallback('Load a PDF to view navigation links.');
+  refreshEmailThreadOrderControls();
   refreshResumeCard();
 }
 
@@ -4532,6 +4619,12 @@ document.getElementById('scrollBottomBtn').addEventListener('click', () => goToD
 
 document.getElementById('chunkUpBtn').addEventListener('click', () => stepChunk(-1));
 document.getElementById('chunkDownBtn').addEventListener('click', () => stepChunk(1));
+document.getElementById('emailOrderSel').addEventListener('change', e => {
+  setEmailThreadOrder(e.target.value, { rerender: true, persist: true });
+});
+document.querySelectorAll('.pbtn[data-email-order]').forEach(btn => {
+  btn.addEventListener('click', () => setEmailThreadOrder(btn.dataset.emailOrder, { rerender: true, persist: true }));
+});
 document.querySelectorAll('input[name="readingMode"]').forEach(input => {
   input.addEventListener('change', async e => {
     if (!e.target.checked) return;
@@ -4583,6 +4676,7 @@ if (persistedSettings.settings) {
   applySettings(persistedSettings.settings);
 }
 restorePersistedDocument();
+refreshEmailThreadOrderControls();
 toggleChunkMode();
 </script>
 </body>
