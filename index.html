@@ -199,6 +199,11 @@ body.sidebar-collapsed .sidebar-toggle { left: 8px; }
 .sec { border-bottom: 1px solid var(--sidebar-border); padding: 10px 0; }
 .sec-label { padding: 0 20px 9px; font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; color: #b4a388; font-family: 'DM Mono', monospace; }
 .sec-hint { padding: 0 20px 7px; font-size: 12.5px; color: var(--text-muted); line-height: 1.55; }
+.sec-hint code {
+  color: var(--accent);
+  font-family: 'DM Mono', monospace;
+  font-size: 11.5px;
+}
 .sec-toggle {
   width: 100%;
   border: 0;
@@ -289,8 +294,64 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 }
 .tog input:checked + .tog-tk::after { transform: translateX(15px); }
 
-/* Sci badge */
-.sci { display: inline-block; width: 13px; height: 13px; border-radius: 50%; background: var(--accent-dim); border: 1px solid var(--accent-mid); color: var(--accent); font-size: 7px; line-height: 11px; text-align: center; margin-left: 4px; cursor: default; font-family: 'DM Mono', monospace; vertical-align: middle; }
+/* Evidence badges */
+.sci {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent-mid);
+  color: var(--accent);
+  font-size: 10.5px;
+  line-height: 1.2;
+  text-align: center;
+  margin-left: 6px;
+  cursor: default;
+  font-family: 'DM Mono', monospace;
+  vertical-align: middle;
+  letter-spacing: 0.2px;
+}
+.sci-mod { border-color: #9d8b6f; color: #d7b880; background: rgba(198, 148, 62, 0.12); }
+.sci-mixed { border-color: #786f9b; color: #b8afe4; background: rgba(127, 113, 186, 0.12); }
+.sci-pref { border-color: #4f7c84; color: #97cfd6; background: rgba(91, 145, 153, 0.12); }
+.evidence-notes {
+  margin: 6px 20px 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--control-bg);
+}
+.evidence-notes summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 8px 10px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #c7b59a;
+  font-family: 'DM Mono', monospace;
+}
+.evidence-notes summary::-webkit-details-marker { display: none; }
+.evidence-notes summary::after {
+  content: '▸';
+  float: right;
+  color: var(--text-muted);
+}
+.evidence-notes[open] summary::after { content: '▾'; }
+.evidence-list {
+  margin: 0;
+  padding: 0 14px 10px 28px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.evidence-list li { margin: 0 0 7px; }
+.evidence-list code {
+  color: var(--accent);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+}
 
 /* Autoscroll controls */
 .scroll-ctl { padding: 4px 20px 10px; display: flex; align-items: center; gap: 10px; }
@@ -863,7 +924,7 @@ body.low-interruption-active .chunk-indicator {
       </div>
 
       <!-- Session Support -->
-      <div class="sec">
+      <div class="sec is-collapsed">
         <div class="sec-label">Session Support</div>
         <div class="sec-hint">Timebox reading, set micro-goals, and quickly resume where you left off.</div>
         <div class="session-grid">
@@ -928,15 +989,15 @@ body.low-interruption-active .chunk-indicator {
 
       <!-- Background Mode -->
       <div class="sec is-collapsed">
-        <div class="sec-label">Background lighting</div>
+        <div class="sec-label">Background lighting <span class="sci sci-mixed">Mixed evidence</span></div>
         <div class="presets">
           <button class="pbtn on" data-mode="day"   onclick="setMode('day')">Day</button>
           <button class="pbtn"    data-mode="sepia"  onclick="setMode('sepia')">Sepia</button>
           <button class="pbtn"    data-mode="dark"   onclick="setMode('dark')">Dark</button>
           <button class="pbtn"    data-mode="night"  onclick="setMode('night')">Night</button>
         </div>
-        <div class="sec-hint">Warm/dark modes reduce blue-light exposure & eye fatigue (Phipps-Nelson et al., 2009)</div>
-        <div class="sec-hint">Amber overlay mimics f.lux / night shift (Chang et al., 2015)</div>
+        <div class="sec-hint">May reduce evening glare for some readers, but comfort changes by time of day, age, and screen type. See <code>BG1</code> in Evidence notes.</div>
+        <div class="sec-hint">Tint can feel soothing for night reading; it is mostly a comfort preference rather than a guaranteed reading-speed boost. See <code>BG2</code>.</div>
         <div class="ctrl">
           <span class="ctrl-lbl">Warm Tint</span>
           <input type="range" id="tintR" min="0" max="55" value="0" step="1" oninput="updateTint()">
@@ -946,14 +1007,14 @@ body.low-interruption-active .chunk-indicator {
 
       <!-- Display -->
       <div class="sec is-collapsed">
-        <div class="sec-label">Display <span class="sci" title="Optimal zoom and line width reduce subvocalization load">✦</span></div>
+        <div class="sec-label">Display <span class="sci sci-mod" title="Line length and zoom can support readability">Moderate evidence</span></div>
 
         <div class="ctrl">
           <span class="ctrl-lbl">Zoom</span>
           <input type="range" id="widthR" min="60" max="160" value="100" step="5">
           <span class="ctrl-val" id="widthV">100%</span>
         </div>
-        <div class="sec-hint" style="margin-top:4px;">Optimal line length: 50–75 chars/line (Rayner et al., 1998)</div>
+        <div class="sec-hint" style="margin-top:4px;">Line width and zoom can reduce fatigue for many adults, but ideal settings vary by vision, device size, and reading skill. See <code>D1</code>.</div>
 
         <div class="ctrl ctrl-group flow-locked-group" style="margin-top:6px;">
           <span class="ctrl-lbl">Brightness</span>
@@ -975,8 +1036,8 @@ body.low-interruption-active .chunk-indicator {
 
       <!-- Typography -->
       <div class="sec is-collapsed">
-        <div class="sec-label">Typography <span class="sci">✦</span></div>
-        <div class="sec-hint">Applied as a readable text layer with high-legibility font defaults and dyslexia-focused options</div>
+        <div class="sec-label">Typography <span class="sci sci-pref">User-preference dependent</span></div>
+        <div class="sec-hint">Applied as a readable text layer with high-legibility defaults; gains are often strongest when readers self-select what feels easiest. See <code>T1</code>.</div>
 
         <div class="trow" style="padding-top: 2px;">
           <div class="trow-info">
@@ -1017,33 +1078,33 @@ body.low-interruption-active .chunk-indicator {
           <input type="range" id="wsR" min="0" max="8" value="0" step="0.5">
           <span class="ctrl-val" id="wsV">0px</span>
         </div>
-        <div class="sec-hint ctrl-group typography-group" style="margin-top:4px;">Larger line height & word spacing benefit readers with dyslexia (Zorzi et al., 2012)</div>
+        <div class="sec-hint ctrl-group typography-group" style="margin-top:4px;">Spacing and typeface adjustments may improve comfort and accuracy for some readers (including some with dyslexia), but not everyone benefits. See <code>T2</code>.</div>
       </div>
 
       <!-- Focus Tools -->
       <div class="sec is-collapsed">
-        <div class="sec-label">Focus Aids</div>
+        <div class="sec-label">Focus Aids <span class="sci sci-mixed">Mixed evidence</span></div>
 
         <div class="trow ctrl-group flow-locked-group">
           <div class="trow-info">
-            <div class="trow-lbl">Reading Ruler <span class="sci">✦</span></div>
-            <div class="trow-sub">Tracks cursor to reduce line-skipping</div>
+            <div class="trow-lbl">Reading Ruler <span class="sci sci-pref">User-preference dependent</span></div>
+            <div class="trow-sub">May reduce line-skipping for some readers; others may find motion distracting. See <code>F1</code>.</div>
           </div>
           <label class="tog"><input type="checkbox" id="rulerT" onchange="toggleRuler()"><span class="tog-tk"></span></label>
         </div>
 
         <div class="trow ctrl-group flow-locked-group">
           <div class="trow-info">
-            <div class="trow-lbl">Paragraph Shading <span class="sci">✦</span></div>
-            <div class="trow-sub">Highlights text near the ruler line</div>
+            <div class="trow-lbl">Paragraph Shading <span class="sci sci-mixed">Mixed evidence</span></div>
+            <div class="trow-sub">Context shading can guide attention, but heavy contrast may increase visual load for some users. See <code>F2</code>.</div>
           </div>
           <label class="tog"><input type="checkbox" id="shadeT" onchange="toggleRuler()"><span class="tog-tk"></span></label>
         </div>
 
         <div class="trow ctrl-group flow-locked-group">
           <div class="trow-info">
-            <div class="trow-lbl">Chunking Mode <span class="sci">✦</span></div>
-            <div class="trow-sub">Keeps a narrow reading band fixed while you step</div>
+            <div class="trow-lbl">Chunking Mode <span class="sci sci-mixed">Mixed evidence</span></div>
+            <div class="trow-sub">Short line windows may support pacing and decoding for some users, especially novices, but can slow fluent readers. See <code>F3</code>.</div>
           </div>
           <label class="tog"><input type="checkbox" id="chunkT" onchange="toggleChunkMode()"><span class="tog-tk"></span></label>
         </div>
@@ -1061,8 +1122,8 @@ body.low-interruption-active .chunk-indicator {
 
         <div class="trow">
           <div class="trow-info">
-            <div class="trow-lbl">Focus Mode <span class="sci">✦</span></div>
-            <div class="trow-sub">Dims top & bottom edges</div>
+            <div class="trow-lbl">Focus Mode <span class="sci sci-pref">User-preference dependent</span></div>
+            <div class="trow-sub">Edge dimming may improve comfort and attention for some readers; others prefer full-page context. See <code>F4</code>.</div>
           </div>
           <label class="tog"><input type="checkbox" id="focusT" onchange="toggleFocus()"><span class="tog-tk"></span></label>
         </div>
@@ -1091,8 +1152,8 @@ body.low-interruption-active .chunk-indicator {
 
       <!-- Auto-scroll -->
       <div class="sec is-collapsed">
-        <div class="sec-label">Auto Scroll <span class="sci">✦</span></div>
-        <div class="sec-hint">Steady pacing reduces regressive saccades (O'Brien & Rayner, 1993)</div>
+        <div class="sec-label">Auto Scroll <span class="sci sci-mod">Moderate evidence</span></div>
+        <div class="sec-hint">Steady pacing can reduce regressions for some readers, but fixed speed may hurt comprehension if pace is too fast. See <code>A1</code>.</div>
         <div class="ctrl">
           <span class="ctrl-lbl">Speed</span>
           <input type="range" id="scrollSR" min="-4" max="4" value="0.8" step="0.1">
@@ -1102,6 +1163,21 @@ body.low-interruption-active .chunk-indicator {
         <div class="scroll-ctl">
           <span class="scbtn-hint">Negative = reverse · Hover reader to pause</span>
         </div>
+        <details class="evidence-notes">
+          <summary>Evidence notes</summary>
+          <ol class="evidence-list">
+            <li><code>BG1</code> Background warmth/brightness is most relevant for evening use and light sensitivity; evidence emphasizes sleep-timing and comfort outcomes more than comprehension. Target: mainly adults, with limited child-specific data.</li>
+            <li><code>BG2</code> Amber tint can reduce short-wavelength light exposure. Reading benefit is not universal and often depends on preference, display brightness, and ambient light. Target: adults and adolescents; dyslexia-specific effects unclear.</li>
+            <li><code>D1</code> Line length and zoom have moderate support for improving readability and reducing eye movement strain, but best ranges differ by acuity and task. Target: adults and older students; applies to dyslexia and non-dyslexia readers with individual tuning.</li>
+            <li><code>T1</code> Typeface changes show mixed objective effects; subjective ease and sustained use often improve when users choose their own font. Target: broad population, including dyslexia and non-dyslexia readers.</li>
+            <li><code>T2</code> Extra spacing can support decoding accuracy for some dyslexic readers and developing readers, but can disrupt word-shape recognition for others. Target: children with decoding challenges and some adults with dyslexia.</li>
+            <li><code>F1</code> Reading rulers and pointer guides can improve line tracking, especially for readers who lose place often. Benefit is variable and may drop with distraction sensitivity. Target: children learning fluency and adults with attentional load.</li>
+            <li><code>F2</code> Local contrast/shading can focus attention but may raise visual clutter if too strong. Use lighter settings first. Target: mixed populations; individualized comfort threshold.</li>
+            <li><code>F3</code> Chunked presentation can aid stepwise reading and metering, particularly for struggling readers, yet may constrain global comprehension for fluent readers. Target: children and adults with decoding needs.</li>
+            <li><code>F4</code> Peripheral dimming can reduce distraction for some users, while others rely on peripheral context cues. Target: mixed; preference-dependent across dyslexia and non-dyslexia readers.</li>
+            <li><code>A1</code> Auto pacing can lower regressions and improve rhythm for practice sessions, but comprehension can decline if speed is mismatched. Target: adults and adolescents; use with frequent comprehension checks.</li>
+          </ol>
+        </details>
       </div>
 
     </div><!-- end sidebar-scroll -->
