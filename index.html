@@ -2420,9 +2420,17 @@ function syncFlowWordRenderer() {
     return;
   }
   applyFlowWordMarkup(flowWordRendererToken, token);
-  const leftSegment = `${token.leading || ''}${token.prefix || ''}`;
-  const font = getFlowWordFontShorthand();
-  const offsetPx = Math.max(0, Math.round(measureFlowTextWidth(leftSegment, font) * 100) / 100);
+  let offsetPx = 0;
+  const orpNode = flowWordRendererToken.querySelector('.flow-speed-word-orp');
+  if (orpNode) {
+    const tokenRect = flowWordRendererToken.getBoundingClientRect();
+    const orpRect = orpNode.getBoundingClientRect();
+    offsetPx = Math.max(0, Math.round(((orpRect.left - tokenRect.left) + (orpRect.width / 2)) * 100) / 100);
+  } else {
+    const leftSegment = `${token.leading || ''}${token.prefix || ''}`;
+    const font = getFlowWordFontShorthand();
+    offsetPx = Math.max(0, Math.round(measureFlowTextWidth(leftSegment, font) * 100) / 100);
+  }
   flowWordRendererToken.style.setProperty('--flow-orp-offset', `${offsetPx}px`);
   flowWordRenderer.classList.add('on');
 }
