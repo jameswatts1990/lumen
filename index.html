@@ -1643,6 +1643,12 @@ function syncSidebarForViewport() {
 
 function initSidebarSectionToggles() {
   const sections = document.querySelectorAll('#sidebarPanel .sidebar-scroll > .sec');
+
+  const setSectionCollapsed = (section, toggleBtn, collapsed) => {
+    section.classList.toggle('is-collapsed', collapsed);
+    toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+  };
+
   sections.forEach((section, index) => {
     const label = section.querySelector(':scope > .sec-label');
     if (!label) return;
@@ -1673,8 +1679,16 @@ function initSidebarSectionToggles() {
     section.appendChild(contentWrap);
 
     toggleBtn.addEventListener('click', () => {
-      const collapsed = section.classList.toggle('is-collapsed');
-      toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+      const shouldExpand = section.classList.contains('is-collapsed');
+      if (shouldExpand) {
+        sections.forEach((otherSection) => {
+          if (otherSection === section) return;
+          const otherToggle = otherSection.querySelector(':scope > .sec-toggle');
+          if (!otherToggle) return;
+          setSectionCollapsed(otherSection, otherToggle, true);
+        });
+      }
+      setSectionCollapsed(section, toggleBtn, !shouldExpand);
     });
   });
 }
