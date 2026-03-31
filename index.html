@@ -344,32 +344,12 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .sci-mod { border-color: #9d8b6f; color: #d7b880; background: rgba(198, 148, 62, 0.12); }
 .sci-mixed { border-color: #786f9b; color: #b8afe4; background: rgba(127, 113, 186, 0.12); }
 .sci-pref { border-color: #4f7c84; color: #97cfd6; background: rgba(91, 145, 153, 0.12); }
-.evidence-notes {
+.evidence-list {
   margin: 6px 20px 10px;
+  padding: 10px 14px 10px 28px;
   border: 1px solid var(--control-border);
   border-radius: 8px;
   background: var(--control-bg);
-}
-.evidence-notes summary {
-  list-style: none;
-  cursor: pointer;
-  padding: 8px 10px;
-  font-size: 12px;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  color: #c7b59a;
-  font-family: 'DM Mono', monospace;
-}
-.evidence-notes summary::-webkit-details-marker { display: none; }
-.evidence-notes summary::after {
-  content: '▸';
-  float: right;
-  color: var(--text-muted);
-}
-.evidence-notes[open] summary::after { content: '▾'; }
-.evidence-list {
-  margin: 0;
-  padding: 0 14px 10px 28px;
   color: var(--text-secondary);
   font-size: 12.5px;
   line-height: 1.5;
@@ -1211,21 +1191,18 @@ body.low-interruption-active .chunk-indicator {
       <div class="sec is-collapsed">
         <div class="sec-label">Evidence Notes</div>
         <div class="sec-hint">Research notes behind the evidence labels used across controls.</div>
-        <details class="evidence-notes" open>
-          <summary>Show evidence index</summary>
-          <ol class="evidence-list">
-            <li><code>BG1</code> Background warmth/brightness is most relevant for evening use and light sensitivity; evidence emphasizes sleep-timing and comfort outcomes more than comprehension. Target: mainly adults, with limited child-specific data.</li>
-            <li><code>BG2</code> Amber tint can reduce short-wavelength light exposure. Reading benefit is not universal and often depends on preference, display brightness, and ambient light. Target: adults and adolescents; dyslexia-specific effects unclear.</li>
-            <li><code>D1</code> Line length and zoom have moderate support for improving readability and reducing eye movement strain, but best ranges differ by acuity and task. Target: adults and older students; applies to dyslexia and non-dyslexia readers with individual tuning.</li>
-            <li><code>T1</code> Typeface changes show mixed objective effects; subjective ease and sustained use often improve when users choose their own font. Target: broad population, including dyslexia and non-dyslexia readers.</li>
-            <li><code>T2</code> Extra spacing can support decoding accuracy for some dyslexic readers and developing readers, but can disrupt word-shape recognition for others. Target: children with decoding challenges and some adults with dyslexia.</li>
-            <li><code>F1</code> Reading rulers and pointer guides can improve line tracking, especially for readers who lose place often. Benefit is variable and may drop with distraction sensitivity. Target: children learning fluency and adults with attentional load.</li>
-            <li><code>F2</code> Local contrast/shading can focus attention but may raise visual clutter if too strong. Use lighter settings first. Target: mixed populations; individualized comfort threshold.</li>
-            <li><code>F3</code> Chunked presentation can aid stepwise reading and metering, particularly for struggling readers, yet may constrain global comprehension for fluent readers. Target: children and adults with decoding needs.</li>
-            <li><code>F4</code> Peripheral dimming can reduce distraction for some users, while others rely on peripheral context cues. Target: mixed; preference-dependent across dyslexia and non-dyslexia readers.</li>
-            <li><code>A1</code> Auto pacing can lower regressions and improve rhythm for practice sessions, but comprehension can decline if speed is mismatched. Target: adults and adolescents; use with frequent comprehension checks.</li>
-          </ol>
-        </details>
+        <ol class="evidence-list">
+          <li><code>BG1</code> Background warmth/brightness is most relevant for evening use and light sensitivity; evidence emphasizes sleep-timing and comfort outcomes more than comprehension. Target: mainly adults, with limited child-specific data.</li>
+          <li><code>BG2</code> Amber tint can reduce short-wavelength light exposure. Reading benefit is not universal and often depends on preference, display brightness, and ambient light. Target: adults and adolescents; dyslexia-specific effects unclear.</li>
+          <li><code>D1</code> Line length and zoom have moderate support for improving readability and reducing eye movement strain, but best ranges differ by acuity and task. Target: adults and older students; applies to dyslexia and non-dyslexia readers with individual tuning.</li>
+          <li><code>T1</code> Typeface changes show mixed objective effects; subjective ease and sustained use often improve when users choose their own font. Target: broad population, including dyslexia and non-dyslexia readers.</li>
+          <li><code>T2</code> Extra spacing can support decoding accuracy for some dyslexic readers and developing readers, but can disrupt word-shape recognition for others. Target: children with decoding challenges and some adults with dyslexia.</li>
+          <li><code>F1</code> Reading rulers and pointer guides can improve line tracking, especially for readers who lose place often. Benefit is variable and may drop with distraction sensitivity. Target: children learning fluency and adults with attentional load.</li>
+          <li><code>F2</code> Local contrast/shading can focus attention but may raise visual clutter if too strong. Use lighter settings first. Target: mixed populations; individualized comfort threshold.</li>
+          <li><code>F3</code> Chunked presentation can aid stepwise reading and metering, particularly for struggling readers, yet may constrain global comprehension for fluent readers. Target: children and adults with decoding needs.</li>
+          <li><code>F4</code> Peripheral dimming can reduce distraction for some users, while others rely on peripheral context cues. Target: mixed; preference-dependent across dyslexia and non-dyslexia readers.</li>
+          <li><code>A1</code> Auto pacing can lower regressions and improve rhythm for practice sessions, but comprehension can decline if speed is mismatched. Target: adults and adolescents; use with frequent comprehension checks.</li>
+        </ol>
       </div>
 
     </div><!-- end sidebar-scroll -->
