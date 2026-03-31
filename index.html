@@ -1590,6 +1590,13 @@ body.low-interruption-active .flow-speed-hud {
         <div class="scroll-ctl">
           <span class="scbtn-hint">Negative = reverse · Hover reader to pause</span>
         </div>
+        <div class="trow" style="padding-top: 2px;">
+          <div class="trow-info">
+            <div class="trow-lbl">Sentence Pause Boost</div>
+            <div class="trow-sub">Adds a slight delay after sentence-ending punctuation for readability tuning.</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="flowSentencePauseT"><span class="tog-tk"></span></label>
+        </div>
       </div>
 
       <!-- Evidence Notes -->
@@ -1810,6 +1817,7 @@ const DEFAULT_SETTINGS = {
   tint: 0,
   progressBar: true,
   autoScrollSpeed: 0.8,
+  flowSentencePauseBoost: false,
   chunkMode: false,
   chunkHeight: 2,
   flowAutoSplit: false,
@@ -1904,14 +1912,15 @@ let flowGestureActivateTimeoutId = null;
 let flowSpeedReadWordNodes = [];
 let flowSpeedReadTokens = [];
 let flowSpeedReadWordIndex = 0;
-let flowSpeedReadLastTs = 0;
-let flowSpeedReadCarryMs = 0;
 let flowSpeedReadRAF = null;
 let flowSpeedReadActiveWord = null;
 let flowSpeedReadIntervalUpdateTimer = null;
 let flowSpeedReadPlaybackWpm = FLOW_SPEED_READ_FALLBACK_WPM;
 let flowSpeedReadIntervalMs = 60000 / FLOW_SPEED_READ_FALLBACK_WPM;
+let flowSpeedReadNextWordAt = 0;
 const flowGestureEventListeners = new Map();
+const FLOW_SENTENCE_END_PUNCTUATION = /[.!?…]["'”’)\]]*$/;
+const FLOW_SENTENCE_PAUSE_MULTIPLIER = 1.22;
 
 const reader = document.getElementById('reader');
 const rInner = document.getElementById('rInner');
@@ -2036,7 +2045,20 @@ function getAutoScrollWpmValue() {
 function applyFlowSpeedReadTiming() {
   flowSpeedReadPlaybackWpm = getAutoScrollWpmValue();
   flowSpeedReadIntervalMs = 60000 / flowSpeedReadPlaybackWpm;
-  flowSpeedReadCarryMs = Math.min(flowSpeedReadCarryMs, flowSpeedReadIntervalMs * 0.95);
+}
+
+function isSentencePauseBoostEnabled() {
+  return Boolean(document.getElementById('flowSentencePauseT')?.checked);
+}
+
+function getFlowTokenDelayMs(index = flowSpeedReadWordIndex) {
+  const token = flowSpeedReadTokens[index];
+  if (!token) return flowSpeedReadIntervalMs;
+  if (!isSentencePauseBoostEnabled()) return flowSpeedReadIntervalMs;
+  if (FLOW_SENTENCE_END_PUNCTUATION.test(token.trailing || '')) {
+    return flowSpeedReadIntervalMs * FLOW_SENTENCE_PAUSE_MULTIPLIER;
+  }
+  return flowSpeedReadIntervalMs;
 }
 
 function queueFlowSpeedReadTimingSync() {
@@ -2044,6 +2066,9 @@ function queueFlowSpeedReadTimingSync() {
   flowSpeedReadIntervalUpdateTimer = setTimeout(() => {
     flowSpeedReadIntervalUpdateTimer = null;
     applyFlowSpeedReadTiming();
+    if (flowGestureState === FLOW_GESTURE_STATES.SPEED_READ_ACTIVE) {
+      flowSpeedReadNextWordAt = performance.now() + getFlowTokenDelayMs(flowSpeedReadWordIndex);
+    }
     if (flowSpeedHud.classList.contains('on') || flowSpeedHud.classList.contains('paused')) {
       flowHudWpm.textContent = String(flowSpeedReadPlaybackWpm);
     }
@@ -2205,8 +2230,7 @@ function stopFlowSpeedReadPlayback() {
   if (flowSpeedReadIntervalUpdateTimer) clearTimeout(flowSpeedReadIntervalUpdateTimer);
   flowSpeedReadIntervalUpdateTimer = null;
   flowSpeedReadRAF = null;
-  flowSpeedReadLastTs = 0;
-  flowSpeedReadCarryMs = 0;
+  flowSpeedReadNextWordAt = 0;
 }
 
 function startFlowSpeedReadPlayback() {
@@ -2216,14 +2240,11 @@ function startFlowSpeedReadPlayback() {
   if (!flowSpeedReadWordNodes.length) return;
   flowSpeedReadWordIndex = Math.max(0, Math.min(flowSpeedReadWordIndex, flowSpeedReadWordNodes.length - 1));
   syncFlowSpeedReadHighlight();
+  flowSpeedReadNextWordAt = performance.now() + getFlowTokenDelayMs(flowSpeedReadWordIndex);
   const tick = (ts) => {
     if (flowGestureState !== FLOW_GESTURE_STATES.SPEED_READ_ACTIVE) return;
-    if (!flowSpeedReadLastTs) flowSpeedReadLastTs = ts;
-    const dt = Math.min(80, ts - flowSpeedReadLastTs || 16);
-    flowSpeedReadLastTs = ts;
-    flowSpeedReadCarryMs += dt;
-    while (flowSpeedReadCarryMs >= flowSpeedReadIntervalMs) {
-      flowSpeedReadCarryMs -= flowSpeedReadIntervalMs;
+    if (!flowSpeedReadNextWordAt) flowSpeedReadNextWordAt = ts + getFlowTokenDelayMs(flowSpeedReadWordIndex);
+    while (ts >= flowSpeedReadNextWordAt) {
       if (flowSpeedReadWordIndex >= flowSpeedReadWordNodes.length - 1) {
         flowSpeedReadWordIndex = flowSpeedReadWordNodes.length - 1;
         syncFlowSpeedReadHighlight();
@@ -2235,6 +2256,7 @@ function startFlowSpeedReadPlayback() {
       flowSpeedReadWordIndex += 1;
       syncFlowSpeedReadHighlight();
       emitFlowGestureEvent('speed_read_word', { index: flowSpeedReadWordIndex });
+      flowSpeedReadNextWordAt += getFlowTokenDelayMs(flowSpeedReadWordIndex);
     }
     flowSpeedReadRAF = requestAnimationFrame(tick);
   };
@@ -2317,6 +2339,22 @@ function isFlowGestureEnabled() {
 window.flowGestureController = {
   subscribe: onFlowGestureEvent,
   getState: () => flowGestureState
+};
+window.flowSpeedPlaybackController = {
+  subscribe: onFlowGestureEvent,
+  getState: () => ({
+    tokenIndex: flowSpeedReadWordIndex,
+    tokenCount: flowSpeedReadWordNodes.length,
+    running: flowGestureState === FLOW_GESTURE_STATES.SPEED_READ_ACTIVE,
+    paused: flowGestureState === FLOW_GESTURE_STATES.PAUSED_ON_RELEASE,
+    wpm: flowSpeedReadPlaybackWpm,
+    intervalMs: flowSpeedReadIntervalMs
+  }),
+  pause: () => pauseFlowSpeedRead('controller_pause'),
+  resume: () => {
+    if (flowGestureState !== FLOW_GESTURE_STATES.PAUSED_ON_RELEASE) return;
+    activateFlowSpeedRead('controller_resume');
+  }
 };
 
 function syncSidebarCssVars() {
@@ -2536,6 +2574,7 @@ function captureSettings() {
     tint: Number(document.getElementById('tintR').value),
     progressBar: document.getElementById('progT').checked,
     autoScrollSpeed: Number(document.getElementById('scrollSR').value),
+    flowSentencePauseBoost: document.getElementById('flowSentencePauseT').checked,
     chunkMode: document.getElementById('chunkT').checked,
     chunkHeight: Number(document.getElementById('chunkR').value),
     flowAutoSplit: document.getElementById('flowSplitT').checked,
@@ -2594,6 +2633,9 @@ function applySettings(profile) {
   setRangeValue('tintR', settings.tint);
   updateTint();
   setRangeValue('scrollSR', settings.autoScrollSpeed);
+  if (settings.flowSentencePauseBoost !== undefined) {
+    document.getElementById('flowSentencePauseT').checked = Boolean(settings.flowSentencePauseBoost);
+  }
   setEmailThreadOrder(settings.emailThreadOrder, { rerender: true, persist: false });
 }
 
@@ -2635,7 +2677,7 @@ function registerSettingsPersistence() {
   const ids = [
     'widthR', 'briR', 'conR', 'gapR', 'fontSel', 'tsizeR', 'lhR', 'lsR', 'wsR',
     'rulerT', 'shadeT', 'focusT', 'focusR', 'focusDepthR', 'progT', 'tintR',
-    'scrollSR', 'chunkT', 'chunkR', 'flowSplitT', 'flowSplitLinesR', 'lowInterruptT', 'profileSel', 'emailOrderSel'
+    'scrollSR', 'flowSentencePauseT', 'chunkT', 'chunkR', 'flowSplitT', 'flowSplitLinesR', 'lowInterruptT', 'profileSel', 'emailOrderSel'
   ];
   ids.forEach(id => {
     const el = document.getElementById(id);
@@ -5185,6 +5227,18 @@ document.addEventListener('pointerup', e => {
   if (!isFlowGestureEnabled()) return;
   if (flowGestureActivePointerId === null) return;
   releaseFlowGestureHold(e.pointerId, 'document_pointer_up');
+});
+window.addEventListener('blur', () => {
+  if (!isFlowGestureEnabled()) return;
+  if (flowGestureState === FLOW_GESTURE_STATES.SPEED_READ_ACTIVE) {
+    releaseFlowGestureHold(flowGestureActivePointerId, 'window_blur');
+  }
+});
+document.addEventListener('visibilitychange', () => {
+  if (!isFlowGestureEnabled()) return;
+  if (document.visibilityState === 'hidden' && flowGestureState === FLOW_GESTURE_STATES.SPEED_READ_ACTIVE) {
+    releaseFlowGestureHold(flowGestureActivePointerId, 'visibility_hidden');
+  }
 });
 
 /* ── Keyboard shortcuts ── */
