@@ -198,6 +198,50 @@ body.sidebar-collapsed .sidebar-toggle .glyph-open { display: inline; }
 .sec { border-bottom: 1px solid var(--sidebar-border); padding: 10px 0; }
 .sec-label { padding: 0 20px 9px; font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; color: #b4a388; font-family: 'DM Mono', monospace; }
 .sec-hint { padding: 0 20px 7px; font-size: 12.5px; color: var(--text-muted); line-height: 1.55; }
+.sec-toggle {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 0;
+  cursor: pointer;
+}
+.sec-toggle .sec-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.sec-toggle .sec-label::after {
+  content: '▾';
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: transform 0.16s ease, color 0.16s ease;
+}
+.sec-toggle:hover .sec-label::after,
+.sec-toggle:focus-visible .sec-label::after {
+  color: var(--accent);
+}
+.sec-toggle:focus-visible {
+  outline: 1px solid var(--accent-mid);
+  outline-offset: -1px;
+}
+.sec.is-collapsed .sec-toggle .sec-label::after {
+  transform: rotate(-90deg);
+}
+.sec-content {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.2s ease, opacity 0.2s ease;
+}
+.sec-content > .sec-inner {
+  min-height: 0;
+}
+.sec.is-collapsed .sec-content {
+  grid-template-rows: 0fr;
+  opacity: 0.88;
+}
 
 /* Control rows */
 .ctrl { padding: 4px 20px; display: flex; align-items: center; gap: 10px; }
@@ -1196,6 +1240,43 @@ function syncSidebarForViewport() {
   } else {
     syncSidebarCssVars();
   }
+}
+
+function initSidebarSectionToggles() {
+  const sections = document.querySelectorAll('#sidebarPanel .sidebar-scroll > .sec');
+  sections.forEach((section, index) => {
+    const label = section.querySelector(':scope > .sec-label');
+    if (!label) return;
+    const sectionId = section.id || `sidebarSection${index + 1}`;
+    section.id = sectionId;
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    toggleBtn.className = 'sec-toggle';
+    toggleBtn.setAttribute('aria-expanded', 'true');
+    const contentId = `${sectionId}Content`;
+    toggleBtn.setAttribute('aria-controls', contentId);
+
+    label.parentNode.insertBefore(toggleBtn, label);
+    toggleBtn.appendChild(label);
+
+    const contentWrap = document.createElement('div');
+    contentWrap.className = 'sec-content';
+    contentWrap.id = contentId;
+
+    const contentInner = document.createElement('div');
+    contentInner.className = 'sec-inner';
+    while (toggleBtn.nextSibling) {
+      contentInner.appendChild(toggleBtn.nextSibling);
+    }
+    contentWrap.appendChild(contentInner);
+    section.appendChild(contentWrap);
+
+    toggleBtn.addEventListener('click', () => {
+      const collapsed = section.classList.toggle('is-collapsed');
+      toggleBtn.setAttribute('aria-expanded', String(!collapsed));
+    });
+  });
 }
 
 function getTotalPages() {
@@ -2601,6 +2682,7 @@ window.addEventListener('resize', () => {
   updateChunkOverlay();
 });
 syncSidebarForViewport();
+initSidebarSectionToggles();
 toggleProg();
 updateTint();
 updateFocusDepth(focusDepth);
