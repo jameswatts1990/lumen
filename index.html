@@ -566,6 +566,57 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .reader.drop-ready .empty-title { color: var(--accent); }
 .reader.drop-ready .empty-desc { color: #dcccb3; }
 .reader-inner { min-height: 100%; display: flex; flex-direction: column; align-items: center; padding: 40px 20px 54px; gap: 16px; }
+.reading-mode-dock {
+  position: fixed;
+  top: 14px;
+  left: var(--sidebar-offset);
+  right: 0;
+  z-index: 335;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.reading-mode-shell {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(200, 135, 74, 0.38);
+  background: rgba(22, 16, 10, 0.82);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(3px);
+  transform: scale(0.95);
+  opacity: 0.9;
+  transition: transform 0.18s ease, opacity 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+.reading-mode-shell:hover,
+.reading-mode-shell:focus-within {
+  transform: scale(1);
+  opacity: 1;
+  border-color: var(--accent-mid);
+  background: rgba(24, 18, 12, 0.95);
+}
+.reading-mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  font-family: 'DM Mono', monospace;
+  white-space: nowrap;
+}
+.reading-mode-chip strong {
+  color: #d9bea0;
+  font-size: 10.5px;
+  letter-spacing: 0.3px;
+  text-transform: none;
+  font-weight: 500;
+}
 
 /* Empty state */
 .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 70vh; gap: 16px; text-align: center; }
@@ -926,6 +977,45 @@ body.low-interruption-active .session-timer-overlay {
   line-height: 1.45;
 }
 .mode-note { padding: 2px 20px 7px; font-size: 11.5px; color: var(--text-muted); line-height: 1.45; }
+.reading-mode-dock .mode-seg {
+  width: auto;
+  grid-template-columns: repeat(3, minmax(0, auto));
+  gap: 4px;
+}
+.reading-mode-dock .mode-opt {
+  min-height: 28px;
+  min-width: 34px;
+  padding: 5px 7px;
+  font-size: 0;
+  border-radius: 999px;
+}
+.reading-mode-dock .mode-opt::before {
+  content: attr(data-mini);
+  font-size: 10px;
+  letter-spacing: 0.4px;
+}
+.reading-mode-dock .mode-opt-text {
+  font-size: 11px;
+  opacity: 0;
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: opacity 0.16s ease, max-width 0.16s ease;
+}
+.reading-mode-shell:hover .mode-opt,
+.reading-mode-shell:focus-within .mode-opt {
+  min-width: 68px;
+  font-size: 11px;
+}
+.reading-mode-shell:hover .mode-opt::before,
+.reading-mode-shell:focus-within .mode-opt::before {
+  display: none;
+}
+.reading-mode-shell:hover .mode-opt-text,
+.reading-mode-shell:focus-within .mode-opt-text {
+  opacity: 1;
+  max-width: 60px;
+}
 
 @media (max-width: 900px) {
   :root {
@@ -969,6 +1059,12 @@ body.low-interruption-active .session-timer-overlay {
   .nav-pop {
     left: 18px;
     width: min(340px, calc(100vw - 36px));
+  }
+  .reading-mode-dock {
+    left: 0;
+  }
+  .reading-mode-chip {
+    display: none;
   }
 }
 </style>
@@ -1041,30 +1137,6 @@ body.low-interruption-active .session-timer-overlay {
           </div>
         </div>
       </div>
-
-      <!-- Reading Mode -->
-      <div class="sec">
-        <div class="sec-label">Reading Mode</div>
-        <div class="sec-hint">Choose how text is presented for this document.</div>
-        <div class="ctrl" style="padding-top: 2px; align-items: flex-start;">
-          <span class="ctrl-lbl" style="padding-top: 7px;">Mode</span>
-          <div class="mode-seg" id="readingModeSeg" role="radiogroup" aria-label="Reading mode">
-            <label>
-              <input type="radio" name="readingMode" value="pdf" checked>
-              <span class="mode-opt">Original</span>
-            </label>
-            <label>
-              <input type="radio" name="readingMode" value="overlay">
-              <span class="mode-opt">Overlay</span>
-            </label>
-            <label>
-              <input type="radio" name="readingMode" value="flow">
-              <span class="mode-opt">Flow</span>
-            </label>
-          </div>
-        </div>
-      </div>
-
 
       <!-- Background Mode -->
       <div class="sec is-collapsed">
@@ -1303,6 +1375,25 @@ body.low-interruption-active .session-timer-overlay {
   <!-- ── Reader ── -->
   <main class="reader" id="reader">
     <div class="prog" id="progBar"><div class="prog-fill" id="progFill"></div></div>
+    <div class="reading-mode-dock">
+      <div class="reading-mode-shell">
+        <div class="reading-mode-chip">Mode <strong id="readingModeCurrent">Original</strong></div>
+        <div class="mode-seg" id="readingModeSeg" role="radiogroup" aria-label="Reading mode">
+          <label>
+            <input type="radio" name="readingMode" value="pdf" checked>
+            <span class="mode-opt" data-mini="OG"><span class="mode-opt-text">Original</span></span>
+          </label>
+          <label>
+            <input type="radio" name="readingMode" value="overlay">
+            <span class="mode-opt" data-mini="OV"><span class="mode-opt-text">Overlay</span></span>
+          </label>
+          <label>
+            <input type="radio" name="readingMode" value="flow">
+            <span class="mode-opt" data-mini="FL"><span class="mode-opt-text">Flow</span></span>
+          </label>
+        </div>
+      </div>
+    </div>
     <div class="reader-inner" id="rInner">
       <article id="flowLayer" class="flow-layer" aria-live="polite"></article>
       <div class="empty">
@@ -2673,6 +2764,9 @@ function setReadingMode(mode) {
   document.querySelectorAll('input[name="readingMode"]').forEach(input => {
     input.checked = input.value === normalized;
   });
+  const modeTextMap = { pdf: 'Original', overlay: 'Overlay', flow: 'Flow' };
+  const currentModeLabel = document.getElementById('readingModeCurrent');
+  if (currentModeLabel) currentModeLabel.textContent = modeTextMap[normalized] || 'Original';
   syncReadingModeControls();
   toggleRuler();
   toggleChunkMode();
