@@ -1332,16 +1332,21 @@ body.low-interruption-active .session-timer-overlay {
         </div>
 
         <div class="ctrl ctrl-group chunk-group">
-          <span class="ctrl-lbl">Chunk Height</span>
+          <span class="ctrl-lbl">Chunk Length</span>
           <input type="range" id="chunkR" min="1" max="5" value="2" step="1">
           <span class="ctrl-val" id="chunkV">2 lines</span>
         </div>
         <div class="trow ctrl-group flow-only-group">
           <div class="trow-info">
             <div class="trow-lbl">Auto-split Long Paragraphs</div>
-            <div class="trow-sub">Flow mode only: breaks long paragraphs into sentence groups sized by chunk height.</div>
+            <div class="trow-sub">Flow mode only: break long paragraphs into smaller sentence groups.</div>
           </div>
           <label class="tog"><input type="checkbox" id="flowSplitT" onchange="toggleFlowAutoSplit()"><span class="tog-tk"></span></label>
+        </div>
+        <div class="ctrl ctrl-group flow-only-group" id="flowSplitSizeRow">
+          <span class="ctrl-lbl">Split Length</span>
+          <input type="range" id="flowSplitLinesR" min="1" max="5" value="2" step="1">
+          <span class="ctrl-val" id="flowSplitLinesV">2 lines</span>
         </div>
         <div class="chunk-step ctrl-group chunk-group">
           <button class="scbtn" id="chunkUpBtn" type="button" title="Move chunk up (K)" aria-label="Move chunk up">↑</button>
@@ -1614,7 +1619,8 @@ const DEFAULT_SETTINGS = {
   autoScrollSpeed: 0.8,
   chunkMode: false,
   chunkHeight: 2,
-  flowAutoSplit: false
+  flowAutoSplit: false,
+  flowSplitLines: 2
 };
 const BUILTIN_PROFILES = [
   {
@@ -1903,6 +1909,7 @@ function captureSettings() {
     chunkMode: document.getElementById('chunkT').checked,
     chunkHeight: Number(document.getElementById('chunkR').value),
     flowAutoSplit: document.getElementById('flowSplitT').checked,
+    flowSplitLines: Number(document.getElementById('flowSplitLinesR').value),
   };
 }
 
@@ -1945,6 +1952,7 @@ function applySettings(profile) {
   if (settings.chunkMode !== undefined) document.getElementById('chunkT').checked = Boolean(settings.chunkMode);
   if (settings.flowAutoSplit !== undefined) document.getElementById('flowSplitT').checked = Boolean(settings.flowAutoSplit);
   setRangeValue('chunkR', settings.chunkHeight);
+  setRangeValue('flowSplitLinesR', settings.flowSplitLines ?? settings.chunkHeight);
   toggleRuler();
   if (settings.focusMode !== undefined) document.getElementById('focusT').checked = Boolean(settings.focusMode);
   toggleFocus();
@@ -1995,7 +2003,7 @@ function registerSettingsPersistence() {
   const ids = [
     'widthR', 'briR', 'conR', 'gapR', 'fontSel', 'tsizeR', 'lhR', 'lsR', 'wsR',
     'rulerT', 'shadeT', 'focusT', 'focusR', 'focusDepthR', 'progT', 'tintR',
-    'scrollSR', 'chunkT', 'chunkR', 'flowSplitT', 'lowInterruptT', 'profileSel'
+    'scrollSR', 'chunkT', 'chunkR', 'flowSplitT', 'flowSplitLinesR', 'lowInterruptT', 'profileSel'
   ];
   ids.forEach(id => {
     const el = document.getElementById(id);
@@ -2953,13 +2961,14 @@ function splitIntoSentences(text) {
 function expandParagraphBlockForFlowSplit(block) {
   if (!block || block.type !== 'paragraph' || !(flowAutoSplitOn() || chunkModeOn())) return [block];
   const chunkSentenceCount = Math.max(1, Number(document.getElementById('chunkR').value) || 1);
+  const splitSentenceCount = flowAutoSplitOn() ? getFlowSplitLineCount() : chunkSentenceCount;
   const sentences = splitIntoSentences(block.text);
-  if (sentences.length <= chunkSentenceCount) return [block];
+  if (sentences.length <= splitSentenceCount) return [block];
   const grouped = [];
-  for (let i = 0; i < sentences.length; i += chunkSentenceCount) {
+  for (let i = 0; i < sentences.length; i += splitSentenceCount) {
     grouped.push({
       type: 'paragraph',
-      text: sentences.slice(i, i + chunkSentenceCount).join(' '),
+      text: sentences.slice(i, i + splitSentenceCount).join(' '),
       splitFromLongParagraph: true
     });
   }
@@ -3420,6 +3429,11 @@ function syncReadingModeControls() {
   });
   const flowSplitToggle = document.getElementById('flowSplitT');
   if (flowSplitToggle) flowSplitToggle.disabled = !isFlow;
+  const flowSplitLines = document.getElementById('flowSplitLinesR');
+  if (flowSplitLines) flowSplitLines.disabled = !isFlow || !flowAutoSplitOn();
+  const flowSplitSizeRow = document.getElementById('flowSplitSizeRow');
+  if (flowSplitSizeRow) flowSplitSizeRow.classList.toggle('collapsed', !isFlow || !flowAutoSplitOn());
+  document.getElementById('chunkV').textContent = chunkLengthLabel(Number(document.getElementById('chunkR').value));
   setChunkButtonState();
   const focusModeHint = document.getElementById('focusModeHint');
   if (focusModeHint) focusModeHint.hidden = !isFlow;
@@ -3788,6 +3802,12 @@ function wire(id, valId, suffix, fmt, cb) {
   update();
 }
 
+function chunkLengthLabel(value) {
+  const rounded = Math.round(value);
+  const unit = readingMode === 'flow' ? 'sentence' : 'line';
+  return `${rounded} ${unit}${rounded === 1 ? '' : 's'}`;
+}
+
 wire('widthR',  'widthV', '%', null, v => { maxW = Math.round(BASE_PAGE_WIDTH * (v / 100)); applyMaxWidth(); });
 wire('briR',    'briV',   '%', null, () => applyFilters());
 wire('conR',    'conV',   '%', null, () => applyFilters());
@@ -3799,12 +3819,17 @@ wire('wsR',     'wsV',    'px', v => v.toFixed(1)+'px', () => applyReadingMode()
 wire('scrollSR','scrollSV','', v => `${v.toFixed(1)}x`, v => { scrollSpeed = v; });
 wire('focusR',  'focusV', '%', null, v => updateFocusVignette(v));
 wire('focusDepthR', 'focusDepthV', 'px', null, v => updateFocusDepth(v));
-wire('chunkR', 'chunkV', ' lines', v => `${Math.round(v)} line${Math.round(v) === 1 ? '' : 's'}`, () => {
+wire('chunkR', 'chunkV', ' lines', v => chunkLengthLabel(v), () => {
   updateChunkOverlay();
   if (readingMode === 'flow' && (flowAutoSplitOn() || chunkModeOn())) {
     refreshFlowRenderForChunking();
   } else {
     updateFlowHighlight();
+  }
+});
+wire('flowSplitLinesR', 'flowSplitLinesV', ' lines', v => `${Math.round(v)} line${Math.round(v) === 1 ? '' : 's'}`, () => {
+  if (readingMode === 'flow' && (flowAutoSplitOn() || chunkModeOn())) {
+    refreshFlowRenderForChunking();
   }
 });
 
@@ -3825,6 +3850,10 @@ function chunkModeOn() {
 function flowAutoSplitOn() {
   const toggle = document.getElementById('flowSplitT');
   return Boolean(toggle?.checked);
+}
+
+function getFlowSplitLineCount() {
+  return Math.max(1, Number(document.getElementById('flowSplitLinesR')?.value) || 1);
 }
 
 function parseCssColor(value, alphaFallback = 0.14) {
@@ -3887,6 +3916,7 @@ async function refreshFlowRenderForChunking() {
 }
 
 async function toggleFlowAutoSplit() {
+  syncReadingModeControls();
   await refreshFlowRenderForChunking();
   saveProfilesState();
 }
