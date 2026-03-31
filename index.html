@@ -787,6 +787,14 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   line-height: inherit;
   text-wrap: pretty;
 }
+.flow-artifact-debug {
+  margin: 0.1em 0 0.55em;
+  padding: 0.2em 0.55em;
+  border-left: 2px dashed rgba(210, 126, 126, 0.7);
+  color: rgba(244, 204, 204, 0.84);
+  font-size: 0.86em;
+  opacity: 0.82;
+}
 .flow-highlightable {
   border-radius: 8px;
   transition: background-color 0.16s ease, box-shadow 0.16s ease, outline-color 0.16s ease, opacity 0.16s ease;
@@ -1925,7 +1933,8 @@ let readingMode = 'pdf';
 let flowDocCache = null;
 let textDoc = null;
 const FLOW_PARSE_FEATURE_FLAGS = {
-  columnAwareLineOrdering: true
+  columnAwareLineOrdering: true,
+  showRemovedArtifactsInDebug: false
 };
 let emailThreadModel = null;
 let emailThreadOrder = 'newest-first';
@@ -2748,6 +2757,13 @@ window.flowSpeedPlaybackController = {
     if (flowGestureState !== FLOW_GESTURE_STATES.PAUSED_ON_RELEASE) return;
     activateFlowSpeedRead('controller_resume');
   }
+};
+window.flowParserSettings = {
+  get: () => ({
+    showRemovedArtifactsInDebug: isFlowArtifactDebugEnabled(),
+    columnAwareLineOrdering: isColumnAwareLineOrderingEnabled()
+  }),
+  setShowRemovedArtifactsInDebug: enabled => setFlowArtifactDebugEnabled(Boolean(enabled))
 };
 
 function syncSidebarCssVars() {
@@ -4132,6 +4148,10 @@ function buildFlowBlocks(textSegments, pageStats = {}) {
   });
 
   sourceLines.forEach((line, idx) => {
+    if (line?.artifactRemoved) {
+      blocks.push({ type: 'artifact-debug', text: normalizeFlowSentence(line.text), reason: line.artifactReason || '' });
+      return;
+    }
     const text = normalizeFlowSentence(line.text);
     if (!text) return;
     const lineObj = { ...line, text };
@@ -4192,6 +4212,15 @@ function renderFlowBlocks(blocks, pageNum) {
   blocks.forEach(originalBlock => {
     const subBlocks = expandParagraphBlockForFlowSplit(originalBlock);
     subBlocks.forEach(block => {
+    if (block.type === 'artifact-debug') {
+      closeList();
+      const artifact = document.createElement('div');
+      artifact.className = 'flow-artifact-debug';
+      artifact.dataset.page = String(pageNum);
+      artifact.textContent = `Filtered artifact: ${block.text}`;
+      flowLayer.appendChild(artifact);
+      return;
+    }
     if (block.type === 'list-item') {
       if (!listEl) {
         listEl = document.createElement('ul');
@@ -4856,6 +4885,62 @@ function isColumnAwareLineOrderingEnabled() {
   return FLOW_PARSE_FEATURE_FLAGS.columnAwareLineOrdering !== false;
 }
 
+function isFlowArtifactDebugEnabled() {
+  if (typeof window.__LUMEN_FLOW_DEBUG_ARTIFACTS__ === 'boolean') {
+    return window.__LUMEN_FLOW_DEBUG_ARTIFACTS__;
+  }
+  const storedPref = localStorage.getItem('lumen.flow.debug-artifacts');
+  if (storedPref === 'true' || storedPref === 'on') return true;
+  if (storedPref === 'false' || storedPref === 'off') return false;
+  return FLOW_PARSE_FEATURE_FLAGS.showRemovedArtifactsInDebug === true;
+}
+
+function setFlowArtifactDebugEnabled(enabled) {
+  localStorage.setItem('lumen.flow.debug-artifacts', enabled ? 'true' : 'false');
+  flowDocCache = null;
+  if (readingMode === 'flow' && pdf) {
+    renderFlowDocument().catch(err => console.warn('Unable to refresh flow artifact debug view:', err));
+  }
+}
+
+function normalizeFlowArtifactKey(text) {
+  return normalizeFlowSentence(text)
+    .toLowerCase()
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isLowSemanticDensityLine(text) {
+  const normalized = normalizeFlowArtifactKey(text);
+  if (!normalized) return false;
+  if (/^(page\s*)?\d+\s*(of|\/)\s*\d+$/i.test(normalized)) return true;
+  if (/^page\s+\d+[a-z]?$/.test(normalized)) return true;
+  if (/^(confidential|draft|copyright|all rights reserved|do not distribute|for internal use only|privileged and confidential)\b/.test(normalized)) return true;
+  if (/^\d{1,3}$/.test(normalized)) return true;
+  const words = normalized.split(/\s+/);
+  const alphaChars = (normalized.match(/[a-z]/g) || []).length;
+  if (words.length <= 5 && alphaChars < 18) return true;
+  return false;
+}
+
+function shouldPreserveRepeatedHeading(line, neighbors, pageStats) {
+  if (!line || !line.text) return false;
+  const heading = scoreHeadingCandidate(line, neighbors, pageStats);
+  if (heading.kind !== 'h2' && heading.kind !== 'h3') return false;
+  const normalized = normalizeFlowArtifactKey(line.text);
+  if (/^(page\s*)?\d+(\s*(of|\/)\s*\d+)?$/.test(normalized)) return false;
+  const hasStrongStyle = (Number(line.relativeFontSize) || 1) >= 1.12 || (Number(line.centerednessScore) || 0) >= 0.58;
+  const prev = neighbors?.prev;
+  const next = neighbors?.next;
+  const contextualSupport = Boolean(
+    (prev && !isLowSemanticDensityLine(prev.text)) ||
+    (next && !isLowSemanticDensityLine(next.text))
+  );
+  return hasStrongStyle && contextualSupport;
+}
+
 function clusterLinesByRegion(lines, pageWidth) {
   if (!lines.length) return { orderedLines: [], layoutConfidence: 0, usedFallback: true, clusters: [] };
 
@@ -4922,6 +5007,8 @@ async function extractFlowDocument() {
   if (flowDocCache) return flowDocCache;
 
   const pages = [];
+  const artifactLineStats = new Map();
+  const pageModels = [];
   for (let n = 1; n <= pdf.numPages; n++) {
     const page = await pdf.getPage(n);
     const viewport = page.getViewport({ scale: 1 });
@@ -5002,14 +5089,68 @@ async function extractFlowDocument() {
       };
     });
 
+    pageModels.push({
+      pageNum: n,
+      pageHeight,
+      orderedLines,
+      enrichedLines,
+      pageStats,
+      layoutModel,
+      shouldUseColumnAwareLayout
+    });
+  }
+
+  pageModels.forEach(pageModel => {
+    const pageSeen = new Set();
+    pageModel.enrichedLines.forEach(line => {
+      const key = normalizeFlowArtifactKey(line.text);
+      if (!key) return;
+      if (!artifactLineStats.has(key)) {
+        artifactLineStats.set(key, { pages: new Set(), topHits: 0, bottomHits: 0 });
+      }
+      const stat = artifactLineStats.get(key);
+      if (pageSeen.has(key)) return;
+      pageSeen.add(key);
+      stat.pages.add(pageModel.pageNum);
+      const yRatio = pageModel.pageHeight ? (line.y / pageModel.pageHeight) : 0.5;
+      if (yRatio <= 0.16) stat.topHits += 1;
+      if (yRatio >= 0.84) stat.bottomHits += 1;
+    });
+  });
+
+  const debugArtifactLines = isFlowArtifactDebugEnabled();
+  pageModels.forEach(pageModel => {
+    const artifactAnnotatedLines = pageModel.enrichedLines.map((line, idx) => {
+      const key = normalizeFlowArtifactKey(line.text);
+      const stat = key ? artifactLineStats.get(key) : null;
+      const pageCount = stat?.pages?.size || 0;
+      const topShare = pageCount ? stat.topHits / pageCount : 0;
+      const bottomShare = pageCount ? stat.bottomHits / pageCount : 0;
+      const repeatedAcrossPages = pageCount >= 3 && (pageCount / Math.max(1, pdf.numPages)) >= 0.32;
+      const consistentBand = Math.max(topShare, bottomShare) >= 0.78;
+      const lowSemanticDensity = isLowSemanticDensityLine(line.text);
+      const neighbors = {
+        prev: idx > 0 ? pageModel.enrichedLines[idx - 1] : null,
+        next: idx < pageModel.enrichedLines.length - 1 ? pageModel.enrichedLines[idx + 1] : null
+      };
+      const preserveHeading = shouldPreserveRepeatedHeading(line, neighbors, pageModel.pageStats);
+      const shouldRemove = repeatedAcrossPages && consistentBand && lowSemanticDensity && !preserveHeading;
+      return {
+        ...line,
+        artifactRemoved: shouldRemove,
+        artifactReason: shouldRemove ? 'repeated_top_bottom_boilerplate' : null
+      };
+    });
+
+    const contentLines = artifactAnnotatedLines.filter(line => !line.artifactRemoved);
     const paragraphs = [];
     let paraBuffer = [];
     let lastY = null;
     let baselineGap = 0;
 
-    enrichedLines.forEach((line, idx) => {
+    contentLines.forEach((line, idx) => {
       if (idx > 0) {
-        const diff = line.y - enrichedLines[idx - 1].y;
+        const diff = line.y - contentLines[idx - 1].y;
         baselineGap = baselineGap ? (baselineGap * 0.7 + diff * 0.3) : diff;
       }
       const dynamicBreak = baselineGap ? Math.max(10, baselineGap * 1.7) : 22;
@@ -5022,17 +5163,18 @@ async function extractFlowDocument() {
     });
     if (paraBuffer.length) paragraphs.push(paraBuffer.join(' ').trim());
     pages.push({
-      pageNum: n,
+      pageNum: pageModel.pageNum,
       paragraphs,
-      lines: enrichedLines,
-      pageStats,
-      layoutConfidence: Number(layoutModel.layoutConfidence.toFixed(3)),
-      lineCount: enrichedLines.length,
-      clusterCount: layoutModel.clusters.length,
-      usedLegacyOrdering: !shouldUseColumnAwareLayout,
-      usedSingleColumnFallback: layoutModel.usedFallback
+      lines: debugArtifactLines ? artifactAnnotatedLines : contentLines,
+      pageStats: pageModel.pageStats,
+      layoutConfidence: Number(pageModel.layoutModel.layoutConfidence.toFixed(3)),
+      lineCount: contentLines.length,
+      artifactLineCount: artifactAnnotatedLines.length - contentLines.length,
+      clusterCount: pageModel.layoutModel.clusters.length,
+      usedLegacyOrdering: !pageModel.shouldUseColumnAwareLayout,
+      usedSingleColumnFallback: pageModel.layoutModel.usedFallback
     });
-  }
+  });
 
   flowDocCache = { pages };
   return flowDocCache;
