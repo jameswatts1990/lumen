@@ -625,6 +625,29 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .empty-desc { font-size: 12px; max-width: 280px; line-height: 1.8; color: var(--text-muted); }
 .empty-tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
 .etag { padding: 3px 10px; border: 1px solid var(--control-border); border-radius: 20px; font-size: 9.5px; color: var(--text-muted); font-family: 'DM Mono', monospace; }
+.reader-notice {
+  max-width: 620px;
+  width: min(100%, 620px);
+  padding: 18px 20px;
+  border: 1px solid var(--control-border);
+  border-radius: 12px;
+  background: rgba(35, 27, 18, 0.55);
+  color: var(--text-muted);
+  font-family: 'DM Mono', monospace;
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+.reader-notice strong {
+  display: block;
+  margin-bottom: 6px;
+  color: #d7c2a7;
+  font-size: 12px;
+}
+.reader-notice ul {
+  margin: 8px 0 0;
+  padding-left: 16px;
+}
+.reader-notice li + li { margin-top: 5px; }
 
 /* Pages */
 .page-wrap { position: relative; border-radius: 3px; overflow: hidden; box-shadow: 0 8px 48px rgba(0,0,0,0.6); transition: width 0.2s; }
@@ -2266,7 +2289,7 @@ upZone.addEventListener('dragleave', () => upZone.classList.remove('drag'));
 upZone.addEventListener('drop', e => {
   e.preventDefault(); upZone.classList.remove('drag');
   const f = e.dataTransfer.files[0];
-  if (isSupportedFile(f)) loadSourceFile(f);
+  if (isSupportedFile(f) || isAmbiguousDropEmailCandidate(f)) loadSourceFile(f);
 });
 
 ['dragenter', 'dragover'].forEach(evt => {
@@ -2286,7 +2309,7 @@ reader.addEventListener('drop', e => {
   e.preventDefault();
   reader.classList.remove('drop-ready');
   const f = e.dataTransfer?.files?.[0];
-  if (isSupportedFile(f)) loadSourceFile(f);
+  if (isSupportedFile(f) || isAmbiguousDropEmailCandidate(f)) loadSourceFile(f);
 });
 
 window.addEventListener('dragover', e => {
@@ -2306,13 +2329,53 @@ function isTextLikeFile(file) {
   if (!file) return false;
   const name = (file.name || '').toLowerCase();
   const extMatch = /\.(txt|md|markdown|html|htm|json|eml|msg)$/.test(name);
+  const emailNameHint = /(outlook|message|mail|mime|forwarded|attached message)/i.test(name);
   const mime = (file.type || '').toLowerCase();
   const emailMimeMatch = mime === 'message/rfc822';
-  return extMatch || emailMimeMatch || mime.startsWith('text/') || mime === 'application/json';
+  const ambiguousMime = !mime || mime === 'application/octet-stream' || mime === 'application/x-msdownload';
+  const plausibleEmailBlob = ambiguousMime && emailNameHint && (Number(file.size) || 0) > 0;
+  return extMatch || emailMimeMatch || mime.startsWith('text/') || mime === 'application/json' || plausibleEmailBlob;
 }
 
 function isSupportedFile(file) {
   return isPdfFile(file) || isTextLikeFile(file);
+}
+
+function isAmbiguousDropEmailCandidate(file) {
+  if (!file) return false;
+  const mime = (file.type || '').toLowerCase();
+  if (mime && mime !== 'application/octet-stream' && mime !== 'application/x-msdownload') return false;
+  const name = (file.name || '').toLowerCase().trim();
+  const size = Number(file.size) || 0;
+  if (!name || size <= 0) return false;
+  const hasMailHint = /(mail|message|outlook|forwarded|attached)/i.test(name);
+  const hasKnownExt = /\.(eml|msg|txt|md|markdown|html|htm|json)$/.test(name);
+  return hasMailHint || hasKnownExt;
+}
+
+function looksLikeUnreadableOutlookBlob(file, rawText) {
+  const name = (file?.name || '').toLowerCase();
+  const mime = (file?.type || '').toLowerCase();
+  const isOutlookLike = name.endsWith('.msg')
+    || mime.includes('vnd.ms-outlook')
+    || (mime === 'application/octet-stream' && /(outlook|message|mail)/i.test(name));
+  if (!isOutlookLike) return false;
+
+  const sample = String(rawText || '').slice(0, 1800);
+  if (!sample.trim()) return true;
+  const replacementChars = (sample.match(/\uFFFD/g) || []).length;
+  const nullChars = (sample.match(/\u0000/g) || []).length;
+  const weirdChars = (sample.match(/[^\x09\x0A\x0D\x20-\x7E]/g) || []).length;
+  const ratio = sample.length ? weirdChars / sample.length : 1;
+  return replacementChars > 8 || nullChars > 4 || ratio > 0.28;
+}
+
+function renderReaderNotice(html) {
+  reader.classList.remove('drop-ready');
+  flowLayer.classList.remove('on');
+  flowLayer.innerHTML = '';
+  rInner.classList.remove('flow-mode');
+  rInner.innerHTML = `<div class="reader-notice">${html}</div>`;
 }
 
 function stripToPlainText(rawText, sourceName = '') {
@@ -2796,11 +2859,22 @@ async function loadSourceFile(file) {
     return loadEmailFile(file);
   }
   if (!isTextLikeFile(file)) {
-    rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Unsupported file type. Try PDF, TXT, Markdown, HTML, JSON, or email files (.eml/.msg).</div>';
+    renderReaderNotice('Unsupported file type. Try PDF, TXT, Markdown, HTML, JSON, or email files (.eml/.msg).');
     return;
   }
 
   const raw = await file.text();
+  if (looksLikeUnreadableOutlookBlob(file, raw)) {
+    renderReaderNotice(`
+      <strong>This Outlook drop looks like a proprietary message blob.</strong>
+      We couldn’t reliably read this format in-browser. <strong>.eml</strong> is preferred for full thread parsing.
+      <ul>
+        <li>In Outlook, open the message and save/export it as <strong>.eml</strong>, then upload that file.</li>
+        <li>Or copy/paste the email body into a <strong>.txt</strong> file and upload it as a fallback.</li>
+      </ul>
+    `);
+    return;
+  }
   const plainText = stripToPlainText(raw, file.name);
   setCurrentDocumentMeta({
     id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
