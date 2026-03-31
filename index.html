@@ -4140,6 +4140,118 @@ function splitFlowCompositeLine(line) {
   return segments;
 }
 
+function normalizeParagraphText(text) {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/([(\[{])\s+/g, '$1')
+    .replace(/\s+([)\]}])/g, '$1')
+    .replace(/\s+(['’”])/g, '$1')
+    .replace(/(['‘“])\s+/g, '$1')
+    .replace(/([.!?]){2,}/g, '$1')
+    .trim();
+}
+
+function lineHasTerminalPunctuation(text) {
+  return /[.!?;:]["'’”)\]]*$/.test(normalizeFlowSentence(text));
+}
+
+function startsWithLowercase(text) {
+  return /^[a-z]/.test(normalizeFlowSentence(text));
+}
+
+function endsWithHyphenatedWord(text) {
+  return /[A-Za-z]-$/.test(normalizeFlowSentence(text));
+}
+
+function isStrongBreakLine(line, nextLine = null, pageStats = {}) {
+  if (!line || !line.text) return false;
+  const text = normalizeFlowSentence(line.text);
+  if (!text) return false;
+  if (detectFlowListItem(text)) return true;
+  if (detectFlowHeading(text)) return true;
+  if (text.length <= 90 && /:$/.test(text)) return true;
+  const headingScore = scoreHeadingCandidate(line, { prev: null, next: nextLine }, pageStats);
+  return headingScore.kind !== 'paragraph' && headingScore.score >= 2.9;
+}
+
+function reconstructFlowParagraphs(contentLines, pageStats = {}) {
+  const paragraphs = [];
+  let paraBuffer = [];
+  let lastY = null;
+  let baselineGap = 0;
+
+  const flush = () => {
+    if (!paraBuffer.length) return;
+    paragraphs.push(normalizeParagraphText(paraBuffer.join(' ')));
+    paraBuffer = [];
+  };
+
+  contentLines.forEach((line, idx) => {
+    const prevLine = idx > 0 ? contentLines[idx - 1] : null;
+    if (prevLine) {
+      const diff = line.y - prevLine.y;
+      baselineGap = baselineGap ? (baselineGap * 0.7 + diff * 0.3) : diff;
+    }
+    const dynamicBreak = baselineGap ? Math.max(10, baselineGap * 1.7) : 22;
+    const prevText = prevLine?.text || '';
+    const nextStartsLower = startsWithLowercase(line.text);
+    const hyphenContinuation = endsWithHyphenatedWord(prevText) && nextStartsLower;
+    const lowercaseContinuation = !lineHasTerminalPunctuation(prevText) && nextStartsLower;
+    const strongHardBreak = prevLine && isStrongBreakLine(prevLine, line, pageStats);
+    const gapBreak = lastY !== null && (line.y - lastY) > dynamicBreak;
+
+    if (idx > 0 && (gapBreak || (strongHardBreak && !hyphenContinuation && !lowercaseContinuation))) {
+      flush();
+    }
+
+    if (hyphenContinuation && paraBuffer.length) {
+      const previousText = paraBuffer.pop();
+      paraBuffer.push(previousText.replace(/-\s*$/, '') + normalizeFlowSentence(line.text));
+    } else {
+      paraBuffer.push(normalizeFlowSentence(line.text));
+    }
+    lastY = line.y;
+  });
+  flush();
+  return paragraphs.filter(Boolean);
+}
+
+const FLOW_PARAGRAPH_FIXTURES = [
+  {
+    name: 'hyphenation_join_lowercase',
+    lines: [{ text: 'The coordi-' }, { text: 'nation improved outcomes.' }],
+    expected: ['The coordination improved outcomes.']
+  },
+  {
+    name: 'continuation_lowercase_without_terminal_punctuation',
+    lines: [{ text: 'This is a wrapped line' }, { text: 'continuing the same paragraph.' }],
+    expected: ['This is a wrapped line continuing the same paragraph.']
+  },
+  {
+    name: 'hard_break_after_heading',
+    lines: [{ text: 'Introduction:' }, { text: 'this section explains context.' }],
+    expected: ['Introduction:', 'this section explains context.']
+  }
+];
+
+function runFlowParagraphFixtureChecks() {
+  return FLOW_PARAGRAPH_FIXTURES.map(fixture => {
+    const result = reconstructFlowParagraphs(
+      fixture.lines.map((line, index) => ({ ...line, y: index * 12 })),
+      {}
+    );
+    return {
+      name: fixture.name,
+      pass: JSON.stringify(result) === JSON.stringify(fixture.expected),
+      expected: fixture.expected,
+      got: result
+    };
+  });
+}
+
+let flowParagraphFixtureValidationDone = false;
+
 function buildFlowBlocks(textSegments, pageStats = {}) {
   const blocks = [];
   const sourceLines = [];
@@ -5131,6 +5243,14 @@ async function extractFlowDocument() {
   });
 
   const debugArtifactLines = isFlowArtifactDebugEnabled();
+  if (!flowParagraphFixtureValidationDone) {
+    flowParagraphFixtureValidationDone = true;
+    const fixtureResults = runFlowParagraphFixtureChecks();
+    const failed = fixtureResults.filter(result => !result.pass);
+    if (failed.length) {
+      console.warn('Flow paragraph reconstruction fixtures failed', failed);
+    }
+  }
   pageModels.forEach(pageModel => {
     const artifactAnnotatedLines = pageModel.enrichedLines.map((line, idx) => {
       const key = normalizeFlowArtifactKey(line.text);
@@ -5155,25 +5275,7 @@ async function extractFlowDocument() {
     });
 
     const contentLines = artifactAnnotatedLines.filter(line => !line.artifactRemoved);
-    const paragraphs = [];
-    let paraBuffer = [];
-    let lastY = null;
-    let baselineGap = 0;
-
-    contentLines.forEach((line, idx) => {
-      if (idx > 0) {
-        const diff = line.y - contentLines[idx - 1].y;
-        baselineGap = baselineGap ? (baselineGap * 0.7 + diff * 0.3) : diff;
-      }
-      const dynamicBreak = baselineGap ? Math.max(10, baselineGap * 1.7) : 22;
-      if (lastY !== null && (line.y - lastY) > dynamicBreak && paraBuffer.length) {
-        paragraphs.push(paraBuffer.join(' ').trim());
-        paraBuffer = [];
-      }
-      paraBuffer.push(line.text);
-      lastY = line.y;
-    });
-    if (paraBuffer.length) paragraphs.push(paraBuffer.join(' ').trim());
+    const paragraphs = reconstructFlowParagraphs(contentLines, pageModel.pageStats);
     pages.push({
       pageNum: pageModel.pageNum,
       paragraphs,
