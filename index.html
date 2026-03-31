@@ -3104,10 +3104,23 @@ async function reRenderEmailThreadFromModel(displayName, sourceLabel, options = 
   }
 }
 
+function isEmailImportTypeDetected() {
+  const metaType = String(currentDocMeta?.type || '').toLowerCase();
+  if (metaType === 'email-file') return true;
+  if (textDoc?.isEmailThread) return true;
+  const sourceLabel = String(textDoc?.sourceLabel || '').toLowerCase();
+  return sourceLabel.startsWith('email ·') || sourceLabel.startsWith('email file ·');
+}
+
 function refreshEmailThreadOrderControls() {
   const section = document.getElementById('emailOrderSection');
   const select = document.getElementById('emailOrderSel');
   if (!section || !select) return;
+
+  const emailImportDetected = isEmailImportTypeDetected();
+  section.hidden = !emailImportDetected;
+  if (!emailImportDetected) return;
+
   const active = normalizeEmailThreadOrder(emailThreadOrder);
   const enabled = Boolean(emailThreadModel);
   section.classList.toggle('is-disabled', !enabled);
