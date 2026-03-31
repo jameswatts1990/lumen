@@ -2696,7 +2696,7 @@ function splitIntoSentences(text) {
 }
 
 function expandParagraphBlockForFlowSplit(block) {
-  if (!block || block.type !== 'paragraph' || !flowAutoSplitOn()) return [block];
+  if (!block || block.type !== 'paragraph' || !(flowAutoSplitOn() || chunkModeOn())) return [block];
   const chunkSentenceCount = Math.max(1, Number(document.getElementById('chunkR').value) || 1);
   const sentences = splitIntoSentences(block.text);
   if (sentences.length <= chunkSentenceCount) return [block];
@@ -3419,7 +3419,7 @@ wire('focusR',  'focusV', '%', null, v => updateFocusVignette(v));
 wire('focusDepthR', 'focusDepthV', 'px', null, v => updateFocusDepth(v));
 wire('chunkR', 'chunkV', ' lines', v => `${Math.round(v)} line${Math.round(v) === 1 ? '' : 's'}`, () => {
   updateChunkOverlay();
-  if (readingMode === 'flow' && flowAutoSplitOn()) {
+  if (readingMode === 'flow' && (flowAutoSplitOn() || chunkModeOn())) {
     refreshFlowRenderForChunking();
   } else {
     updateFlowHighlight();
@@ -3525,30 +3525,18 @@ function getFlowElementLineMetrics(el) {
   };
 }
 
-function stepFlowChunkIndexByLines(list, direction, stepLines) {
+function stepFlowChunkIndexByItems(list, direction, stepItems) {
   if (!list.length) {
     flowChunkIndex = 0;
     return;
   }
-  const targetLines = Math.max(1, stepLines);
+  const step = Math.max(1, stepItems);
   if (direction > 0) {
-    let idx = flowChunkIndex;
-    let moved = 0;
-    while (idx < list.length - 1 && moved < targetLines) {
-      moved += getFlowElementLineMetrics(list[idx]).lines;
-      idx += 1;
-    }
-    flowChunkIndex = idx;
+    flowChunkIndex = Math.min(list.length - 1, flowChunkIndex + step);
     return;
   }
   if (direction < 0) {
-    let idx = flowChunkIndex;
-    let moved = 0;
-    while (idx > 0 && moved < targetLines) {
-      idx -= 1;
-      moved += getFlowElementLineMetrics(list[idx]).lines;
-    }
-    flowChunkIndex = idx;
+    flowChunkIndex = Math.max(0, flowChunkIndex - step);
   }
 }
 
@@ -3603,6 +3591,18 @@ function updateFlowHighlight() {
     flowChunkIndex = nearestIdx;
   }
   clampFlowChunkIndex(list, chunkSize);
+  if (chunkModeOn()) {
+    list.forEach((el, idx) => {
+      el.classList.remove('flow-highlight-active', 'flow-highlight-partial');
+      el.style.removeProperty('--flow-active-max-height');
+      if (idx >= flowChunkIndex && idx < (flowChunkIndex + chunkSize)) {
+        el.classList.add('flow-highlight-active');
+      }
+    });
+    const showShadingChunk = document.getElementById('shadeT').checked || chunkModeOn();
+    flowLayer.classList.toggle('flow-shaded', showShadingChunk);
+    return;
+  }
   let consumedLines = 0;
   let partialApplied = false;
   list.forEach((el, idx) => {
@@ -3671,7 +3671,7 @@ function stepChunk(direction) {
   if (readingMode === 'flow') {
     const list = getFlowHighlightables();
     const stepSize = Math.max(1, Number(document.getElementById('chunkR').value) || 1);
-    stepFlowChunkIndexByLines(list, direction, stepSize);
+    stepFlowChunkIndexByItems(list, direction, stepSize);
     clampFlowChunkIndex(list, stepSize);
     updateFlowHighlight();
     scrollFlowChunkIntoView(list, stepSize);
@@ -3701,6 +3701,7 @@ function toggleChunkMode() {
   document.getElementById('chunkStatus').classList.toggle('on', on);
   if (on && readingMode !== 'flow') resetChunkPosition(true);
   if (readingMode === 'flow' && on) {
+    refreshFlowRenderForChunking();
     const list = getFlowHighlightables();
     const chunkSize = Math.max(1, Number(document.getElementById('chunkR').value) || 1);
     if (list.length) {
@@ -3711,6 +3712,8 @@ function toggleChunkMode() {
       if (visibleIndex >= 0) flowChunkIndex = visibleIndex;
       clampFlowChunkIndex(list, chunkSize);
     }
+  } else if (readingMode === 'flow' && !flowAutoSplitOn()) {
+    refreshFlowRenderForChunking();
   }
   toggleRuler();
   updateChunkOverlay();
