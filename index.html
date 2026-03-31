@@ -1350,16 +1350,21 @@ body.low-interruption-active .session-timer-overlay {
         </div>
 
         <div class="ctrl ctrl-group chunk-group">
-          <span class="ctrl-lbl">Chunk Height</span>
+          <span class="ctrl-lbl">Chunk Length</span>
           <input type="range" id="chunkR" min="1" max="5" value="2" step="1">
           <span class="ctrl-val" id="chunkV">2 lines</span>
         </div>
         <div class="trow ctrl-group flow-only-group">
           <div class="trow-info">
             <div class="trow-lbl">Auto-split Long Paragraphs</div>
-            <div class="trow-sub">Flow mode only: breaks long paragraphs into sentence groups sized by chunk height.</div>
+            <div class="trow-sub">Flow mode only: break long paragraphs into smaller sentence groups.</div>
           </div>
           <label class="tog"><input type="checkbox" id="flowSplitT" onchange="toggleFlowAutoSplit()"><span class="tog-tk"></span></label>
+        </div>
+        <div class="ctrl ctrl-group flow-only-group" id="flowSplitSizeRow">
+          <span class="ctrl-lbl">Split Length</span>
+          <input type="range" id="flowSplitLinesR" min="1" max="5" value="2" step="1">
+          <span class="ctrl-val" id="flowSplitLinesV">2 lines</span>
         </div>
         <div class="chunk-step ctrl-group chunk-group">
           <button class="scbtn" id="chunkUpBtn" type="button" title="Move chunk up (K)" aria-label="Move chunk up">↑</button>
@@ -1427,35 +1432,6 @@ body.low-interruption-active .session-timer-overlay {
           <li><code>F3</code> Chunked presentation can aid stepwise reading and metering, particularly for struggling readers, yet may constrain global comprehension for fluent readers. Target: children and adults with decoding needs. (Korat et al., 2013; Wise et al., 2010; Sherman et al., 2013)</li>
           <li><code>F4</code> Peripheral dimming can reduce distraction for some users, while others rely on peripheral context cues. Target: mixed; preference-dependent across dyslexia and non-dyslexia readers. (Rayner, 1998; Schneps et al., 2013; Godwin et al., 2015)</li>
           <li><code>A1</code> Auto pacing can lower regressions and improve rhythm for practice sessions, but comprehension can decline if speed is mismatched. Target: adults and adolescents; use with frequent comprehension checks. (Juola et al., 1982; Beymer et al., 2008; Godwin et al., 2015)</li>
-        </ol>
-        <div class="sec-hint" style="padding-top:2px;">References</div>
-        <ol class="refs-list">
-          <li>Beymer, D., Russell, D., & Orton, P. (2008). An eye tracking study of how font size and reading speed affect online reading. <em>CHI '08</em>.</li>
-          <li>Bernard, M., et al. (2002). A comparison of popular online fonts: Which size and type is best? <em>Usability News</em>, 4(1).</li>
-          <li>Borkin, M. A., et al. (2016). Beyond memorability: Visualization recognition and recall. <em>TVCG</em>, 22(1), 519-528.</li>
-          <li>Buchner, A., Mayr, S., & Brandt, M. (2009). The advantage of positive text-background polarity in text readability. <em>Ergonomics</em>, 52(7), 882-893.</li>
-          <li>Burkhart, K., & Phelps, J. R. (2009). Amber lenses to block blue light and improve sleep: A randomized trial. <em>Chronobiology International</em>, 26(8), 1602-1612.</li>
-          <li>Cajochen, C., et al. (2011). Evening exposure to LED-backlit computer screens affects circadian physiology and cognitive performance. <em>Journal of Applied Physiology</em>, 110(5), 1432-1438.</li>
-          <li>Chang, A.-M., Aeschbach, D., Duffy, J. F., & Czeisler, C. A. (2015). Evening use of light-emitting eReaders negatively affects sleep. <em>PNAS</em>, 112(4), 1232-1237.</li>
-          <li>Dyson, M. C., & Kipping, G. J. (1998). The effects of line length and method of movement on patterns of reading from screen. <em>Visible Language</em>, 32(2), 150-181.</li>
-          <li>Godwin, H. J., et al. (2015). Why use dynamic text presentation? Insights from reading and visual search. <em>Attention, Perception, & Psychophysics</em>, 77, 706-724.</li>
-          <li>Hale, L., & Guan, S. (2015). Screen time and sleep among school-aged children and adolescents: A systematic review. <em>Sleep Medicine Reviews</em>, 21, 50-58.</li>
-          <li>Juola, J. F., Ward, N. J., & McNamara, T. (1982). Visual search and reading of rapid serial visual presentation text. <em>Journal of Experimental Psychology: General</em>, 111(2), 208-227.</li>
-          <li>Kim, Y.-S. G., et al. (2014). Which aspects of fluency matter in reading comprehension? <em>Reading and Writing</em>, 27, 1459-1480.</li>
-          <li>Korat, O., Levin, I., Ben-Simhon, K., & Turgeman, M. (2013). E-book as facilitator of vocabulary and story comprehension for children at risk for learning disabilities. <em>European Journal of Special Needs Education</em>, 29(4), 451-463.</li>
-          <li>Kuster, S. M., et al. (2018). The font type does not affect reading performance in dyslexia. <em>Annals of Dyslexia</em>, 68, 184-204.</li>
-          <li>Ostrin, L. A., Abbott, K. S., & Queener, H. M. (2017). Attenuation of short wavelengths alters sleep and the ipRGC pupil response. <em>Ophthalmic and Physiological Optics</em>, 37(4), 440-450.</li>
-          <li>Perea, M., Panadero, V., Moret-Tatay, C., & Gómez, P. (2012). The effects of inter-letter spacing in visual-word recognition. <em>Acta Psychologica</em>, 141(2), 177-181.</li>
-          <li>Rayner, K. (1998). Eye movements in reading and information processing: 20 years of research. <em>Psychological Bulletin</em>, 124(3), 372-422.</li>
-          <li>Rello, L., & Baeza-Yates, R. (2013). Good fonts for dyslexia. <em>ASSETS '13</em>.</li>
-          <li>Ritchie, S. J., Della Sala, S., & McIntosh, R. D. (2011). Irlen colored overlays do not alleviate reading difficulties. <em>Psychological Science</em>, 22(12), 1505-1512.</li>
-          <li>Ritchey, K. D., & Goeke, J. L. (2006). Orton-Gillingham and O-G-based reading instruction: A review. <em>The Journal of Special Education</em>, 40(3), 171-183.</li>
-          <li>Schneps, M. H., et al. (2013). Shorter lines facilitate reading in those who struggle. <em>PLoS ONE</em>, 8(8), e71161.</li>
-          <li>Sherman, J., et al. (2013). Text chunking and comprehension in developing readers. <em>Reading Psychology</em>, 34(4), 356-379.</li>
-          <li>van den Boer, M., & Hakvoort, B. E. (2015). Inter-letter spacing and text length effects for children with dyslexia. <em>Journal of Experimental Child Psychology</em>, 139, 35-51.</li>
-          <li>Wery, J. J., & Diliberto, J. A. (2017). The effect of a specialized dyslexia font on reading rate and accuracy. <em>Annals of Dyslexia</em>, 67, 114-127.</li>
-          <li>Wise, B. W., et al. (2010). Effectiveness of word-by-word and phrase-based computer reading supports. <em>Journal of Educational Computing Research</em>, 42(2), 219-238.</li>
-          <li>Zorzi, M., et al. (2012). Extra-large letter spacing improves reading in dyslexia. <em>PNAS</em>, 109(28), 11455-11459.</li>
         </ol>
       </div>
 
@@ -1635,6 +1611,7 @@ const DEFAULT_SETTINGS = {
   chunkMode: false,
   chunkHeight: 2,
   flowAutoSplit: false,
+  flowSplitLines: 2,
   emailThreadOrder: 'newest-first'
 };
 const BUILTIN_PROFILES = [
@@ -1924,6 +1901,7 @@ function captureSettings() {
     chunkMode: document.getElementById('chunkT').checked,
     chunkHeight: Number(document.getElementById('chunkR').value),
     flowAutoSplit: document.getElementById('flowSplitT').checked,
+    flowSplitLines: Number(document.getElementById('flowSplitLinesR').value),
     emailThreadOrder,
   };
 }
@@ -1967,6 +1945,7 @@ function applySettings(profile) {
   if (settings.chunkMode !== undefined) document.getElementById('chunkT').checked = Boolean(settings.chunkMode);
   if (settings.flowAutoSplit !== undefined) document.getElementById('flowSplitT').checked = Boolean(settings.flowAutoSplit);
   setRangeValue('chunkR', settings.chunkHeight);
+  setRangeValue('flowSplitLinesR', settings.flowSplitLines ?? settings.chunkHeight);
   toggleRuler();
   if (settings.focusMode !== undefined) document.getElementById('focusT').checked = Boolean(settings.focusMode);
   toggleFocus();
@@ -2018,7 +1997,7 @@ function registerSettingsPersistence() {
   const ids = [
     'widthR', 'briR', 'conR', 'gapR', 'fontSel', 'tsizeR', 'lhR', 'lsR', 'wsR',
     'rulerT', 'shadeT', 'focusT', 'focusR', 'focusDepthR', 'progT', 'tintR',
-    'scrollSR', 'chunkT', 'chunkR', 'flowSplitT', 'lowInterruptT', 'profileSel', 'emailOrderSel'
+    'scrollSR', 'chunkT', 'chunkR', 'flowSplitT', 'flowSplitLinesR', 'lowInterruptT', 'profileSel', 'emailOrderSel'
   ];
   ids.forEach(id => {
     const el = document.getElementById(id);
@@ -2985,13 +2964,14 @@ function splitIntoSentences(text) {
 function expandParagraphBlockForFlowSplit(block) {
   if (!block || block.type !== 'paragraph' || !(flowAutoSplitOn() || chunkModeOn())) return [block];
   const chunkSentenceCount = Math.max(1, Number(document.getElementById('chunkR').value) || 1);
+  const splitSentenceCount = flowAutoSplitOn() ? getFlowSplitLineCount() : chunkSentenceCount;
   const sentences = splitIntoSentences(block.text);
-  if (sentences.length <= chunkSentenceCount) return [block];
+  if (sentences.length <= splitSentenceCount) return [block];
   const grouped = [];
-  for (let i = 0; i < sentences.length; i += chunkSentenceCount) {
+  for (let i = 0; i < sentences.length; i += splitSentenceCount) {
     grouped.push({
       type: 'paragraph',
-      text: sentences.slice(i, i + chunkSentenceCount).join(' '),
+      text: sentences.slice(i, i + splitSentenceCount).join(' '),
       splitFromLongParagraph: true
     });
   }
@@ -3536,6 +3516,11 @@ function syncReadingModeControls() {
   });
   const flowSplitToggle = document.getElementById('flowSplitT');
   if (flowSplitToggle) flowSplitToggle.disabled = !isFlow;
+  const flowSplitLines = document.getElementById('flowSplitLinesR');
+  if (flowSplitLines) flowSplitLines.disabled = !isFlow || !flowAutoSplitOn();
+  const flowSplitSizeRow = document.getElementById('flowSplitSizeRow');
+  if (flowSplitSizeRow) flowSplitSizeRow.classList.toggle('collapsed', !isFlow || !flowAutoSplitOn());
+  document.getElementById('chunkV').textContent = chunkLengthLabel(Number(document.getElementById('chunkR').value));
   setChunkButtonState();
   const focusModeHint = document.getElementById('focusModeHint');
   if (focusModeHint) focusModeHint.hidden = !isFlow;
@@ -3904,6 +3889,12 @@ function wire(id, valId, suffix, fmt, cb) {
   update();
 }
 
+function chunkLengthLabel(value) {
+  const rounded = Math.round(value);
+  const unit = readingMode === 'flow' ? 'sentence' : 'line';
+  return `${rounded} ${unit}${rounded === 1 ? '' : 's'}`;
+}
+
 wire('widthR',  'widthV', '%', null, v => { maxW = Math.round(BASE_PAGE_WIDTH * (v / 100)); applyMaxWidth(); });
 wire('briR',    'briV',   '%', null, () => applyFilters());
 wire('conR',    'conV',   '%', null, () => applyFilters());
@@ -3915,12 +3906,17 @@ wire('wsR',     'wsV',    'px', v => v.toFixed(1)+'px', () => applyReadingMode()
 wire('scrollSR','scrollSV','', v => `${v.toFixed(1)}x`, v => { scrollSpeed = v; });
 wire('focusR',  'focusV', '%', null, v => updateFocusVignette(v));
 wire('focusDepthR', 'focusDepthV', 'px', null, v => updateFocusDepth(v));
-wire('chunkR', 'chunkV', ' lines', v => `${Math.round(v)} line${Math.round(v) === 1 ? '' : 's'}`, () => {
+wire('chunkR', 'chunkV', ' lines', v => chunkLengthLabel(v), () => {
   updateChunkOverlay();
   if (readingMode === 'flow' && (flowAutoSplitOn() || chunkModeOn())) {
     refreshFlowRenderForChunking();
   } else {
     updateFlowHighlight();
+  }
+});
+wire('flowSplitLinesR', 'flowSplitLinesV', ' lines', v => `${Math.round(v)} line${Math.round(v) === 1 ? '' : 's'}`, () => {
+  if (readingMode === 'flow' && (flowAutoSplitOn() || chunkModeOn())) {
+    refreshFlowRenderForChunking();
   }
 });
 
@@ -3941,6 +3937,10 @@ function chunkModeOn() {
 function flowAutoSplitOn() {
   const toggle = document.getElementById('flowSplitT');
   return Boolean(toggle?.checked);
+}
+
+function getFlowSplitLineCount() {
+  return Math.max(1, Number(document.getElementById('flowSplitLinesR')?.value) || 1);
 }
 
 function parseCssColor(value, alphaFallback = 0.14) {
@@ -4003,6 +4003,7 @@ async function refreshFlowRenderForChunking() {
 }
 
 async function toggleFlowAutoSplit() {
+  syncReadingModeControls();
   await refreshFlowRenderForChunking();
   saveProfilesState();
 }
