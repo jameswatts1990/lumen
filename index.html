@@ -2430,6 +2430,56 @@ function decodeEmailTransferBody(body, transferEncoding = '') {
   return normalizedBody;
 }
 
+function hideUrlsInText(text) {
+  return String(text || '')
+    .replace(/\b(?:https?:\/\/|www\.)[^\s<>()]+/gi, '')
+    .replace(/\s{2,}/g, ' ');
+}
+
+function cleanEmailBodyText(text) {
+  const raw = String(text || '').replace(/\r\n?/g, '\n');
+  if (!raw.trim()) return '';
+
+  const noHtml = stripToPlainText(raw, '.html');
+  const lines = noHtml.split('\n');
+  const cleaned = [];
+  let skippedDisclaimer = false;
+
+  const shouldDropLine = (line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+    if (/^(view|open|download|manage)\s+(in\s+browser|online|preferences|unsubscribe)\b/i.test(trimmed)) return true;
+    if (/^\[?(?:image|cid):.+\]?$/i.test(trimmed)) return true;
+    if (/^(?:https?:\/\/|www\.)\S+$/i.test(trimmed)) return true;
+    if (/^(?:from|to|cc|bcc|subject|sent|date):\s*$/i.test(trimmed)) return true;
+    return false;
+  };
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (skippedDisclaimer) skippedDisclaimer = false;
+      cleaned.push('');
+      continue;
+    }
+    if (shouldDropLine(line)) continue;
+    if (/^[-_=]{6,}$/.test(trimmed)) continue;
+    if (!skippedDisclaimer && /^(this (email|message)( and any attachments)?|confidentiality notice|privileged and confidential)\b/i.test(trimmed)) {
+      skippedDisclaimer = true;
+      continue;
+    }
+    if (skippedDisclaimer) {
+      if (!trimmed) skippedDisclaimer = false;
+      continue;
+    }
+    if (/^sent from my (iphone|ipad|android|mobile device)\.?$/i.test(trimmed)) continue;
+    cleaned.push(line);
+  }
+
+  return normalizeReadableText(hideUrlsInText(cleaned.join('\n')));
+}
+
 function extractBestEmailBody(raw) {
   const normalized = String(raw || '').replace(/\r\n?/g, '\n');
   const splitIdx = normalized.indexOf('\n\n');
@@ -2482,7 +2532,7 @@ function splitEmailThreadMessages(bodyText, rootHeaders = {}) {
 
   const pushCurrent = () => {
     if (!current.length) return;
-    const text = normalizeReadableText(current.join('\n'));
+    const text = cleanEmailBodyText(current.join('\n'));
     if (text) segments.push(text);
     current = [];
   };
@@ -2533,7 +2583,7 @@ function splitEmailThreadMessages(bodyText, rootHeaders = {}) {
         if (/^(To|Cc|Bcc|Subject):\s*/i.test(trimmed)) return;
         bodyLines.push(line.replace(/^>+\s?/, ''));
       });
-      const body = normalizeReadableText(bodyLines.join('\n'));
+      const body = cleanEmailBodyText(bodyLines.join('\n'));
       return {
         sender: sender || (idx === 0 ? rootSender : ''),
         date: date || (idx === 0 ? rootDate : ''),
@@ -2573,7 +2623,7 @@ function buildEmailThreadPlainText(parsedThread) {
     const date = message.date || 'Unknown date';
     return `Message ${idx + 1}\nFrom: ${sender}\nDate: ${date}\n\n${message.body}`;
   });
-  return normalizeReadableText([intro, ...blocks].filter(Boolean).join('\n\n'));
+  return cleanEmailBodyText([intro, ...blocks].filter(Boolean).join('\n\n'));
 }
 
 async function loadEmailFile(file) {
