@@ -890,7 +890,7 @@ body.flow-speed-read-mode .flow-speed-word.active {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: min(460px, calc(100vw - 26px));
+  width: min(560px, calc(100vw - 26px));
   z-index: 343;
   opacity: 0;
   pointer-events: none;
@@ -2413,7 +2413,7 @@ function syncFlowWordRendererPlacement() {
   flowWordRenderer.style.left = `${Math.round(readerRect.left + (readerRect.width / 2))}px`;
   flowWordRenderer.style.top = `${Math.round(readerRect.top + (readerRect.height / 2))}px`;
   const maxWidth = Math.max(220, Math.round(readerRect.width - 26));
-  flowWordRenderer.style.width = `min(460px, ${maxWidth}px)`;
+  flowWordRenderer.style.width = `min(560px, ${maxWidth}px)`;
 }
 
 function syncFlowWordRenderer() {
@@ -2460,6 +2460,15 @@ function hideFlowDefinitionPopout() {
   if (flowDefinitionLookupController) flowDefinitionLookupController.abort();
   flowDefinitionPopout.classList.remove('on');
   flowDefinitionPopout.setAttribute('aria-hidden', 'true');
+}
+
+function dismissFlowDefinitionPreview() {
+  if (flowDefinitionDelayTimer) {
+    clearTimeout(flowDefinitionDelayTimer);
+    flowDefinitionDelayTimer = null;
+  }
+  hideFlowDefinitionPopout();
+  clearFlowWordSelection();
 }
 
 function normalizeDefinitionLookupWord(rawValue = '') {
@@ -2662,6 +2671,7 @@ function resolveFlowSpeedReadStartIndex() {
 function activateFlowSpeedRead(reason = 'hold_threshold', options = {}) {
   hideFlowGestureTimer();
   stopFlowGestureTimerUI();
+  dismissFlowDefinitionPreview();
   setFlowGestureState(FLOW_GESTURE_STATES.SPEED_READ_ACTIVE, reason);
   startFlowSpeedReadPlayback(options);
 }
