@@ -415,42 +415,6 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 /* Autoscroll controls */
 .scroll-ctl { padding: 4px 20px 10px; display: flex; align-items: center; gap: 10px; }
 .scroll-play-btn { flex: 0 0 auto; }
-.speed-tabs {
-  display: flex;
-  gap: 6px;
-  padding: 4px 20px 8px;
-}
-.speed-tab-btn {
-  flex: 1;
-  border: 1px solid var(--control-border);
-  background: var(--control-bg);
-  color: var(--text-secondary);
-  border-radius: 7px;
-  padding: 7px 8px;
-  font-size: 11.5px;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  font-family: 'DM Mono', monospace;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-.speed-tab-btn:hover,
-.speed-tab-btn:focus-visible {
-  border-color: var(--accent);
-  color: var(--accent);
-  outline: none;
-}
-.speed-tab-btn.on {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-dim);
-}
-.speed-tab-panel.on {
-  display: block;
-}
-.speed-tab-panel:not(.on) {
-  display: none;
-}
 .scroll-wpm-input {
   width: 78px;
   border: 1px solid var(--control-border);
@@ -1743,14 +1707,14 @@ body.low-interruption-active .flow-speed-hud {
         <div class="scroll-ctl ctrl-group">
           <span class="scbtn-hint">Negative = reverse · Hover reader to pause</span>
         </div>
-        <div class="speed-tabs ctrl-group flow-only-group" role="tablist" aria-label="Flow speed controls">
-          <button class="speed-tab-btn on" type="button" role="tab" aria-selected="true" aria-controls="speedTabAutoScrollPanel" id="speedTabAutoScrollBtn" data-speed-tab="auto-scroll">Auto Scroll</button>
-          <button class="speed-tab-btn" type="button" role="tab" aria-selected="false" aria-controls="speedTabSpeedReadPanel" id="speedTabSpeedReadBtn" data-speed-tab="speed-reading">Speed Reading</button>
-        </div>
-        <div class="speed-tab-panel on ctrl-group flow-only-group" id="speedTabAutoScrollPanel" role="tabpanel" aria-labelledby="speedTabAutoScrollBtn">
-          <div class="mode-note">Auto-scroll uses a fixed pace while Flow text remains visible for context.</div>
-        </div>
-        <div class="speed-tab-panel ctrl-group flow-only-group" id="speedTabSpeedReadPanel" role="tabpanel" aria-labelledby="speedTabSpeedReadBtn">
+        <div class="mode-note ctrl-group flow-only-group">Auto-scroll uses a fixed pace while Flow text remains visible for context.</div>
+      </div>
+
+      <!-- Speed reading -->
+      <div class="sec is-collapsed flow-only-group">
+        <div class="sec-label">Speed Reading <span class="sci sci-mixed">Mixed evidence</span></div>
+        <div class="sec-hint">RSVP-style speed drills can raise pace, but comprehension and retention may drop as words-per-minute increases. See <code>A2</code>.</div>
+        <div class="ctrl-group">
           <div class="mode-note">How to start: switch to Flow mode, then press and hold anywhere in the reader for 3 seconds. Release to pause.</div>
           <div class="ctrl" style="padding-top:0;">
             <span class="ctrl-lbl">Speed-Read WPM</span>
@@ -1783,6 +1747,7 @@ body.low-interruption-active .flow-speed-hud {
           <li><code>F3</code> Chunked presentation can aid stepwise reading and metering, particularly for struggling readers, yet may constrain global comprehension for fluent readers. Target: children and adults with decoding needs. (Korat et al., 2013; Wise et al., 2010; Sherman et al., 2013)</li>
           <li><code>F4</code> Peripheral dimming can reduce distraction for some users, while others rely on peripheral context cues. Target: mixed; preference-dependent across dyslexia and non-dyslexia readers. (Rayner, 1998; Schneps et al., 2013; Godwin et al., 2015)</li>
           <li><code>A1</code> Auto pacing can lower regressions and improve rhythm for practice sessions, but comprehension can decline if speed is mismatched. Target: adults and adolescents; use with frequent comprehension checks. (Juola et al., 1982; Beymer et al., 2008; Godwin et al., 2015)</li>
+          <li><code>A2</code> Rapid serial visual presentation and speed-reading drills can increase throughput, but comprehension and delayed recall often decline at higher rates; brief phrase-level pauses can partially offset this for some readers. Target: mainly adults; use as optional training, not default sustained reading mode. (Potter, 1984; Rayner et al., 2016; Schotter et al., 2014)</li>
         </ol>
       </div>
 
@@ -4619,24 +4584,6 @@ function applyFilters() {
   applyReadingMode();
 }
 
-function setSpeedControlTab(tabName = 'auto-scroll') {
-  const next = tabName === 'speed-reading' ? 'speed-reading' : 'auto-scroll';
-  const isFlow = readingMode === 'flow';
-  document.querySelectorAll('.speed-tab-btn').forEach(btn => {
-    const active = btn.dataset.speedTab === next && isFlow;
-    btn.classList.toggle('on', active);
-    btn.setAttribute('aria-selected', active ? 'true' : 'false');
-    btn.setAttribute('tabindex', active ? '0' : '-1');
-  });
-  document.querySelectorAll('.speed-tab-panel').forEach(panel => {
-    const shouldShow = isFlow && (
-      (next === 'auto-scroll' && panel.id === 'speedTabAutoScrollPanel') ||
-      (next === 'speed-reading' && panel.id === 'speedTabSpeedReadPanel')
-    );
-    panel.classList.toggle('on', shouldShow);
-  });
-}
-
 function syncReadingModeControls() {
   const typographyEnabled = readingMode === 'overlay' || readingMode === 'flow';
   const isFlow = readingMode === 'flow';
@@ -4676,7 +4623,6 @@ function syncReadingModeControls() {
   document.getElementById('chunkV').textContent = chunkLengthLabel(Number(document.getElementById('chunkR').value));
   const focusModeHint = document.getElementById('focusModeHint');
   if (focusModeHint) focusModeHint.hidden = !isFlow;
-  if (!isFlow) setSpeedControlTab('auto-scroll');
 }
 
 function syncChunkFocusAidExclusivity() {
@@ -5958,12 +5904,6 @@ scrollWpmInput?.addEventListener('change', e => {
   setAutoScrollWpm(next);
 });
 scrollWpmInput?.addEventListener('blur', () => syncAutoScrollWpmUi());
-document.querySelectorAll('.speed-tab-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if (readingMode !== 'flow') return;
-    setSpeedControlTab(btn.dataset.speedTab);
-  });
-});
 window.addEventListener('resize', () => {
   syncSidebarForViewport();
   updateProgressAndStatus();
