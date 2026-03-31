@@ -784,6 +784,15 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .flow-layer.flow-shaded .flow-highlightable { opacity: 0.58; }
 .flow-layer.flow-shaded .flow-highlight-active,
 .flow-layer.flow-shaded .flow-highlight-partial { opacity: 1; }
+.flow-speed-word {
+  border-radius: 5px;
+  transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.flow-speed-word.active {
+  background: linear-gradient(165deg, rgba(226, 168, 111, 0.36), rgba(200, 135, 74, 0.22));
+  color: #fff3e3;
+  box-shadow: 0 0 0 1px rgba(226, 168, 111, 0.3);
+}
 .reader-inner.flow-mode .page-wrap { display: none; }
 
 /* Overlays */
@@ -875,6 +884,35 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   font-size: 22px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  color: #f2e6d7;
+}
+.flow-gesture-timer {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 350;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-mid);
+  background: linear-gradient(165deg, rgba(37, 27, 17, 0.94), rgba(20, 14, 9, 0.94));
+  color: #ecd8c0;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.38);
+  font-family: 'DM Mono', monospace;
+}
+.flow-gesture-timer.on { display: inline-flex; }
+.flow-gesture-timer .label {
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #cdb391;
+}
+.flow-gesture-timer .value {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
   color: #f2e6d7;
 }
 .session-done-popup {
@@ -1548,6 +1586,10 @@ body.low-interruption-active .session-timer-overlay {
   <span class="session-timer-label">Session</span>
   <span class="session-timer-value" id="sessionTimerValue">00:00</span>
 </div>
+<div class="flow-gesture-timer" id="flowGestureTimer" aria-live="polite" aria-hidden="true">
+  <span class="label" id="flowGestureTimerLabel">Hold to speed-read</span>
+  <span class="value" id="flowGestureTimerValue">2.0s</span>
+</div>
 <div class="session-done-popup" id="sessionDonePopup" role="status" aria-live="polite">
   <span id="sessionDoneText">Session complete.</span>
   <button class="session-done-dismiss" id="sessionDoneDismissBtn" type="button">Dismiss</button>
@@ -1696,13 +1738,269 @@ let sessionsCompletedThisSession = 0;
 let currentDocMeta = null;
 let pendingResumeState = null;
 let persistSettingsTimer = null;
+const FLOW_GESTURE_STATES = Object.freeze({
+  IDLE: 'idle',
+  PRESSING: 'pressing',
+  TIMER_VISIBLE: 'timer_visible',
+  SPEED_READ_ACTIVE: 'speed_read_active',
+  PAUSED_ON_RELEASE: 'paused_on_release'
+});
+const FLOW_GESTURE_TIMER_VISIBLE_MS = 1000;
+const FLOW_GESTURE_ACTIVATE_MS = 3000;
+const FLOW_SPEED_READ_WPM = 280;
+let flowGestureState = FLOW_GESTURE_STATES.IDLE;
+let flowGesturePressStartTs = 0;
+let flowGestureActivePointerId = null;
+let flowGestureTimerUiRAF = null;
+let flowGestureTimerTimeoutId = null;
+let flowGestureActivateTimeoutId = null;
+let flowSpeedReadWordNodes = [];
+let flowSpeedReadWordIndex = 0;
+let flowSpeedReadLastTs = 0;
+let flowSpeedReadCarryMs = 0;
+let flowSpeedReadRAF = null;
+let flowSpeedReadActiveWord = null;
+const flowGestureEventListeners = new Map();
 
 const reader = document.getElementById('reader');
 const rInner = document.getElementById('rInner');
 const flowLayer = document.getElementById('flowLayer');
+const flowGestureTimer = document.getElementById('flowGestureTimer');
+const flowGestureTimerValue = document.getElementById('flowGestureTimerValue');
 const MOBILE_BREAKPOINT = 900;
 let sidebarOpen = true;
 let mobileViewport = false;
+
+function onFlowGestureEvent(eventName, listener) {
+  if (!flowGestureEventListeners.has(eventName)) flowGestureEventListeners.set(eventName, new Set());
+  const bucket = flowGestureEventListeners.get(eventName);
+  bucket.add(listener);
+  return () => bucket.delete(listener);
+}
+
+function emitFlowGestureEvent(eventName, payload = {}) {
+  const listeners = flowGestureEventListeners.get(eventName);
+  if (!listeners || !listeners.size) return;
+  listeners.forEach(listener => {
+    try {
+      listener(payload);
+    } catch (err) {
+      console.error('Flow gesture event listener failed', err);
+    }
+  });
+}
+
+function setFlowGestureState(nextState, reason = '') {
+  if (flowGestureState === nextState) return;
+  const previousState = flowGestureState;
+  flowGestureState = nextState;
+  emitFlowGestureEvent('state_change', {
+    previousState,
+    nextState,
+    reason,
+    timestamp: performance.now()
+  });
+}
+
+function clearFlowGestureThresholdTimers() {
+  if (flowGestureTimerTimeoutId) clearTimeout(flowGestureTimerTimeoutId);
+  if (flowGestureActivateTimeoutId) clearTimeout(flowGestureActivateTimeoutId);
+  flowGestureTimerTimeoutId = null;
+  flowGestureActivateTimeoutId = null;
+}
+
+function updateFlowGestureTimerUI(elapsedMs = 0) {
+  const clampedElapsed = Math.max(0, elapsedMs);
+  const remaining = Math.max(0, FLOW_GESTURE_ACTIVATE_MS - clampedElapsed);
+  flowGestureTimerValue.textContent = `${(remaining / 1000).toFixed(1)}s`;
+}
+
+function showFlowGestureTimer() {
+  flowGestureTimer.classList.add('on');
+  flowGestureTimer.setAttribute('aria-hidden', 'false');
+}
+
+function hideFlowGestureTimer() {
+  flowGestureTimer.classList.remove('on');
+  flowGestureTimer.setAttribute('aria-hidden', 'true');
+}
+
+function startFlowGestureTimerUI() {
+  if (flowGestureTimerUiRAF) cancelAnimationFrame(flowGestureTimerUiRAF);
+  const tick = () => {
+    if (flowGestureState !== FLOW_GESTURE_STATES.TIMER_VISIBLE || !flowGesturePressStartTs) return;
+    const elapsed = performance.now() - flowGesturePressStartTs;
+    updateFlowGestureTimerUI(elapsed);
+    flowGestureTimerUiRAF = requestAnimationFrame(tick);
+  };
+  flowGestureTimerUiRAF = requestAnimationFrame(tick);
+}
+
+function stopFlowGestureTimerUI() {
+  if (flowGestureTimerUiRAF) cancelAnimationFrame(flowGestureTimerUiRAF);
+  flowGestureTimerUiRAF = null;
+}
+
+function clearFlowSpeedReadHighlight() {
+  if (!flowSpeedReadActiveWord) return;
+  flowSpeedReadActiveWord.classList.remove('active');
+  flowSpeedReadActiveWord = null;
+}
+
+function syncFlowSpeedReadHighlight() {
+  clearFlowSpeedReadHighlight();
+  const target = flowSpeedReadWordNodes[flowSpeedReadWordIndex];
+  if (!target) return;
+  target.classList.add('active');
+  flowSpeedReadActiveWord = target;
+  target.scrollIntoView({ block: 'center', inline: 'nearest' });
+}
+
+function buildFlowSpeedReadWordNodes() {
+  flowSpeedReadWordNodes = [];
+  const blocks = flowLayer.querySelectorAll('.flow-para, .flow-heading, .flow-list-item');
+  blocks.forEach(block => {
+    if (block.dataset.speedReadPrepared === '1') {
+      block.querySelectorAll('.flow-speed-word').forEach(word => flowSpeedReadWordNodes.push(word));
+      return;
+    }
+    const text = block.textContent || '';
+    block.textContent = '';
+    const frag = document.createDocumentFragment();
+    const parts = text.split(/(\s+)/);
+    parts.forEach(part => {
+      if (!part) return;
+      if (/^\s+$/.test(part)) {
+        frag.appendChild(document.createTextNode(part));
+        return;
+      }
+      const word = document.createElement('span');
+      word.className = 'flow-speed-word';
+      word.textContent = part;
+      flowSpeedReadWordNodes.push(word);
+      frag.appendChild(word);
+    });
+    block.appendChild(frag);
+    block.dataset.speedReadPrepared = '1';
+  });
+}
+
+function stopFlowSpeedReadPlayback() {
+  if (flowSpeedReadRAF) cancelAnimationFrame(flowSpeedReadRAF);
+  flowSpeedReadRAF = null;
+  flowSpeedReadLastTs = 0;
+  flowSpeedReadCarryMs = 0;
+}
+
+function startFlowSpeedReadPlayback() {
+  stopFlowSpeedReadPlayback();
+  buildFlowSpeedReadWordNodes();
+  if (!flowSpeedReadWordNodes.length) return;
+  flowSpeedReadWordIndex = Math.max(0, Math.min(flowSpeedReadWordIndex, flowSpeedReadWordNodes.length - 1));
+  syncFlowSpeedReadHighlight();
+  const msPerWord = 60000 / FLOW_SPEED_READ_WPM;
+  const tick = (ts) => {
+    if (flowGestureState !== FLOW_GESTURE_STATES.SPEED_READ_ACTIVE) return;
+    if (!flowSpeedReadLastTs) flowSpeedReadLastTs = ts;
+    const dt = Math.min(80, ts - flowSpeedReadLastTs || 16);
+    flowSpeedReadLastTs = ts;
+    flowSpeedReadCarryMs += dt;
+    while (flowSpeedReadCarryMs >= msPerWord) {
+      flowSpeedReadCarryMs -= msPerWord;
+      if (flowSpeedReadWordIndex >= flowSpeedReadWordNodes.length - 1) {
+        flowSpeedReadWordIndex = flowSpeedReadWordNodes.length - 1;
+        syncFlowSpeedReadHighlight();
+        setFlowGestureState(FLOW_GESTURE_STATES.PAUSED_ON_RELEASE, 'reached_end');
+        stopFlowSpeedReadPlayback();
+        emitFlowGestureEvent('speed_read_pause', { index: flowSpeedReadWordIndex, reason: 'reached_end' });
+        return;
+      }
+      flowSpeedReadWordIndex += 1;
+      syncFlowSpeedReadHighlight();
+      emitFlowGestureEvent('speed_read_word', { index: flowSpeedReadWordIndex });
+    }
+    flowSpeedReadRAF = requestAnimationFrame(tick);
+  };
+  flowSpeedReadRAF = requestAnimationFrame(tick);
+  emitFlowGestureEvent('speed_read_start', { index: flowSpeedReadWordIndex });
+}
+
+function pauseFlowSpeedRead(reason = 'released') {
+  stopFlowSpeedReadPlayback();
+  setFlowGestureState(FLOW_GESTURE_STATES.PAUSED_ON_RELEASE, reason);
+  emitFlowGestureEvent('speed_read_pause', { index: flowSpeedReadWordIndex, reason });
+}
+
+function activateFlowSpeedRead(reason = 'hold_threshold') {
+  hideFlowGestureTimer();
+  stopFlowGestureTimerUI();
+  setFlowGestureState(FLOW_GESTURE_STATES.SPEED_READ_ACTIVE, reason);
+  startFlowSpeedReadPlayback();
+}
+
+function resetFlowGestureInteraction() {
+  flowGesturePressStartTs = 0;
+  flowGestureActivePointerId = null;
+  clearFlowGestureThresholdTimers();
+  stopFlowGestureTimerUI();
+  hideFlowGestureTimer();
+}
+
+function stopFlowGestureController(reason = 'mode_change') {
+  resetFlowGestureInteraction();
+  stopFlowSpeedReadPlayback();
+  clearFlowSpeedReadHighlight();
+  flowSpeedReadWordNodes = [];
+  flowSpeedReadWordIndex = 0;
+  setFlowGestureState(FLOW_GESTURE_STATES.IDLE, reason);
+}
+
+function startFlowGestureHold(pointerId) {
+  resetFlowGestureInteraction();
+  flowGesturePressStartTs = performance.now();
+  flowGestureActivePointerId = pointerId;
+  setFlowGestureState(FLOW_GESTURE_STATES.PRESSING, 'press_start');
+  flowGestureTimerTimeoutId = setTimeout(() => {
+    const elapsed = performance.now() - flowGesturePressStartTs;
+    if (elapsed < FLOW_GESTURE_TIMER_VISIBLE_MS) return;
+    if (flowGestureState !== FLOW_GESTURE_STATES.PRESSING) return;
+    setFlowGestureState(FLOW_GESTURE_STATES.TIMER_VISIBLE, 'timer_threshold');
+    showFlowGestureTimer();
+    updateFlowGestureTimerUI(elapsed);
+    startFlowGestureTimerUI();
+  }, FLOW_GESTURE_TIMER_VISIBLE_MS);
+  flowGestureActivateTimeoutId = setTimeout(() => {
+    const elapsed = performance.now() - flowGesturePressStartTs;
+    if (elapsed < FLOW_GESTURE_ACTIVATE_MS) return;
+    if (flowGestureState !== FLOW_GESTURE_STATES.PRESSING && flowGestureState !== FLOW_GESTURE_STATES.TIMER_VISIBLE) return;
+    activateFlowSpeedRead('hold_threshold');
+  }, FLOW_GESTURE_ACTIVATE_MS);
+}
+
+function releaseFlowGestureHold(pointerId, reason = 'release') {
+  if (flowGestureActivePointerId !== null && pointerId !== null && pointerId !== flowGestureActivePointerId) return;
+  if (flowGestureState === FLOW_GESTURE_STATES.PRESSING || flowGestureState === FLOW_GESTURE_STATES.TIMER_VISIBLE) {
+    setFlowGestureState(FLOW_GESTURE_STATES.IDLE, 'release_before_activation');
+    emitFlowGestureEvent('activation_cancelled', { reason: 'release_before_activation' });
+    resetFlowGestureInteraction();
+    return;
+  }
+  if (flowGestureState === FLOW_GESTURE_STATES.SPEED_READ_ACTIVE) {
+    resetFlowGestureInteraction();
+    pauseFlowSpeedRead(reason);
+    return;
+  }
+  resetFlowGestureInteraction();
+}
+
+function isFlowGestureEnabled() {
+  return readingMode === 'flow' && flowLayer.classList.contains('on');
+}
+
+window.flowGestureController = {
+  subscribe: onFlowGestureEvent,
+  getState: () => flowGestureState
+};
 
 function syncSidebarCssVars() {
   const sidebarOffset = (!mobileViewport && sidebarOpen) ? '404px' : '0px';
@@ -3043,6 +3341,7 @@ function renderFlowBlocks(blocks, pageNum) {
 }
 
 function renderTextFlowFromPlainText(text, originLabel = 'Text source') {
+  stopFlowGestureController('flow_rerender');
   const normalized = normalizeReadableText(text);
   const paragraphs = normalized.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
   const blocks = buildFlowBlocks(paragraphs);
@@ -3654,6 +3953,7 @@ async function extractFlowDocument() {
 
 async function renderFlowDocument() {
   if (!pdf) return;
+  stopFlowGestureController('flow_rerender');
   const flowDoc = await extractFlowDocument();
   flowLayer.innerHTML = '';
   flowDoc.pages.forEach(page => {
@@ -3692,6 +3992,7 @@ async function applyReadingMode() {
     flowLayer.classList.add('on');
     updateFlowHighlight();
   } else {
+    stopFlowGestureController('left_flow_mode');
     flowLayer.classList.remove('on');
     updateFlowHighlight();
   }
@@ -4370,6 +4671,35 @@ function stopScroll() {
 
 reader.addEventListener('mouseenter', () => { if (scrolling) stopScroll(); });
 reader.addEventListener('mouseleave', () => { if (scrolling) startScroll(); });
+reader.addEventListener('pointerdown', e => {
+  if (!isFlowGestureEnabled()) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  if (flowGestureState === FLOW_GESTURE_STATES.PAUSED_ON_RELEASE) {
+    flowGestureActivePointerId = e.pointerId;
+    activateFlowSpeedRead('instant_resume_from_paused');
+    return;
+  }
+  if (flowGestureState !== FLOW_GESTURE_STATES.IDLE) return;
+  startFlowGestureHold(e.pointerId);
+});
+reader.addEventListener('pointerup', e => {
+  if (!isFlowGestureEnabled()) return;
+  releaseFlowGestureHold(e.pointerId, 'pointer_up');
+});
+reader.addEventListener('pointercancel', e => {
+  if (!isFlowGestureEnabled()) return;
+  releaseFlowGestureHold(e.pointerId, 'pointer_cancel');
+});
+reader.addEventListener('pointerleave', e => {
+  if (!isFlowGestureEnabled()) return;
+  if (flowGestureState === FLOW_GESTURE_STATES.SPEED_READ_ACTIVE) return;
+  releaseFlowGestureHold(e.pointerId, 'pointer_leave');
+});
+document.addEventListener('pointerup', e => {
+  if (!isFlowGestureEnabled()) return;
+  if (flowGestureActivePointerId === null) return;
+  releaseFlowGestureHold(e.pointerId, 'document_pointer_up');
+});
 
 /* ── Keyboard shortcuts ── */
 function isTypingTarget(el) {
