@@ -714,8 +714,16 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   outline: 1px solid var(--accent-mid);
   box-shadow: inset 0 0 0 1px rgba(226, 168, 111, 0.15), 0 0 0 1px rgba(0,0,0,0.04);
 }
+.flow-highlight-partial {
+  background-image: linear-gradient(90deg, rgba(200, 135, 74, 0.2), rgba(200, 135, 74, 0.08));
+  background-size: 100% var(--flow-active-max-height, 100%);
+  background-repeat: no-repeat;
+  outline: 1px solid var(--accent-mid);
+  box-shadow: inset 0 0 0 1px rgba(226, 168, 111, 0.15), 0 0 0 1px rgba(0,0,0,0.04);
+}
 .flow-layer.flow-shaded .flow-highlightable { opacity: 0.58; }
-.flow-layer.flow-shaded .flow-highlight-active { opacity: 1; }
+.flow-layer.flow-shaded .flow-highlight-active,
+.flow-layer.flow-shaded .flow-highlight-partial { opacity: 1; }
 .reader-inner.flow-mode .page-wrap { display: none; }
 
 /* Overlays */
@@ -3198,12 +3206,51 @@ function ensureFlowHighlightTargets() {
   getFlowHighlightables().forEach(el => el.classList.add('flow-highlightable'));
 }
 
+function getFlowElementLineMetrics(el) {
+  const cs = getComputedStyle(el);
+  const rawLineHeight = parseFloat(cs.lineHeight);
+  const lineHeight = Number.isFinite(rawLineHeight) ? rawLineHeight : estimatedLineHeightPx();
+  const rect = el.getBoundingClientRect();
+  const lines = Math.max(1, Math.round(rect.height / Math.max(1, lineHeight)));
+  return {
+    lines,
+    lineHeightPx: Math.max(1, lineHeight)
+  };
+}
+
+function stepFlowChunkIndexByLines(list, direction, stepLines) {
+  if (!list.length) {
+    flowChunkIndex = 0;
+    return;
+  }
+  const targetLines = Math.max(1, stepLines);
+  if (direction > 0) {
+    let idx = flowChunkIndex;
+    let moved = 0;
+    while (idx < list.length - 1 && moved < targetLines) {
+      moved += getFlowElementLineMetrics(list[idx]).lines;
+      idx += 1;
+    }
+    flowChunkIndex = idx;
+    return;
+  }
+  if (direction < 0) {
+    let idx = flowChunkIndex;
+    let moved = 0;
+    while (idx > 0 && moved < targetLines) {
+      idx -= 1;
+      moved += getFlowElementLineMetrics(list[idx]).lines;
+    }
+    flowChunkIndex = idx;
+  }
+}
+
 function clampFlowChunkIndex(list, chunkSize) {
   if (!list.length) {
     flowChunkIndex = 0;
     return;
   }
-  const maxStart = Math.max(0, list.length - chunkSize);
+  const maxStart = Math.max(0, list.length - 1);
   flowChunkIndex = Math.max(0, Math.min(flowChunkIndex, maxStart));
 }
 
@@ -3223,7 +3270,10 @@ function scrollFlowChunkIntoView(list, chunkSize) {
 function updateFlowHighlight() {
   if (readingMode !== 'flow') {
     flowLayer.classList.remove('flow-shaded');
-    getFlowHighlightables().forEach(el => el.classList.remove('flow-highlight-active'));
+    getFlowHighlightables().forEach(el => {
+      el.classList.remove('flow-highlight-active', 'flow-highlight-partial');
+      el.style.removeProperty('--flow-active-max-height');
+    });
     return;
   }
   ensureFlowHighlightTargets();
@@ -3246,9 +3296,25 @@ function updateFlowHighlight() {
     flowChunkIndex = nearestIdx;
   }
   clampFlowChunkIndex(list, chunkSize);
+  let consumedLines = 0;
+  let partialApplied = false;
   list.forEach((el, idx) => {
-    const active = idx >= flowChunkIndex && idx < flowChunkIndex + chunkSize;
-    el.classList.toggle('flow-highlight-active', active && (rulerOn || chunkModeOn()));
+    el.classList.remove('flow-highlight-active', 'flow-highlight-partial');
+    el.style.removeProperty('--flow-active-max-height');
+    if (!(rulerOn || chunkModeOn()) || idx < flowChunkIndex || partialApplied || consumedLines >= chunkSize) return;
+    const metrics = getFlowElementLineMetrics(el);
+    const remaining = chunkSize - consumedLines;
+    if (metrics.lines <= remaining) {
+      el.classList.add('flow-highlight-active');
+      consumedLines += metrics.lines;
+      return;
+    }
+    if (consumedLines === 0) {
+      el.classList.add('flow-highlight-partial');
+      el.style.setProperty('--flow-active-max-height', `${Math.round(remaining * metrics.lineHeightPx)}px`);
+      consumedLines = chunkSize;
+      partialApplied = true;
+    }
   });
   const showShading = document.getElementById('shadeT').checked || chunkModeOn();
   flowLayer.classList.toggle('flow-shaded', showShading);
@@ -3298,7 +3364,7 @@ function stepChunk(direction) {
   if (readingMode === 'flow') {
     const list = getFlowHighlightables();
     const stepSize = Math.max(1, Number(document.getElementById('chunkR').value) || 1);
-    flowChunkIndex += direction * stepSize;
+    stepFlowChunkIndexByLines(list, direction, stepSize);
     clampFlowChunkIndex(list, stepSize);
     updateFlowHighlight();
     scrollFlowChunkIntoView(list, stepSize);
