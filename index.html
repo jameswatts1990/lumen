@@ -873,7 +873,8 @@ body.low-interruption-active .chunk-indicator {
   }
   .sidebar-toggle {
     left: 10px;
-    top: 20px;
+    top: auto;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     transform: none;
     width: 42px;
     height: 42px;
