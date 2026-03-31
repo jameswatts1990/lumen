@@ -911,6 +911,90 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   border-color: var(--accent);
   color: var(--accent);
 }
+.flow-hold-timer,
+.flow-speed-hud {
+  position: fixed;
+  right: 18px;
+  z-index: 342;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.96);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.flow-hold-timer {
+  top: 14px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-mid);
+  background: rgba(25, 18, 12, 0.9);
+  color: var(--text-secondary);
+  font-family: 'DM Mono', monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.65px;
+  text-transform: uppercase;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.3);
+}
+.flow-hold-timer.on,
+.flow-speed-hud.on {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+.flow-speed-hud {
+  top: 50px;
+  min-width: 230px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--accent-mid);
+  background: linear-gradient(165deg, rgba(36, 26, 17, 0.94), rgba(20, 14, 10, 0.94));
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.4);
+  color: var(--text-primary);
+}
+.flow-speed-hud-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.flow-speed-hud-item {
+  min-width: 0;
+}
+.flow-speed-hud-label {
+  display: block;
+  color: var(--text-muted);
+  font-family: 'DM Mono', monospace;
+  font-size: 9.5px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.flow-speed-hud-value {
+  display: block;
+  color: #f0decb;
+  font-family: 'DM Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  letter-spacing: 0.25px;
+  white-space: nowrap;
+}
+.flow-speed-hud.paused {
+  border-color: rgba(150, 129, 103, 0.45);
+  background: rgba(30, 23, 15, 0.84);
+}
+.flow-speed-hud.paused .flow-speed-hud-value {
+  color: var(--text-secondary);
+}
+@media (max-width: 780px) {
+  .flow-speed-hud {
+    right: 10px;
+    left: calc(var(--sidebar-offset) + 10px);
+    min-width: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow-hold-timer,
+  .flow-speed-hud {
+    transition: none;
+  }
+}
 
 .shortcuts-overlay {
   position: fixed;
@@ -926,7 +1010,9 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 body.low-interruption-active .shortcuts-overlay,
 body.low-interruption-active .nav-pop,
 body.low-interruption-active .chunk-indicator,
-body.low-interruption-active .session-timer-overlay {
+body.low-interruption-active .session-timer-overlay,
+body.low-interruption-active .flow-hold-timer,
+body.low-interruption-active .flow-speed-hud {
   display: none !important;
 }
 .shortcuts-panel {
@@ -1528,6 +1614,23 @@ body.low-interruption-active .session-timer-overlay {
   <span id="sessionDoneText">Session complete.</span>
   <button class="session-done-dismiss" id="sessionDoneDismissBtn" type="button">Dismiss</button>
 </div>
+<div class="flow-hold-timer" id="flowHoldTimer" aria-live="polite">Hold · 1.0s</div>
+<div class="flow-speed-hud" id="flowSpeedHud" aria-live="polite">
+  <div class="flow-speed-hud-grid">
+    <div class="flow-speed-hud-item">
+      <span class="flow-speed-hud-label">WPM</span>
+      <span class="flow-speed-hud-value" id="flowHudWpm">144</span>
+    </div>
+    <div class="flow-speed-hud-item">
+      <span class="flow-speed-hud-label">State</span>
+      <span class="flow-speed-hud-value" id="flowHudState">Ready</span>
+    </div>
+    <div class="flow-speed-hud-item">
+      <span class="flow-speed-hud-label">Progress</span>
+      <span class="flow-speed-hud-value" id="flowHudProgress">0%</span>
+    </div>
+  </div>
+</div>
 <div class="focus-top" id="focTop"></div>
 <div class="focus-bot" id="focBot"></div>
 <div class="tint-lay" id="tintLay"></div>
@@ -1673,10 +1776,24 @@ let sessionsCompletedThisSession = 0;
 let currentDocMeta = null;
 let pendingResumeState = null;
 let persistSettingsTimer = null;
+let flowHoldState = {
+  active: false,
+  pointerId: null,
+  holdStartedTs: 0,
+  holdRaf: null
+};
+const FLOW_HOLD_TIMER_THRESHOLD_MS = 1000;
+const FLOW_HUD_THRESHOLD_MS = 3000;
+const FLOW_BASE_WPM = 180;
 
 const reader = document.getElementById('reader');
 const rInner = document.getElementById('rInner');
 const flowLayer = document.getElementById('flowLayer');
+const flowHoldTimer = document.getElementById('flowHoldTimer');
+const flowSpeedHud = document.getElementById('flowSpeedHud');
+const flowHudWpm = document.getElementById('flowHudWpm');
+const flowHudState = document.getElementById('flowHudState');
+const flowHudProgress = document.getElementById('flowHudProgress');
 const MOBILE_BREAKPOINT = 900;
 let sidebarOpen = true;
 let mobileViewport = false;
@@ -2334,6 +2451,7 @@ function updateLowInterruptionMode() {
   const on = Boolean(sessionSupportState.lowInterruption && sessionSupportState.sessionEndTs > Date.now());
   document.body.classList.toggle('low-interruption-active', on);
   if (on) {
+    resetFlowHoldHud({ keepPausedHud: false });
     setShortcutsOpen(false);
     setNavigationMenuOpen(false);
   }
@@ -3556,6 +3674,7 @@ function setReadingMode(mode) {
   const modeTextMap = { pdf: 'Original', overlay: 'Overlay', flow: 'Flow' };
   const currentModeLabel = document.getElementById('readingModeCurrent');
   if (currentModeLabel) currentModeLabel.textContent = modeTextMap[normalized] || 'Original';
+  if (normalized !== 'flow') resetFlowHoldHud({ keepPausedHud: false });
   syncReadingModeControls();
   toggleRuler();
   toggleChunkMode();
@@ -4280,6 +4399,81 @@ function toggleFocus() {
   document.getElementById('focBot').classList.toggle('on', on);
 }
 
+/* ── Flow hold HUD ── */
+function flowModeActiveForHoldHud() {
+  return readingMode === 'flow' && !document.body.classList.contains('low-interruption-active');
+}
+
+function getFlowHudProgressPercent() {
+  const scrollableHeight = reader.scrollHeight - reader.clientHeight;
+  if (scrollableHeight <= 0) return 0;
+  return Math.min(100, Math.max(0, (reader.scrollTop / scrollableHeight) * 100));
+}
+
+function updateFlowSpeedHudMetrics() {
+  const estimatedWpm = Math.max(40, Math.round(Math.abs(scrollSpeed) * FLOW_BASE_WPM));
+  flowHudWpm.textContent = String(estimatedWpm);
+  flowHudProgress.textContent = `${Math.round(getFlowHudProgressPercent())}%`;
+}
+
+function stopFlowHoldRaf() {
+  if (!flowHoldState.holdRaf) return;
+  cancelAnimationFrame(flowHoldState.holdRaf);
+  flowHoldState.holdRaf = null;
+}
+
+function setFlowHudPaused() {
+  if (!flowSpeedHud.classList.contains('on')) return;
+  flowSpeedHud.classList.add('paused');
+  flowHudState.textContent = 'Paused';
+  updateFlowSpeedHudMetrics();
+}
+
+function resetFlowHoldHud({ keepPausedHud = true } = {}) {
+  stopFlowHoldRaf();
+  flowHoldState.active = false;
+  flowHoldState.pointerId = null;
+  flowHoldState.holdStartedTs = 0;
+  flowHoldTimer.classList.remove('on');
+  if (!keepPausedHud) {
+    flowSpeedHud.classList.remove('on', 'paused');
+    flowHudState.textContent = 'Ready';
+  }
+}
+
+function tickFlowHoldHud(ts) {
+  if (!flowHoldState.active) return;
+  if (!flowHoldState.holdStartedTs) flowHoldState.holdStartedTs = ts;
+  const elapsed = ts - flowHoldState.holdStartedTs;
+  if (elapsed >= FLOW_HOLD_TIMER_THRESHOLD_MS) {
+    flowHoldTimer.classList.add('on');
+    flowHoldTimer.textContent = `Hold · ${(elapsed / 1000).toFixed(1)}s`;
+  }
+  if (elapsed >= FLOW_HUD_THRESHOLD_MS) {
+    flowSpeedHud.classList.add('on');
+    flowSpeedHud.classList.remove('paused');
+    flowHudState.textContent = scrolling ? 'Active' : 'Ready';
+    updateFlowSpeedHudMetrics();
+  }
+  flowHoldState.holdRaf = requestAnimationFrame(tickFlowHoldHud);
+}
+
+function beginFlowHoldHud(pointerId) {
+  if (!flowModeActiveForHoldHud()) return;
+  resetFlowHoldHud({ keepPausedHud: true });
+  flowHoldState.active = true;
+  flowHoldState.pointerId = pointerId;
+  flowHoldState.holdRaf = requestAnimationFrame(tickFlowHoldHud);
+}
+
+function endFlowHoldHud(pointerId = null) {
+  if (!flowHoldState.active) return;
+  if (pointerId !== null && flowHoldState.pointerId !== null && pointerId !== flowHoldState.pointerId) return;
+  const keepPausedHud = flowSpeedHud.classList.contains('on');
+  resetFlowHoldHud({ keepPausedHud });
+  setFlowHudPaused();
+}
+
 /* ── Progress bar ── */
 function updateCurrentPageStatus() {
   const totalPages = getTotalPages();
@@ -4318,6 +4512,7 @@ function updateProgress() {
   const remainingMs = getRemainingSessionMs();
   const sessionCue = remainingMs > 0 ? ` • ⏱ ${Math.ceil(remainingMs / 60000)}m` : '';
   document.getElementById('statScroll').textContent = `${base}${sessionCue}`;
+  if (flowSpeedHud.classList.contains('on')) updateFlowSpeedHudMetrics();
 }
 
 function updateProgressAndStatus() {
@@ -4344,6 +4539,11 @@ function toggleScroll() {
   const btn = document.getElementById('scrollBtn');
   btn.textContent = scrolling ? '⏸' : '▶';
   btn.classList.toggle('on', scrolling);
+  if (flowSpeedHud.classList.contains('on') || flowSpeedHud.classList.contains('paused')) {
+    flowSpeedHud.classList.toggle('paused', !scrolling);
+    flowHudState.textContent = scrolling ? 'Active' : 'Paused';
+    updateFlowSpeedHudMetrics();
+  }
   if (scrolling) startScroll(); else stopScroll();
 }
 
@@ -4384,6 +4584,16 @@ function stopScroll() {
 
 reader.addEventListener('mouseenter', () => { if (scrolling) stopScroll(); });
 reader.addEventListener('mouseleave', () => { if (scrolling) startScroll(); });
+flowLayer.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  beginFlowHoldHud(e.pointerId);
+});
+flowLayer.addEventListener('pointerup', (e) => endFlowHoldHud(e.pointerId));
+flowLayer.addEventListener('pointercancel', (e) => endFlowHoldHud(e.pointerId));
+flowLayer.addEventListener('pointerleave', (e) => {
+  if (flowHoldState.active) endFlowHoldHud(e.pointerId);
+});
+window.addEventListener('blur', () => endFlowHoldHud());
 
 /* ── Keyboard shortcuts ── */
 function isTypingTarget(el) {
