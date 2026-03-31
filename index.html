@@ -1818,6 +1818,7 @@ let flowHoldState = {
 const FLOW_HOLD_TIMER_THRESHOLD_MS = 1000;
 const FLOW_HUD_THRESHOLD_MS = 3000;
 const FLOW_BASE_WPM = 180;
+const FLOW_SPEED_READ_FALLBACK_WPM = Math.max(40, Math.round(Math.abs(DEFAULT_SETTINGS.autoScrollSpeed) * FLOW_BASE_WPM));
 const FLOW_GESTURE_STATES = Object.freeze({
   IDLE: 'idle',
   PRESSING: 'pressing',
@@ -1827,7 +1828,7 @@ const FLOW_GESTURE_STATES = Object.freeze({
 });
 const FLOW_GESTURE_TIMER_VISIBLE_MS = 1000;
 const FLOW_GESTURE_ACTIVATE_MS = 3000;
-const FLOW_SPEED_READ_WPM = 280;
+const FLOW_SPEED_READ_INTERVAL_DEBOUNCE_MS = 120;
 let flowGestureState = FLOW_GESTURE_STATES.IDLE;
 let flowGesturePressStartTs = 0;
 let flowGestureActivePointerId = null;
@@ -1840,6 +1841,9 @@ let flowSpeedReadLastTs = 0;
 let flowSpeedReadCarryMs = 0;
 let flowSpeedReadRAF = null;
 let flowSpeedReadActiveWord = null;
+let flowSpeedReadIntervalUpdateTimer = null;
+let flowSpeedReadPlaybackWpm = FLOW_SPEED_READ_FALLBACK_WPM;
+let flowSpeedReadIntervalMs = 60000 / FLOW_SPEED_READ_FALLBACK_WPM;
 const flowGestureEventListeners = new Map();
 
 const reader = document.getElementById('reader');
@@ -1932,6 +1936,43 @@ function clearFlowSpeedReadHighlight() {
   flowSpeedReadActiveWord = null;
 }
 
+function getAutoScrollWpmBounds() {
+  const slider = document.getElementById('scrollSR');
+  const minSpeed = Math.abs(Number(slider?.min));
+  const maxSpeed = Math.abs(Number(slider?.max));
+  const maxMagnitude = Math.max(minSpeed, maxSpeed, Math.abs(DEFAULT_SETTINGS.autoScrollSpeed));
+  return {
+    min: 40,
+    max: Math.max(40, Math.round(maxMagnitude * FLOW_BASE_WPM))
+  };
+}
+
+function getAutoScrollWpmValue() {
+  const slider = document.getElementById('scrollSR');
+  const parsed = Number(slider?.value);
+  const speedMagnitude = Number.isFinite(parsed) ? Math.abs(parsed) : Math.abs(DEFAULT_SETTINGS.autoScrollSpeed);
+  const estimatedWpm = Math.round(speedMagnitude * FLOW_BASE_WPM) || FLOW_SPEED_READ_FALLBACK_WPM;
+  const { min, max } = getAutoScrollWpmBounds();
+  return Math.min(max, Math.max(min, estimatedWpm));
+}
+
+function applyFlowSpeedReadTiming() {
+  flowSpeedReadPlaybackWpm = getAutoScrollWpmValue();
+  flowSpeedReadIntervalMs = 60000 / flowSpeedReadPlaybackWpm;
+  flowSpeedReadCarryMs = Math.min(flowSpeedReadCarryMs, flowSpeedReadIntervalMs * 0.95);
+}
+
+function queueFlowSpeedReadTimingSync() {
+  if (flowSpeedReadIntervalUpdateTimer) clearTimeout(flowSpeedReadIntervalUpdateTimer);
+  flowSpeedReadIntervalUpdateTimer = setTimeout(() => {
+    flowSpeedReadIntervalUpdateTimer = null;
+    applyFlowSpeedReadTiming();
+    if (flowSpeedHud.classList.contains('on') || flowSpeedHud.classList.contains('paused')) {
+      flowHudWpm.textContent = String(flowSpeedReadPlaybackWpm);
+    }
+  }, FLOW_SPEED_READ_INTERVAL_DEBOUNCE_MS);
+}
+
 function syncFlowSpeedReadHighlight() {
   clearFlowSpeedReadHighlight();
   const target = flowSpeedReadWordNodes[flowSpeedReadWordIndex];
@@ -1972,6 +2013,8 @@ function buildFlowSpeedReadWordNodes() {
 
 function stopFlowSpeedReadPlayback() {
   if (flowSpeedReadRAF) cancelAnimationFrame(flowSpeedReadRAF);
+  if (flowSpeedReadIntervalUpdateTimer) clearTimeout(flowSpeedReadIntervalUpdateTimer);
+  flowSpeedReadIntervalUpdateTimer = null;
   flowSpeedReadRAF = null;
   flowSpeedReadLastTs = 0;
   flowSpeedReadCarryMs = 0;
@@ -1979,19 +2022,19 @@ function stopFlowSpeedReadPlayback() {
 
 function startFlowSpeedReadPlayback() {
   stopFlowSpeedReadPlayback();
+  applyFlowSpeedReadTiming();
   buildFlowSpeedReadWordNodes();
   if (!flowSpeedReadWordNodes.length) return;
   flowSpeedReadWordIndex = Math.max(0, Math.min(flowSpeedReadWordIndex, flowSpeedReadWordNodes.length - 1));
   syncFlowSpeedReadHighlight();
-  const msPerWord = 60000 / FLOW_SPEED_READ_WPM;
   const tick = (ts) => {
     if (flowGestureState !== FLOW_GESTURE_STATES.SPEED_READ_ACTIVE) return;
     if (!flowSpeedReadLastTs) flowSpeedReadLastTs = ts;
     const dt = Math.min(80, ts - flowSpeedReadLastTs || 16);
     flowSpeedReadLastTs = ts;
     flowSpeedReadCarryMs += dt;
-    while (flowSpeedReadCarryMs >= msPerWord) {
-      flowSpeedReadCarryMs -= msPerWord;
+    while (flowSpeedReadCarryMs >= flowSpeedReadIntervalMs) {
+      flowSpeedReadCarryMs -= flowSpeedReadIntervalMs;
       if (flowSpeedReadWordIndex >= flowSpeedReadWordNodes.length - 1) {
         flowSpeedReadWordIndex = flowSpeedReadWordNodes.length - 1;
         syncFlowSpeedReadHighlight();
@@ -4355,7 +4398,10 @@ wire('tsizeR',  'tsizeV', '%', null, () => applyReadingMode());
 wire('lhR',     'lhV',    '',  v => v.toFixed(2), () => applyReadingMode());
 wire('lsR',     'lsV',    'px', v => v.toFixed(2)+'px', () => applyReadingMode());
 wire('wsR',     'wsV',    'px', v => v.toFixed(1)+'px', () => applyReadingMode());
-wire('scrollSR','scrollSV','', v => `${v.toFixed(1)}x`, v => { scrollSpeed = v; });
+wire('scrollSR','scrollSV','', v => `${v.toFixed(1)}x`, v => {
+  scrollSpeed = v;
+  queueFlowSpeedReadTimingSync();
+});
 wire('focusR',  'focusV', '%', null, v => updateFocusVignette(v));
 wire('focusDepthR', 'focusDepthV', 'px', null, v => updateFocusDepth(v));
 wire('chunkR', 'chunkV', ' lines', v => chunkLengthLabel(v), () => {
@@ -4727,8 +4773,7 @@ function getFlowHudProgressPercent() {
 }
 
 function updateFlowSpeedHudMetrics() {
-  const estimatedWpm = Math.max(40, Math.round(Math.abs(scrollSpeed) * FLOW_BASE_WPM));
-  flowHudWpm.textContent = String(estimatedWpm);
+  flowHudWpm.textContent = String(getAutoScrollWpmValue());
   flowHudProgress.textContent = `${Math.round(getFlowHudProgressPercent())}%`;
 }
 
