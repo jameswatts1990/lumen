@@ -9,10 +9,32 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Mono:wght@400;500&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet" id="primaryReadableFonts">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" id="primaryReadableFonts">
 <style>
 /* Bump this querystring after font updates to avoid stale caches on long-lived deployments. */
 /* Server note: set Cache-Control: public, max-age=31536000, immutable for /assets/fonts/* paths. */
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  src:
+    local('Atkinson Hyperlegible Regular'),
+    local('Atkinson Hyperlegible'),
+    url('https://cdn.jsdelivr.net/npm/@fontsource/atkinson-hyperlegible@5.2.6/files/atkinson-hyperlegible-latin-400-normal.woff2') format('woff2'),
+    url('https://unpkg.com/@fontsource/atkinson-hyperlegible@5.2.6/files/atkinson-hyperlegible-latin-400-normal.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  src:
+    local('Atkinson Hyperlegible Bold'),
+    local('Atkinson Hyperlegible'),
+    url('https://cdn.jsdelivr.net/npm/@fontsource/atkinson-hyperlegible@5.2.6/files/atkinson-hyperlegible-latin-700-normal.woff2') format('woff2'),
+    url('https://unpkg.com/@fontsource/atkinson-hyperlegible@5.2.6/files/atkinson-hyperlegible-latin-700-normal.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
 @font-face {
   font-family: 'OpenDyslexic';
   src:
@@ -1214,7 +1236,7 @@ async function ensureCriticalFontsReady() {
       key: 'atkinson',
       family: 'Atkinson Hyperlegible',
       probes: ['400 1em "Atkinson Hyperlegible"', '700 1em "Atkinson Hyperlegible"'],
-      fallbackHref: 'https://fonts.bunny.net/css?family=atkinson-hyperlegible:400,700',
+      fallbackHref: 'https://cdn.jsdelivr.net/npm/@fontsource/atkinson-hyperlegible@5.2.6/index.css',
       fallbackLinkId: 'fallbackAtkinsonFont'
     }),
     ensureFontAvailable({
