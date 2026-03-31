@@ -415,6 +415,42 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 /* Autoscroll controls */
 .scroll-ctl { padding: 4px 20px 10px; display: flex; align-items: center; gap: 10px; }
 .scroll-play-btn { flex: 0 0 auto; }
+.speed-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 4px 20px 8px;
+}
+.speed-tab-btn {
+  flex: 1;
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--text-secondary);
+  border-radius: 7px;
+  padding: 7px 8px;
+  font-size: 11.5px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  font-family: 'DM Mono', monospace;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.speed-tab-btn:hover,
+.speed-tab-btn:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: none;
+}
+.speed-tab-btn.on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+.speed-tab-panel.on {
+  display: block;
+}
+.speed-tab-panel:not(.on) {
+  display: none;
+}
 .scroll-wpm-input {
   width: 78px;
   border: 1px solid var(--control-border);
@@ -1698,26 +1734,37 @@ body.low-interruption-active .flow-speed-hud {
       <div class="sec is-collapsed">
         <div class="sec-label">Auto Scroll <span class="sci sci-mod">Moderate evidence</span></div>
         <div class="sec-hint">Steady pacing can reduce regressions for some readers, but fixed speed may hurt comprehension if pace is too fast. See <code>A1</code>.</div>
-        <div class="ctrl">
+        <div class="ctrl ctrl-group">
           <span class="ctrl-lbl">Speed</span>
-          <input type="range" id="scrollSR" min="-4" max="4" value="0.8" step="0.1">
+          <input type="range" id="scrollSR" min="-5" max="5" value="0.8" step="0.1">
           <button class="scbtn scroll-play-btn" id="scrollBtn" onclick="toggleScroll()" aria-label="Toggle auto scroll">▶</button>
           <span class="ctrl-val" id="scrollSV">0.8x</span>
         </div>
-        <div class="ctrl" style="padding-top:0;">
-          <span class="ctrl-lbl">Speed-Read WPM</span>
-          <input type="number" id="scrollWpmIn" class="scroll-wpm-input" min="40" max="720" step="1" value="144" inputmode="numeric" aria-label="Speed-read words per minute">
-          <span class="ctrl-val" id="scrollWpmV">144 wpm</span>
-        </div>
-        <div class="scroll-ctl">
+        <div class="scroll-ctl ctrl-group">
           <span class="scbtn-hint">Negative = reverse · Hover reader to pause</span>
         </div>
-        <div class="trow" style="padding-top: 2px;">
-          <div class="trow-info">
-            <div class="trow-lbl">Sentence Pause Boost</div>
-            <div class="trow-sub">Adds a slight delay after sentence-ending punctuation for readability tuning.</div>
+        <div class="speed-tabs ctrl-group flow-only-group" role="tablist" aria-label="Flow speed controls">
+          <button class="speed-tab-btn on" type="button" role="tab" aria-selected="true" aria-controls="speedTabAutoScrollPanel" id="speedTabAutoScrollBtn" data-speed-tab="auto-scroll">Auto Scroll</button>
+          <button class="speed-tab-btn" type="button" role="tab" aria-selected="false" aria-controls="speedTabSpeedReadPanel" id="speedTabSpeedReadBtn" data-speed-tab="speed-reading">Speed Reading</button>
+        </div>
+        <div class="speed-tab-panel on ctrl-group flow-only-group" id="speedTabAutoScrollPanel" role="tabpanel" aria-labelledby="speedTabAutoScrollBtn">
+          <div class="mode-note">Auto-scroll uses a fixed pace while Flow text remains visible for context.</div>
+        </div>
+        <div class="speed-tab-panel ctrl-group flow-only-group" id="speedTabSpeedReadPanel" role="tabpanel" aria-labelledby="speedTabSpeedReadBtn">
+          <div class="mode-note">How to start: switch to Flow mode, then press and hold anywhere in the reader for 3 seconds. Release to pause.</div>
+          <div class="ctrl" style="padding-top:0;">
+            <span class="ctrl-lbl">Speed-Read WPM</span>
+            <input type="number" id="scrollWpmIn" class="scroll-wpm-input" min="40" max="900" step="1" value="144" inputmode="numeric" aria-label="Speed-read words per minute">
+            <span class="ctrl-val" id="scrollWpmV">144 wpm</span>
           </div>
-          <label class="tog"><input type="checkbox" id="flowSentencePauseT"><span class="tog-tk"></span></label>
+          <div class="mode-note" id="scrollWpmEq">Equivalent: average adult reading speed.</div>
+          <div class="trow" style="padding-top: 2px;">
+            <div class="trow-info">
+              <div class="trow-lbl">Sentence Pause Boost</div>
+              <div class="trow-sub">Adds a slight delay after sentence-ending punctuation for readability tuning.</div>
+            </div>
+            <label class="tog"><input type="checkbox" id="flowSentencePauseT"><span class="tog-tk"></span></label>
+          </div>
         </div>
       </div>
 
@@ -2021,6 +2068,7 @@ let flowHoldState = {
 const FLOW_HOLD_TIMER_THRESHOLD_MS = 1000;
 const FLOW_HUD_THRESHOLD_MS = 3000;
 const FLOW_BASE_WPM = 180;
+const FLOW_SPEED_READ_MAX_WPM = 900;
 const FLOW_SPEED_READ_FALLBACK_WPM = Math.max(40, Math.round(Math.abs(DEFAULT_SETTINGS.autoScrollSpeed) * FLOW_BASE_WPM));
 const FLOW_GESTURE_STATES = Object.freeze({
   IDLE: 'idle',
@@ -2186,10 +2234,20 @@ function getAutoScrollWpmBounds() {
   const minSpeed = Math.abs(Number(slider?.min));
   const maxSpeed = Math.abs(Number(slider?.max));
   const maxMagnitude = Math.max(minSpeed, maxSpeed, Math.abs(DEFAULT_SETTINGS.autoScrollSpeed));
+  const derivedMax = Math.max(40, Math.round(maxMagnitude * FLOW_BASE_WPM));
   return {
     min: 40,
-    max: Math.max(40, Math.round(maxMagnitude * FLOW_BASE_WPM))
+    max: Math.min(FLOW_SPEED_READ_MAX_WPM, derivedMax)
   };
+}
+
+function describeWpmEquivalency(wpm) {
+  if (wpm <= 130) return 'Equivalent: deliberate study pace for dense text.';
+  if (wpm <= 220) return 'Equivalent: average adult reading speed.';
+  if (wpm <= 320) return 'Equivalent: strong non-fiction pace.';
+  if (wpm <= 450) return 'Equivalent: fast skim-reading pace.';
+  if (wpm <= 650) return 'Equivalent: very fast RSVP training pace.';
+  return 'Equivalent: elite speed-reading drill pace.';
 }
 
 function getAutoScrollWpmValue() {
@@ -2205,6 +2263,8 @@ function syncAutoScrollWpmUi() {
   const wpm = getAutoScrollWpmValue();
   const wpmVal = document.getElementById('scrollWpmV');
   if (wpmVal) wpmVal.textContent = `${wpm} wpm`;
+  const wpmEq = document.getElementById('scrollWpmEq');
+  if (wpmEq) wpmEq.textContent = describeWpmEquivalency(wpm);
   if (scrollWpmInput && document.activeElement !== scrollWpmInput) {
     scrollWpmInput.value = String(wpm);
   }
@@ -4544,6 +4604,24 @@ function applyFilters() {
   applyReadingMode();
 }
 
+function setSpeedControlTab(tabName = 'auto-scroll') {
+  const next = tabName === 'speed-reading' ? 'speed-reading' : 'auto-scroll';
+  const isFlow = readingMode === 'flow';
+  document.querySelectorAll('.speed-tab-btn').forEach(btn => {
+    const active = btn.dataset.speedTab === next && isFlow;
+    btn.classList.toggle('on', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    btn.setAttribute('tabindex', active ? '0' : '-1');
+  });
+  document.querySelectorAll('.speed-tab-panel').forEach(panel => {
+    const shouldShow = isFlow && (
+      (next === 'auto-scroll' && panel.id === 'speedTabAutoScrollPanel') ||
+      (next === 'speed-reading' && panel.id === 'speedTabSpeedReadPanel')
+    );
+    panel.classList.toggle('on', shouldShow);
+  });
+}
+
 function syncReadingModeControls() {
   const typographyEnabled = readingMode === 'overlay' || readingMode === 'flow';
   const isFlow = readingMode === 'flow';
@@ -4583,6 +4661,7 @@ function syncReadingModeControls() {
   document.getElementById('chunkV').textContent = chunkLengthLabel(Number(document.getElementById('chunkR').value));
   const focusModeHint = document.getElementById('focusModeHint');
   if (focusModeHint) focusModeHint.hidden = !isFlow;
+  if (!isFlow) setSpeedControlTab('auto-scroll');
 }
 
 function syncChunkFocusAidExclusivity() {
@@ -5864,6 +5943,12 @@ scrollWpmInput?.addEventListener('change', e => {
   setAutoScrollWpm(next);
 });
 scrollWpmInput?.addEventListener('blur', () => syncAutoScrollWpmUi());
+document.querySelectorAll('.speed-tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (readingMode !== 'flow') return;
+    setSpeedControlTab(btn.dataset.speedTab);
+  });
+});
 window.addEventListener('resize', () => {
   syncSidebarForViewport();
   updateProgressAndStatus();
