@@ -1906,6 +1906,18 @@ body.low-interruption-active .flow-speed-hud {
 pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
+const PDFJS_ASSET_BASE = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+
+function getPdfDocumentTask(source) {
+  return pdfjsLib.getDocument({
+    ...source,
+    cMapUrl: `${PDFJS_ASSET_BASE}cmaps/`,
+    cMapPacked: true,
+    standardFontDataUrl: `${PDFJS_ASSET_BASE}standard_fonts/`,
+    useWorkerFetch: true
+  });
+}
+
 /* ── State ── */
 let pdf = null;
 const BASE_PAGE_WIDTH = 760;
@@ -4483,7 +4495,7 @@ async function loadPDF(file) {
       name: file.name,
       docMeta: currentDocMeta || null
     });
-    pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+    pdf = await getPdfDocumentTask({ data: buf }).promise;
     setPageJumpAvailability(true);
 
     rInner.innerHTML = '';
@@ -4527,7 +4539,7 @@ async function loadPDFBytes(bytes, name = 'Recovered PDF') {
   setPageJumpAvailability(false);
   renderOutlineFallback('Loading outline…');
   try {
-    pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+    pdf = await getPdfDocumentTask({ data: bytes }).promise;
     setPageJumpAvailability(true);
     rInner.innerHTML = '';
     rInner.appendChild(flowLayer);
