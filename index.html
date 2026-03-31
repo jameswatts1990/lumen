@@ -1032,7 +1032,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
           <span class="ctrl-lbl">Speed</span>
           <input type="range" id="scrollSR" min="-4" max="4" value="0.8" step="0.1">
           <button class="scbtn scroll-play-btn" id="scrollBtn" onclick="toggleScroll()" aria-label="Toggle auto scroll">▶</button>
-          <span class="ctrl-val" id="scrollSV">0.8</span>
+          <span class="ctrl-val" id="scrollSV">0.8x</span>
         </div>
         <div class="scroll-ctl">
           <span class="scbtn-hint">Negative = reverse · Hover reader to pause</span>
@@ -1142,6 +1142,8 @@ let scrolling = false;
 let scrollSpeed = 0.8;
 let scrollRAF = null;
 let lastScrollTs = 0;
+let scrollCarry = 0;
+const AUTO_SCROLL_BASE_PX_PER_SECOND = 96;
 let currentMode = 'day';
 let rendering = false;
 let focusDepth = 220;
@@ -2408,7 +2410,7 @@ wire('tsizeR',  'tsizeV', '%', null, () => applyReadingMode());
 wire('lhR',     'lhV',    '',  v => v.toFixed(2), () => applyReadingMode());
 wire('lsR',     'lsV',    'px', v => v.toFixed(2)+'px', () => applyReadingMode());
 wire('wsR',     'wsV',    'px', v => v.toFixed(1)+'px', () => applyReadingMode());
-wire('scrollSR','scrollSV','', v => v.toFixed(1), v => { scrollSpeed = v; });
+wire('scrollSR','scrollSV','', v => `${v.toFixed(1)}x`, v => { scrollSpeed = v; });
 wire('focusR',  'focusV', '%', null, v => updateFocusVignette(v));
 wire('focusDepthR', 'focusDepthV', 'px', null, v => updateFocusDepth(v));
 wire('chunkR', 'chunkV', ' lines', v => `${Math.round(v)} line${Math.round(v) === 1 ? '' : 's'}`, () => updateChunkOverlay());
@@ -2656,14 +2658,20 @@ function toggleScroll() {
 function startScroll() {
   stopScroll();
   lastScrollTs = 0;
+  scrollCarry = 0;
   const tick = (ts) => {
     if (!scrolling) return;
     if (!lastScrollTs) lastScrollTs = ts;
     const dt = Math.min(64, ts - lastScrollTs || 16);
     lastScrollTs = ts;
-    const pxPerSecond = scrollSpeed * 32;
-    if (Math.abs(pxPerSecond) >= 0.05) {
-      reader.scrollBy(0, pxPerSecond * (dt / 1000));
+    const pxPerSecond = scrollSpeed * AUTO_SCROLL_BASE_PX_PER_SECOND;
+    if (Math.abs(pxPerSecond) >= 0.01) {
+      scrollCarry += pxPerSecond * (dt / 1000);
+      const wholeStep = scrollCarry > 0 ? Math.floor(scrollCarry) : Math.ceil(scrollCarry);
+      if (wholeStep !== 0) {
+        reader.scrollBy(0, wholeStep);
+        scrollCarry -= wholeStep;
+      }
     }
     const atBottom = reader.scrollTop + reader.clientHeight >= reader.scrollHeight - 1;
     const atTop = reader.scrollTop <= 1;
@@ -2679,6 +2687,7 @@ function stopScroll() {
   if (scrollRAF) cancelAnimationFrame(scrollRAF);
   scrollRAF = null;
   lastScrollTs = 0;
+  scrollCarry = 0;
 }
 
 reader.addEventListener('mouseenter', () => { if (scrolling) stopScroll(); });
