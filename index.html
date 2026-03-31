@@ -1099,7 +1099,7 @@ body.low-interruption-active .session-timer-overlay {
       <!-- Import -->
       <div class="sec-label" style="padding-top: 10px;">Import</div>
       <div class="upload-zone" id="upZone">
-        <input type="file" accept=".pdf,.txt,.md,.markdown,.html,.htm,.json,application/pdf,text/plain,text/markdown,text/html,application/json" id="fileIn">
+        <input type="file" accept=".pdf,.txt,.md,.markdown,.html,.htm,.json,.eml,.msg,application/pdf,text/plain,text/markdown,text/html,application/json,message/rfc822,application/vnd.ms-outlook" id="fileIn">
         <div class="upload-icon">📄</div>
         <div>Drop a file here or click to open</div>
         <div class="upload-fname" id="upName"></div>
@@ -2278,9 +2278,10 @@ function isPdfFile(file) {
 function isTextLikeFile(file) {
   if (!file) return false;
   const name = (file.name || '').toLowerCase();
-  const extMatch = /\.(txt|md|markdown|html|htm|json)$/.test(name);
+  const extMatch = /\.(txt|md|markdown|html|htm|json|eml|msg)$/.test(name);
   const mime = (file.type || '').toLowerCase();
-  return extMatch || mime.startsWith('text/') || mime === 'application/json';
+  const emailMimeMatch = mime === 'message/rfc822';
+  return extMatch || emailMimeMatch || mime.startsWith('text/') || mime === 'application/json';
 }
 
 function isSupportedFile(file) {
@@ -2520,7 +2521,7 @@ function renderTextFlowFromPlainText(text, originLabel = 'Text source') {
 async function loadSourceFile(file) {
   if (isPdfFile(file)) return loadPDF(file);
   if (!isTextLikeFile(file)) {
-    rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Unsupported file type. Try PDF, TXT, Markdown, HTML, or JSON.</div>';
+    rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Unsupported file type. Try PDF, TXT, Markdown, HTML, JSON, or email files (.eml/.msg).</div>';
     return;
   }
 
