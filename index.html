@@ -299,7 +299,9 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 2px 7px;
+  gap: 0;
+  min-width: 34px;
+  padding: 2px 8px;
   border-radius: 999px;
   background: var(--accent-dim);
   border: 1px solid var(--accent-mid);
@@ -312,6 +314,32 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   font-family: 'DM Mono', monospace;
   vertical-align: middle;
   letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: min-width 0.2s ease, padding 0.2s ease, gap 0.2s ease;
+}
+.sci-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 600;
+}
+.sci-text {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: max-width 0.2s ease, opacity 0.2s ease;
+}
+.sci:hover,
+.sci:focus-visible {
+  min-width: 140px;
+  gap: 6px;
+}
+.sci:hover .sci-text,
+.sci:focus-visible .sci-text {
+  max-width: 120px;
+  opacity: 1;
 }
 .sci-mod { border-color: #9d8b6f; color: #d7b880; background: rgba(198, 148, 62, 0.12); }
 .sci-mixed { border-color: #786f9b; color: #b8afe4; background: rgba(127, 113, 186, 0.12); }
@@ -1177,8 +1205,14 @@ body.low-interruption-active .chunk-indicator {
         <div class="scroll-ctl">
           <span class="scbtn-hint">Negative = reverse · Hover reader to pause</span>
         </div>
-        <details class="evidence-notes">
-          <summary>Evidence notes</summary>
+      </div>
+
+      <!-- Evidence Notes -->
+      <div class="sec is-collapsed">
+        <div class="sec-label">Evidence Notes</div>
+        <div class="sec-hint">Research notes behind the evidence labels used across controls.</div>
+        <details class="evidence-notes" open>
+          <summary>Show evidence index</summary>
           <ol class="evidence-list">
             <li><code>BG1</code> Background warmth/brightness is most relevant for evening use and light sensitivity; evidence emphasizes sleep-timing and comfort outcomes more than comprehension. Target: mainly adults, with limited child-specific data.</li>
             <li><code>BG2</code> Amber tint can reduce short-wavelength light exposure. Reading benefit is not universal and often depends on preference, display brightness, and ambient light. Target: adults and adolescents; dyslexia-specific effects unclear.</li>
@@ -1471,6 +1505,19 @@ function initSidebarSectionToggles() {
       const collapsed = section.classList.toggle('is-collapsed');
       toggleBtn.setAttribute('aria-expanded', String(!collapsed));
     });
+  });
+}
+
+function enhanceEvidenceBadges() {
+  document.querySelectorAll('.sci').forEach((badge) => {
+    if (badge.dataset.enhanced === 'true') return;
+    const label = badge.textContent.trim();
+    badge.dataset.enhanced = 'true';
+    badge.dataset.evidenceLabel = label;
+    badge.setAttribute('aria-label', label);
+    badge.innerHTML = '<span class="sci-icon" aria-hidden="true">✦</span><span class="sci-text"></span>';
+    const textNode = badge.querySelector('.sci-text');
+    if (textNode) textNode.textContent = label;
   });
 }
 
@@ -3453,6 +3500,7 @@ window.addEventListener('resize', () => {
 });
 syncSidebarForViewport();
 initSidebarSectionToggles();
+enhanceEvidenceBadges();
 toggleProg();
 updateTint();
 updateFocusDepth(focusDepth);
