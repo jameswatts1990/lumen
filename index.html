@@ -825,6 +825,14 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   color: #fff3e3;
   box-shadow: 0 0 0 1px rgba(226, 168, 111, 0.3);
 }
+body.flow-speed-read-mode .flow-speed-word .flow-speed-word-orp {
+  color: inherit;
+  text-shadow: none;
+}
+body.flow-speed-read-mode .flow-speed-word.active .flow-speed-word-orp {
+  color: var(--flow-orp-color);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.2);
+}
 body.flow-speed-read-mode .flow-layer {
   background: rgba(11, 8, 6, 0.9);
   border-color: rgba(200, 135, 74, 0.32);
@@ -886,6 +894,42 @@ body.flow-speed-read-mode .flow-speed-word.active {
 }
 .flow-word-renderer-token .flow-speed-word-orp {
   color: var(--flow-orp-color);
+}
+.flow-word-selected {
+  background: linear-gradient(165deg, rgba(226, 168, 111, 0.34), rgba(200, 135, 74, 0.2));
+  box-shadow: 0 0 0 1px rgba(226, 168, 111, 0.3);
+}
+.flow-definition-popout {
+  position: fixed;
+  z-index: 346;
+  max-width: min(340px, calc(100vw - 18px));
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--accent-mid);
+  background: linear-gradient(170deg, rgba(41, 30, 19, 0.98), rgba(21, 15, 10, 0.98));
+  color: var(--text-primary);
+  box-shadow: 0 16px 28px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+.flow-definition-popout.on {
+  opacity: 1;
+  transform: translateY(0);
+}
+.flow-definition-term {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: #e6bf93;
+}
+.flow-definition-text {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-secondary);
 }
 .reader-inner.flow-mode .page-wrap { display: none; }
 
@@ -1816,6 +1860,10 @@ body.low-interruption-active .flow-speed-hud {
     <div class="flow-word-renderer-token" id="flowWordRendererToken"></div>
   </div>
 </div>
+<div class="flow-definition-popout" id="flowDefinitionPopout" role="status" aria-live="polite" aria-hidden="true">
+  <div class="flow-definition-term" id="flowDefinitionTerm"></div>
+  <div class="flow-definition-text" id="flowDefinitionText"></div>
+</div>
 <div class="sr-only" id="flowGestureAnnouncer" aria-live="polite" aria-atomic="true"></div>
 <div class="focus-top" id="focTop"></div>
 <div class="focus-bot" id="focBot"></div>
@@ -1835,6 +1883,7 @@ body.low-interruption-active .flow-speed-hud {
       <li class="shortcuts-item"><span class="shortcut-key"><kbd>R</kbd></span><span>Toggle reading ruler</span></li>
       <li class="shortcuts-item"><span class="shortcut-key"><kbd>F</kbd></span><span>Toggle focus mode</span></li>
       <li class="shortcuts-item"><span class="shortcut-key"><kbd>P</kbd></span><span>Toggle progress bar</span></li>
+      <li class="shortcuts-item"><span class="shortcut-key"><kbd>S</kbd></span><span>Start or pause speed-read in flow mode</span></li>
       <li class="shortcuts-item"><span class="shortcut-key"><kbd>-</kbd> / <kbd>=</kbd></span><span>Decrease or increase zoom</span></li>
       <li class="shortcuts-item"><span class="shortcut-key"><kbd>J</kbd> / <kbd>K</kbd></span><span>Step chunk down or up (when chunking is on)</span></li>
     </ul>
@@ -1998,6 +2047,10 @@ let flowSpeedReadIntervalUpdateTimer = null;
 let flowSpeedReadPlaybackWpm = FLOW_SPEED_READ_FALLBACK_WPM;
 let flowSpeedReadIntervalMs = 60000 / FLOW_SPEED_READ_FALLBACK_WPM;
 let flowSpeedReadNextWordAt = 0;
+let flowHoveredWordNode = null;
+let flowDefinitionDelayTimer = null;
+let flowDefinitionLookupController = null;
+const flowDefinitionCache = new Map();
 const flowGestureEventListeners = new Map();
 const FLOW_SENTENCE_END_PUNCTUATION = /[.!?…]["'”’)\]]*$/;
 const FLOW_SENTENCE_PAUSE_MULTIPLIER = 1.22;
@@ -2014,6 +2067,9 @@ const flowGestureTimer = document.getElementById('flowGestureTimer');
 const flowGestureTimerValue = document.getElementById('flowGestureTimerValue');
 const flowWordRenderer = document.getElementById('flowWordRenderer');
 const flowWordRendererToken = document.getElementById('flowWordRendererToken');
+const flowDefinitionPopout = document.getElementById('flowDefinitionPopout');
+const flowDefinitionTerm = document.getElementById('flowDefinitionTerm');
+const flowDefinitionText = document.getElementById('flowDefinitionText');
 const flowGestureAnnouncer = document.getElementById('flowGestureAnnouncer');
 const scrollWpmInput = document.getElementById('scrollWpmIn');
 const MOBILE_BREAKPOINT = 900;
@@ -2321,6 +2377,91 @@ function syncFlowSpeedReadHighlight() {
   target.scrollIntoView({ block: 'center', inline: 'nearest' });
 }
 
+function clearFlowWordSelection() {
+  if (flowHoveredWordNode) {
+    flowHoveredWordNode.classList.remove('flow-word-selected');
+    flowHoveredWordNode = null;
+  }
+}
+
+function hideFlowDefinitionPopout() {
+  if (!flowDefinitionPopout) return;
+  if (flowDefinitionLookupController) flowDefinitionLookupController.abort();
+  flowDefinitionPopout.classList.remove('on');
+  flowDefinitionPopout.setAttribute('aria-hidden', 'true');
+}
+
+function normalizeDefinitionLookupWord(rawValue = '') {
+  return String(rawValue || '')
+    .replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '')
+    .toLowerCase();
+}
+
+function getFlowWordStartIndex(node) {
+  if (!node) return -1;
+  return flowSpeedReadWordNodes.indexOf(node);
+}
+
+function setFlowWordSelection(node) {
+  if (!node || node === flowHoveredWordNode) return;
+  clearFlowWordSelection();
+  flowHoveredWordNode = node;
+  flowHoveredWordNode.classList.add('flow-word-selected');
+}
+
+function placeFlowDefinitionPopout(targetNode) {
+  if (!flowDefinitionPopout || !targetNode || !reader) return;
+  const readerRect = reader.getBoundingClientRect();
+  const wordRect = targetNode.getBoundingClientRect();
+  const popoutRect = flowDefinitionPopout.getBoundingClientRect();
+  const top = Math.max(readerRect.top + 8, wordRect.bottom + 8);
+  const maxLeft = readerRect.right - popoutRect.width - 8;
+  const left = Math.max(readerRect.left + 8, Math.min(wordRect.left, maxLeft));
+  flowDefinitionPopout.style.top = `${Math.round(top)}px`;
+  flowDefinitionPopout.style.left = `${Math.round(left)}px`;
+}
+
+async function lookupWordDefinition(word) {
+  if (!word) return 'Definition unavailable.';
+  if (flowDefinitionCache.has(word)) return flowDefinitionCache.get(word);
+  if (flowDefinitionLookupController) flowDefinitionLookupController.abort();
+  flowDefinitionLookupController = new AbortController();
+  try {
+    const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`, {
+      signal: flowDefinitionLookupController.signal
+    });
+    if (!response.ok) throw new Error('Lookup failed');
+    const payload = await response.json();
+    const firstMeaning = payload?.[0]?.meanings?.[0];
+    const firstDefinition = firstMeaning?.definitions?.[0]?.definition;
+    const result = firstDefinition || 'Definition unavailable.';
+    flowDefinitionCache.set(word, result);
+    return result;
+  } catch (_) {
+    return 'Definition unavailable.';
+  }
+}
+
+function scheduleFlowDefinition(node) {
+  if (!node || !flowDefinitionTerm || !flowDefinitionText) return;
+  if (flowDefinitionDelayTimer) clearTimeout(flowDefinitionDelayTimer);
+  hideFlowDefinitionPopout();
+  const lookupWord = normalizeDefinitionLookupWord(node.dataset.speedReadRaw || node.textContent || '');
+  if (!lookupWord) return;
+  flowDefinitionDelayTimer = setTimeout(async () => {
+    if (node !== flowHoveredWordNode) return;
+    flowDefinitionTerm.textContent = lookupWord;
+    flowDefinitionText.textContent = 'Looking up definition…';
+    placeFlowDefinitionPopout(node);
+    flowDefinitionPopout.classList.add('on');
+    flowDefinitionPopout.setAttribute('aria-hidden', 'false');
+    const definition = await lookupWordDefinition(lookupWord);
+    if (node !== flowHoveredWordNode) return;
+    flowDefinitionText.textContent = definition;
+    placeFlowDefinitionPopout(node);
+  }, 300);
+}
+
 function buildFlowSpeedReadWordNodes() {
   flowSpeedReadWordNodes = [];
   flowSpeedReadTokens = [];
@@ -2365,6 +2506,11 @@ function buildFlowSpeedReadWordNodes() {
   });
 }
 
+function ensureFlowSpeedReadWordNodes() {
+  if (flowSpeedReadWordNodes.length && flowLayer.querySelector('.flow-speed-word')) return;
+  buildFlowSpeedReadWordNodes();
+}
+
 function stopFlowSpeedReadPlayback() {
   if (flowSpeedReadRAF) cancelAnimationFrame(flowSpeedReadRAF);
   if (flowSpeedReadIntervalUpdateTimer) clearTimeout(flowSpeedReadIntervalUpdateTimer);
@@ -2373,12 +2519,13 @@ function stopFlowSpeedReadPlayback() {
   flowSpeedReadNextWordAt = 0;
 }
 
-function startFlowSpeedReadPlayback() {
+function startFlowSpeedReadPlayback({ preserveIndex = false } = {}) {
   stopFlowSpeedReadPlayback();
   applyFlowSpeedReadTiming();
-  buildFlowSpeedReadWordNodes();
+  ensureFlowSpeedReadWordNodes();
   if (!flowSpeedReadWordNodes.length) return;
-  flowSpeedReadWordIndex = Math.max(0, Math.min(flowSpeedReadWordIndex, flowSpeedReadWordNodes.length - 1));
+  const baseIndex = preserveIndex ? flowSpeedReadWordIndex : resolveFlowSpeedReadStartIndex();
+  flowSpeedReadWordIndex = Math.max(0, Math.min(baseIndex, flowSpeedReadWordNodes.length - 1));
   syncFlowSpeedReadHighlight();
   flowSpeedReadNextWordAt = performance.now() + getFlowTokenDelayMs(flowSpeedReadWordIndex);
   const tick = (ts) => {
@@ -2410,11 +2557,29 @@ function pauseFlowSpeedRead(reason = 'released') {
   emitFlowGestureEvent('speed_read_pause', { index: flowSpeedReadWordIndex, reason });
 }
 
-function activateFlowSpeedRead(reason = 'hold_threshold') {
+function resolveFlowSpeedReadStartIndex() {
+  const selectedIndex = getFlowWordStartIndex(flowHoveredWordNode);
+  if (selectedIndex >= 0) return selectedIndex;
+  const highlightedWord = flowLayer.querySelector('.flow-highlight-active .flow-speed-word, .flow-highlight-partial .flow-speed-word');
+  const highlightedIndex = getFlowWordStartIndex(highlightedWord);
+  if (highlightedIndex >= 0) return highlightedIndex;
+  const visibleBlocks = [...flowLayer.querySelectorAll('.flow-para, .flow-heading, .flow-list-item')];
+  const readerRect = reader.getBoundingClientRect();
+  const firstVisibleBlock = visibleBlocks.find(block => {
+    const rect = block.getBoundingClientRect();
+    return rect.bottom >= readerRect.top + 18 && rect.top <= readerRect.bottom - 18;
+  });
+  const fallbackWord = firstVisibleBlock?.querySelector('.flow-speed-word');
+  const fallbackIndex = getFlowWordStartIndex(fallbackWord);
+  if (fallbackIndex >= 0) return fallbackIndex;
+  return flowSpeedReadWordIndex;
+}
+
+function activateFlowSpeedRead(reason = 'hold_threshold', options = {}) {
   hideFlowGestureTimer();
   stopFlowGestureTimerUI();
   setFlowGestureState(FLOW_GESTURE_STATES.SPEED_READ_ACTIVE, reason);
-  startFlowSpeedReadPlayback();
+  startFlowSpeedReadPlayback(options);
 }
 
 function resetFlowGestureInteraction() {
@@ -2431,6 +2596,8 @@ function stopFlowGestureController(reason = 'mode_change') {
   clearFlowSpeedReadHighlight();
   flowSpeedReadWordNodes = [];
   flowSpeedReadWordIndex = 0;
+  clearFlowWordSelection();
+  hideFlowDefinitionPopout();
   setFlowGestureState(FLOW_GESTURE_STATES.IDLE, reason);
 }
 
@@ -4449,7 +4616,11 @@ function setReadingMode(mode) {
   const modeTextMap = { pdf: 'Original', overlay: 'Overlay', flow: 'Flow' };
   const currentModeLabel = document.getElementById('readingModeCurrent');
   if (currentModeLabel) currentModeLabel.textContent = modeTextMap[normalized] || 'Original';
-  if (normalized !== 'flow') resetFlowHoldHud({ keepPausedHud: false });
+  if (normalized !== 'flow') {
+    resetFlowHoldHud({ keepPausedHud: false });
+    clearFlowWordSelection();
+    hideFlowDefinitionPopout();
+  }
   syncReadingModeControls();
   toggleRuler();
   toggleChunkMode();
@@ -5381,7 +5552,7 @@ reader.addEventListener('pointerdown', e => {
   if (shouldIgnoreFlowGestureTarget(e.target)) return;
   if (flowGestureState === FLOW_GESTURE_STATES.PAUSED_ON_RELEASE) {
     flowGestureActivePointerId = e.pointerId;
-    activateFlowSpeedRead('instant_resume_from_paused');
+    activateFlowSpeedRead('instant_resume_from_paused', { preserveIndex: true });
     return;
   }
   if (flowGestureState !== FLOW_GESTURE_STATES.IDLE) return;
@@ -5399,6 +5570,19 @@ reader.addEventListener('pointerleave', e => {
   if (!isFlowGestureEnabled()) return;
   if (flowGestureState === FLOW_GESTURE_STATES.SPEED_READ_ACTIVE) return;
   releaseFlowGestureHold(e.pointerId, 'pointer_leave');
+});
+flowLayer.addEventListener('pointermove', e => {
+  if (readingMode !== 'flow') return;
+  ensureFlowSpeedReadWordNodes();
+  const wordNode = e.target instanceof Element ? e.target.closest('.flow-speed-word') : null;
+  if (!wordNode) return;
+  setFlowWordSelection(wordNode);
+  scheduleFlowDefinition(wordNode);
+});
+flowLayer.addEventListener('pointerleave', () => {
+  if (flowDefinitionDelayTimer) clearTimeout(flowDefinitionDelayTimer);
+  clearFlowWordSelection();
+  hideFlowDefinitionPopout();
 });
 document.addEventListener('pointerup', e => {
   if (!isFlowGestureEnabled()) return;
@@ -5594,6 +5778,18 @@ document.addEventListener('keydown', e => {
     case 'P':
       e.preventDefault();
       setToggleAndRun('progT', toggleProg);
+      break;
+    case 's':
+    case 'S':
+      if (!isFlowGestureEnabled()) break;
+      e.preventDefault();
+      if (flowGestureState === FLOW_GESTURE_STATES.SPEED_READ_ACTIVE) {
+        pauseFlowSpeedRead('keyboard_toggle');
+      } else if (flowGestureState === FLOW_GESTURE_STATES.PAUSED_ON_RELEASE) {
+        activateFlowSpeedRead('keyboard_resume', { preserveIndex: true });
+      } else if (flowGestureState === FLOW_GESTURE_STATES.IDLE) {
+        activateFlowSpeedRead('keyboard_start');
+      }
       break;
     case '-':
       e.preventDefault();
