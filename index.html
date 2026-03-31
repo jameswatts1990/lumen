@@ -1197,7 +1197,7 @@ body.low-interruption-active .chunk-indicator {
 
     <div class="status">
       <span id="statPages">No document</span>
-      <button class="status-shortcuts" id="shortcutHintBtn" type="button" aria-haspopup="dialog" aria-controls="shortcutsOverlay">? shortcuts</button>
+      <button class="status-shortcuts" id="shortcutHintBtn" type="button" aria-haspopup="dialog" aria-controls="shortcutsOverlay" aria-expanded="false">? shortcuts</button>
       <span id="statScroll">0%</span>
     </div>
   </aside>
@@ -3258,37 +3258,75 @@ function setToggleAndRun(id, fn) {
   fn();
 }
 
-function setShortcutsOpen(open) {
+const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const dialogTriggers = { shortcuts: null, nav: null };
+
+function getFocusableElements(container) {
+  if (!container) return [];
+  return Array.from(container.querySelectorAll(FOCUSABLE_SELECTOR))
+    .filter(el => !el.hasAttribute('hidden') && el.offsetParent !== null);
+}
+
+function focusFirstActionable(container) {
+  const focusable = getFocusableElements(container);
+  if (!focusable.length) return;
+  focusable[0].focus();
+}
+
+function restoreTriggerFocus(trigger) {
+  if (!trigger || !trigger.isConnected || typeof trigger.focus !== 'function') return;
+  trigger.focus();
+}
+
+function setShortcutsOpen(open, trigger = null) {
   const overlay = document.getElementById('shortcutsOverlay');
+  const btn = document.getElementById('shortcutHintBtn');
+  const controlsMatch = btn.getAttribute('aria-controls') === overlay.id;
+  if (open) dialogTriggers.shortcuts = trigger || document.activeElement;
   overlay.classList.toggle('on', open);
   overlay.setAttribute('aria-hidden', String(!open));
+  if (controlsMatch) btn.setAttribute('aria-expanded', String(open));
+  if (open) {
+    focusFirstActionable(overlay);
+  } else {
+    restoreTriggerFocus(dialogTriggers.shortcuts);
+    dialogTriggers.shortcuts = null;
+  }
 }
 
-function toggleShortcutsPanel() {
+function toggleShortcutsPanel(trigger = null) {
   const overlay = document.getElementById('shortcutsOverlay');
-  setShortcutsOpen(!overlay.classList.contains('on'));
+  setShortcutsOpen(!overlay.classList.contains('on'), trigger);
 }
 
-function setNavigationMenuOpen(open) {
+function setNavigationMenuOpen(open, trigger = null) {
   const pop = document.getElementById('navPopout');
   const btn = document.getElementById('navFabBtn');
+  const controlsMatch = btn.getAttribute('aria-controls') === pop.id;
+  if (open) dialogTriggers.nav = trigger || document.activeElement;
   pop.classList.toggle('on', open);
   pop.setAttribute('aria-hidden', String(!open));
   btn.classList.toggle('on', open);
-  btn.setAttribute('aria-expanded', String(open));
+  if (controlsMatch) btn.setAttribute('aria-expanded', String(open));
+  if (open) {
+    focusFirstActionable(pop);
+  } else {
+    restoreTriggerFocus(dialogTriggers.nav);
+    dialogTriggers.nav = null;
+  }
 }
 
-function toggleNavigationMenu() {
+function toggleNavigationMenu(trigger = null) {
   const pop = document.getElementById('navPopout');
-  setNavigationMenuOpen(!pop.classList.contains('on'));
+  setNavigationMenuOpen(!pop.classList.contains('on'), trigger);
 }
 
-document.getElementById('shortcutHintBtn').addEventListener('click', () => setShortcutsOpen(true));
+document.getElementById('shortcutHintBtn').addEventListener('click', e => setShortcutsOpen(true, e.currentTarget));
 document.getElementById('closeShortcutsBtn').addEventListener('click', () => setShortcutsOpen(false));
 document.getElementById('shortcutsOverlay').addEventListener('click', e => {
   if (e.target.id === 'shortcutsOverlay') setShortcutsOpen(false);
 });
-document.getElementById('navFabBtn').addEventListener('click', () => toggleNavigationMenu());
+document.getElementById('navFabBtn').addEventListener('click', e => toggleNavigationMenu(e.currentTarget));
 document.getElementById('sidebarToggleBtn').addEventListener('click', () => setSidebarOpen(!sidebarOpen));
 document.getElementById('sidebarBackdrop').addEventListener('click', () => {
   if (mobileViewport && sidebarOpen) setSidebarOpen(false);
@@ -3303,12 +3341,29 @@ document.addEventListener('click', e => {
 
 document.addEventListener('keydown', e => {
   if (e.repeat || e.defaultPrevented) return;
-  const overlayOpen = document.getElementById('shortcutsOverlay').classList.contains('on');
-  const navOpen = document.getElementById('navPopout').classList.contains('on');
+  const shortcutsOverlay = document.getElementById('shortcutsOverlay');
+  const navPopout = document.getElementById('navPopout');
+  const overlayOpen = shortcutsOverlay.classList.contains('on');
+  const navOpen = navPopout.classList.contains('on');
+  if (e.key === 'Tab' && (overlayOpen || navOpen)) {
+    const activeDialog = overlayOpen ? shortcutsOverlay : navPopout;
+    const focusable = getFocusableElements(activeDialog);
+    if (focusable.length) {
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  }
   const isQuestionMark = e.key === '?' || (e.key === '/' && e.shiftKey);
   if (isQuestionMark) {
     e.preventDefault();
-    toggleShortcutsPanel();
+    toggleShortcutsPanel(document.activeElement);
     return;
   }
   if (overlayOpen && e.key === 'Escape') {
