@@ -3964,6 +3964,7 @@ function syncReadingModeControls() {
     const el = document.getElementById(id);
     if (el) el.disabled = false;
   });
+  syncOriginalChunkExclusivity();
   const flowSplitToggle = document.getElementById('flowSplitT');
   if (flowSplitToggle) flowSplitToggle.disabled = !isFlow;
   const flowSplitLines = document.getElementById('flowSplitLinesR');
@@ -3973,6 +3974,20 @@ function syncReadingModeControls() {
   document.getElementById('chunkV').textContent = chunkLengthLabel(Number(document.getElementById('chunkR').value));
   const focusModeHint = document.getElementById('focusModeHint');
   if (focusModeHint) focusModeHint.hidden = !isFlow;
+}
+
+function syncOriginalChunkExclusivity() {
+  const chunkToggle = document.getElementById('chunkT');
+  const rulerToggle = document.getElementById('rulerT');
+  const shadeToggle = document.getElementById('shadeT');
+  if (!chunkToggle || !rulerToggle || !shadeToggle) return;
+  const enforceMutualExclusion = readingMode === 'pdf' && !chunkToggle.checked;
+  rulerToggle.disabled = enforceMutualExclusion;
+  shadeToggle.disabled = enforceMutualExclusion;
+  if (enforceMutualExclusion) {
+    rulerToggle.checked = false;
+    shadeToggle.checked = false;
+  }
 }
 
 function handleFontSelectionChange() {
@@ -4659,6 +4674,7 @@ function toggleChunkMode() {
   } else if (readingMode === 'flow' && !flowAutoSplitOn()) {
     refreshFlowRenderForChunking();
   }
+  syncOriginalChunkExclusivity();
   toggleRuler();
   updateChunkOverlay();
   updateFlowHighlight();
@@ -4949,7 +4965,7 @@ function stepRange(id, dir) {
 
 function setToggleAndRun(id, fn) {
   const toggle = document.getElementById(id);
-  if (!toggle) return;
+  if (!toggle || toggle.disabled) return;
   toggle.checked = !toggle.checked;
   fn();
 }
