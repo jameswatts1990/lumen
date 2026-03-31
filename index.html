@@ -2193,6 +2193,47 @@ function stripToPlainText(rawText, sourceName = '') {
   return rawText;
 }
 
+function tryParseUrl(rawUrl) {
+  try {
+    return new URL(rawUrl);
+  } catch (_) {
+    return null;
+  }
+}
+
+function getGoogleDocExportUrl(rawUrl) {
+  const parsed = tryParseUrl(rawUrl);
+  if (!parsed) return null;
+  if (!/^(docs|drive)\.google\.com$/i.test(parsed.hostname)) return null;
+
+  const parts = parsed.pathname.split('/').filter(Boolean);
+  const docIdx = parts.findIndex(part => part === 'document');
+  if (docIdx === -1) return null;
+
+  const dIdx = parts.findIndex((part, idx) => idx > docIdx && part === 'd');
+  if (dIdx === -1 || !parts[dIdx + 1]) return null;
+  const docId = parts[dIdx + 1];
+  return `https://docs.google.com/document/d/${encodeURIComponent(docId)}/export?format=txt`;
+}
+
+async function fetchPlainTextFromUrl(url) {
+  const googleDocExportUrl = getGoogleDocExportUrl(url);
+  if (googleDocExportUrl) {
+    const exportRes = await fetch(googleDocExportUrl);
+    if (!exportRes.ok) throw new Error(`Google Docs export failed: HTTP ${exportRes.status}`);
+    const exportText = normalizeReadableText(await exportRes.text());
+    if (exportText) {
+      return { plainText: exportText, sourceLabel: 'Google Doc' };
+    }
+  }
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const html = await res.text();
+  const plainText = stripToPlainText(html, '.html');
+  return { plainText, sourceLabel: 'Web page' };
+}
+
 function normalizeReadableText(text) {
   return String(text || '')
     .replace(/\r\n?/g, '\n')
@@ -2426,14 +2467,11 @@ async function loadFromUrl() {
     type: 'url'
   });
   try {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const html = await res.text();
-    const plainText = stripToPlainText(html, '.html');
-    await loadTextDocument(plainText, url, 'Web page');
+    const { plainText, sourceLabel } = await fetchPlainTextFromUrl(url);
+    await loadTextDocument(plainText, url, sourceLabel);
   } catch (err) {
     console.warn('Unable to load URL source:', err);
-    rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Could not fetch this URL. The site may block cross-origin requests. Try downloading the page as text/HTML and uploading it instead.</div>';
+    rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Could not fetch this URL. The site may block cross-origin requests. For Google Docs, make sure link sharing allows viewer access, then try again—or download as text/HTML and upload it.</div>';
   }
 }
 
