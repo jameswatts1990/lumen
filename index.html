@@ -380,13 +380,10 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .chunk-step { padding: 4px 20px 10px; display: flex; align-items: center; gap: 8px; }
 .chunk-step .scbtn { min-width: 44px; font-size: 16px; padding: 6px 10px; }
 .chunk-step-hint { font-size: 11.5px; color: var(--text-muted); }
-.session-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 4px 20px 8px; }
+.session-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 4px 20px 10px; }
 .session-btn { padding: 7px 0; font-size: 12px; }
 .session-btn.on { background: var(--accent); color: #1a1200; border-color: var(--accent); }
 .session-meta { padding: 0 20px 8px; font-size: 11.5px; color: var(--text-muted); line-height: 1.45; }
-.micro-goals { padding: 0 20px 8px; display: grid; gap: 6px; }
-.goal-item { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-secondary); }
-.goal-item input[type=checkbox] { accent-color: var(--accent); }
 .resume-card {
   margin: 0 20px 10px;
   border: 1px solid var(--control-border);
@@ -728,6 +725,70 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   width: 0%;
   transition: width 0.12s;
 }
+.session-timer-overlay {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  z-index: 340;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--accent-mid);
+  background: linear-gradient(165deg, rgba(37, 27, 17, 0.94), rgba(20, 14, 9, 0.94));
+  color: #ecd8c0;
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.4);
+}
+.session-timer-overlay.on { display: inline-flex; }
+.session-timer-label {
+  font-size: 10px;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: #cdb391;
+  font-family: 'DM Mono', monospace;
+}
+.session-timer-value {
+  font-family: 'Playfair Display', 'Lora', serif;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  color: #f2e6d7;
+}
+.session-done-popup {
+  position: fixed;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 360;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--accent-mid);
+  background: rgba(23, 17, 11, 0.96);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.36);
+  color: #ebddcb;
+  font-size: 12.5px;
+}
+.session-done-popup.on { display: inline-flex; }
+.session-done-dismiss {
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--text-secondary);
+  border-radius: 7px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+}
+.session-done-dismiss:hover,
+.session-done-dismiss:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 .shortcuts-overlay {
   position: fixed;
@@ -742,7 +803,8 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .shortcuts-overlay.on { display: flex; }
 body.low-interruption-active .shortcuts-overlay,
 body.low-interruption-active .nav-pop,
-body.low-interruption-active .chunk-indicator {
+body.low-interruption-active .chunk-indicator,
+body.low-interruption-active .session-timer-overlay {
   display: none !important;
 }
 .shortcuts-panel {
@@ -956,24 +1018,11 @@ body.low-interruption-active .chunk-indicator {
       <!-- Session Support -->
       <div class="sec is-collapsed">
         <div class="sec-label">Session Support</div>
-        <div class="sec-hint">Timebox reading, set micro-goals, and quickly resume where you left off.</div>
+        <div class="sec-hint">Timebox focused reading and quickly resume where you left off.</div>
         <div class="session-grid">
+          <button class="pbtn session-btn" id="session5Btn" type="button" data-minutes="5">5 min</button>
           <button class="pbtn session-btn" id="session10Btn" type="button" data-minutes="10">10 min</button>
-          <button class="pbtn session-btn" id="session20Btn" type="button" data-minutes="20">20 min</button>
-          <button class="pbtn session-btn" id="session30Btn" type="button" data-minutes="30">30 min</button>
-        </div>
-        <div class="ctrl">
-          <span class="ctrl-lbl">Break cue</span>
-          <select class="fsel" id="breakReminderSel" aria-label="Break reminder cadence" style="margin: 0; width: auto; flex: 1;">
-            <option value="0">Off</option>
-            <option value="5">Every 5 min</option>
-            <option value="10">Every 10 min</option>
-          </select>
-        </div>
-        <div class="micro-goals" id="microGoals">
-          <label class="goal-item"><input type="checkbox" data-goal="1">Scan headings first</label>
-          <label class="goal-item"><input type="checkbox" data-goal="2">Read one section fully</label>
-          <label class="goal-item"><input type="checkbox" data-goal="3">Write one takeaway</label>
+          <button class="pbtn session-btn" id="session15Btn" type="button" data-minutes="15">15 min</button>
         </div>
         <div class="trow">
           <div class="trow-info">
@@ -1308,6 +1357,14 @@ body.low-interruption-active .chunk-indicator {
   <span class="dot" aria-hidden="true"></span>
   <span>Chunking enabled · Move with <kbd>J</kbd>/<kbd>K</kbd></span>
 </div>
+<div class="session-timer-overlay" id="sessionTimerOverlay" aria-live="polite">
+  <span class="session-timer-label">Session</span>
+  <span class="session-timer-value" id="sessionTimerValue">00:00</span>
+</div>
+<div class="session-done-popup" id="sessionDonePopup" role="status" aria-live="polite">
+  <span id="sessionDoneText">Session complete.</span>
+  <button class="session-done-dismiss" id="sessionDoneDismissBtn" type="button">Dismiss</button>
+</div>
 <div class="focus-top" id="focTop"></div>
 <div class="focus-bot" id="focBot"></div>
 <div class="tint-lay" id="tintLay"></div>
@@ -1437,12 +1494,10 @@ let compareView = 'current';
 let sessionSupportState = {
   durationMin: 0,
   sessionEndTs: 0,
-  breakEveryMin: 0,
-  lastBreakNoticeTs: 0,
-  lowInterruption: false,
-  microGoals: { 1: false, 2: false, 3: false }
+  lowInterruption: false
 };
 let sessionTick = null;
+let sessionsCompletedThisSession = 0;
 let currentDocMeta = null;
 let pendingResumeState = null;
 
@@ -1972,8 +2027,7 @@ function loadSessionSupportState() {
     if (!parsed || typeof parsed !== 'object') return;
     sessionSupportState = {
       ...sessionSupportState,
-      ...parsed,
-      microGoals: { ...sessionSupportState.microGoals, ...(parsed.microGoals || {}) }
+      ...parsed
     };
   } catch (err) {
     console.warn('Unable to load session support settings:', err);
@@ -2000,27 +2054,47 @@ function getRemainingSessionMs() {
 function updateSessionMeta() {
   const meta = document.getElementById('sessionMeta');
   const remainingMs = getRemainingSessionMs();
-  const goalDone = Object.values(sessionSupportState.microGoals).filter(Boolean).length;
+  const timerOverlay = document.getElementById('sessionTimerOverlay');
+  const timerValue = document.getElementById('sessionTimerValue');
+  const lowInterruptionOn = Boolean(sessionSupportState.lowInterruption);
   if (remainingMs <= 0) {
-    meta.textContent = `No active session. Micro-goals: ${goalDone}/3 complete.`;
+    meta.textContent = `No active session. Sessions completed: ${sessionsCompletedThisSession}.`;
     document.querySelectorAll('.session-btn').forEach(btn => btn.classList.remove('on'));
+    timerOverlay.classList.remove('on');
     updateLowInterruptionMode();
     return;
   }
   const min = Math.floor(remainingMs / 60000);
   const sec = Math.floor((remainingMs % 60000) / 1000);
-  meta.textContent = `Session running • ${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')} left • Goals ${goalDone}/3`;
+  const formatted = `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  meta.textContent = `Session running • ${formatted} left • Completed this session: ${sessionsCompletedThisSession}`;
+  timerValue.textContent = formatted;
+  timerOverlay.classList.toggle('on', !lowInterruptionOn);
 }
 
-function stopSessionTimer(clearSchedule = true) {
+function showSessionDonePopup(minutes) {
+  const text = document.getElementById('sessionDoneText');
+  text.textContent = `${minutes}-minute session complete. Continue when you're ready.`;
+  document.getElementById('sessionDonePopup').classList.add('on');
+}
+
+function hideSessionDonePopup() {
+  document.getElementById('sessionDonePopup').classList.remove('on');
+}
+
+function stopSessionTimer(clearSchedule = true, markCompleted = false) {
+  const finishedMinutes = Number(sessionSupportState.durationMin || 0);
   if (sessionTick) {
     clearInterval(sessionTick);
     sessionTick = null;
   }
+  if (markCompleted && finishedMinutes > 0) {
+    sessionsCompletedThisSession += 1;
+    showSessionDonePopup(finishedMinutes);
+  }
   if (clearSchedule) {
     sessionSupportState.sessionEndTs = 0;
     sessionSupportState.durationMin = 0;
-    sessionSupportState.lastBreakNoticeTs = 0;
     saveSessionSupportState();
   }
   updateSessionMeta();
@@ -2029,9 +2103,9 @@ function stopSessionTimer(clearSchedule = true) {
 
 function startSessionTimer(minutes) {
   stopSessionTimer(false);
+  hideSessionDonePopup();
   sessionSupportState.durationMin = minutes;
   sessionSupportState.sessionEndTs = Date.now() + (minutes * 60 * 1000);
-  sessionSupportState.lastBreakNoticeTs = Date.now();
   saveSessionSupportState();
   updateSessionMeta();
   updateLowInterruptionMode();
@@ -2041,18 +2115,11 @@ function startSessionTimer(minutes) {
   sessionTick = setInterval(() => {
     const remaining = getRemainingSessionMs();
     if (remaining <= 0) {
-      stopSessionTimer();
+      stopSessionTimer(true, true);
+      updateProgressAndStatus();
       return;
     }
-    const breakEvery = Number(sessionSupportState.breakEveryMin || 0);
-    if (breakEvery > 0 && (Date.now() - sessionSupportState.lastBreakNoticeTs) >= breakEvery * 60 * 1000) {
-      sessionSupportState.lastBreakNoticeTs = Date.now();
-      const meta = document.getElementById('sessionMeta');
-      meta.textContent = 'Break cue: unclench jaw, breathe, and reset posture.';
-      saveSessionSupportState();
-    } else {
-      updateSessionMeta();
-    }
+    updateSessionMeta();
     updateProgressAndStatus();
   }, 1000);
 }
@@ -3223,9 +3290,8 @@ function updateProgress() {
     ? `Doc ${Math.round(clampedPct)}%`
     : `${Math.round(clampedPct)}%`;
   const remainingMs = getRemainingSessionMs();
-  const goalDone = Object.values(sessionSupportState.microGoals).filter(Boolean).length;
   const sessionCue = remainingMs > 0 ? ` • ⏱ ${Math.ceil(remainingMs / 60000)}m` : '';
-  document.getElementById('statScroll').textContent = `${base}${sessionCue} • goals ${goalDone}/3`;
+  document.getElementById('statScroll').textContent = `${base}${sessionCue}`;
 }
 
 function updateProgressAndStatus() {
@@ -3481,24 +3547,13 @@ document.addEventListener('keydown', e => {
 document.querySelectorAll('.session-btn').forEach(btn => {
   btn.addEventListener('click', () => startSessionTimer(Number(btn.dataset.minutes)));
 });
-document.getElementById('breakReminderSel').addEventListener('change', e => {
-  sessionSupportState.breakEveryMin = Number(e.target.value) || 0;
-  sessionSupportState.lastBreakNoticeTs = Date.now();
-  saveSessionSupportState();
-});
 document.getElementById('lowInterruptT').addEventListener('change', e => {
   sessionSupportState.lowInterruption = e.target.checked;
   saveSessionSupportState();
+  updateSessionMeta();
   updateLowInterruptionMode();
 });
-document.querySelectorAll('#microGoals input[type="checkbox"]').forEach(box => {
-  box.addEventListener('change', () => {
-    sessionSupportState.microGoals[box.dataset.goal] = box.checked;
-    saveSessionSupportState();
-    updateSessionMeta();
-    updateProgressAndStatus();
-  });
-});
+document.getElementById('sessionDoneDismissBtn').addEventListener('click', () => hideSessionDonePopup());
 document.getElementById('resumeRestoreBtn').addEventListener('click', () => restoreSavedPosition());
 document.getElementById('resumeDismissBtn').addEventListener('click', () => {
   pendingResumeState = null;
@@ -3571,11 +3626,7 @@ document.getElementById('compareProfileBtn').addEventListener('click', toggleCom
 document.getElementById('saveProfileBtn').addEventListener('click', handleSaveProfile);
 document.getElementById('deleteProfileBtn').addEventListener('click', handleDeleteProfile);
 useProfile(lastUsedProfileId);
-document.getElementById('breakReminderSel').value = String(sessionSupportState.breakEveryMin || 0);
 document.getElementById('lowInterruptT').checked = Boolean(sessionSupportState.lowInterruption);
-document.querySelectorAll('#microGoals input[type="checkbox"]').forEach(box => {
-  box.checked = Boolean(sessionSupportState.microGoals[box.dataset.goal]);
-});
 if (sessionSupportState.sessionEndTs > Date.now() && sessionSupportState.durationMin) {
   startSessionTimer(Number(sessionSupportState.durationMin));
 } else {
