@@ -1492,7 +1492,7 @@ function enhanceEvidenceBadges() {
     badge.dataset.enhanced = 'true';
     badge.dataset.evidenceLabel = label;
     badge.setAttribute('aria-label', label);
-    badge.innerHTML = '<span class="sci-icon" aria-hidden="true">✦ AI</span><span class="sci-text"></span>';
+    badge.innerHTML = '<span class="sci-icon" aria-hidden="true">✦</span><span class="sci-text"></span>';
     const textNode = badge.querySelector('.sci-text');
     if (textNode) textNode.textContent = label;
   });
