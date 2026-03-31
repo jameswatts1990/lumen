@@ -211,25 +211,12 @@ body.sidebar-collapsed .sidebar-toggle { left: 8px; }
 .sec-toggle .sec-label {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 10px;
-}
-.sec-toggle .sec-label::after {
-  content: '▾';
-  font-size: 12px;
-  color: var(--text-muted);
-  transition: transform 0.16s ease, color 0.16s ease;
-}
-.sec-toggle:hover .sec-label::after,
-.sec-toggle:focus-visible .sec-label::after {
-  color: var(--accent);
 }
 .sec-toggle:focus-visible {
   outline: 1px solid var(--accent-mid);
   outline-offset: -1px;
-}
-.sec.is-collapsed .sec-toggle .sec-label::after {
-  transform: rotate(-90deg);
 }
 .sec-content {
   display: grid;
@@ -307,6 +294,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 
 /* Autoscroll controls */
 .scroll-ctl { padding: 4px 20px 10px; display: flex; align-items: center; gap: 10px; }
+.scroll-play-btn { flex: 0 0 auto; }
 .scbtn { padding: 5px 14px; background: var(--control-bg); border: 1px solid var(--control-border); border-radius: 6px; color: var(--text-primary); font-size: 14px; cursor: pointer; transition: all 0.15s; line-height: 1; }
 .scbtn:hover { border-color: var(--accent); color: var(--accent); }
 .scbtn.on { background: var(--accent); color: #1a1200; border-color: var(--accent); }
@@ -825,24 +813,21 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 
     <div class="sidebar-scroll">
 
-      <!-- Upload -->
-<div class="upload-zone" id="upZone">
+      <!-- Import -->
+      <div class="sec-label" style="padding-top: 10px;">Import</div>
+      <div class="upload-zone" id="upZone">
         <input type="file" accept=".pdf,.txt,.md,.markdown,.html,.htm,.json,application/pdf,text/plain,text/markdown,text/html,application/json" id="fileIn">
         <div class="upload-icon">📄</div>
         <div>Drop a file here or click to open</div>
         <div class="upload-fname" id="upName"></div>
       </div>
-      <div class="sec" style="padding-top: 0;">
-        <div class="sec-label">Web link import</div>
-        <div class="sec-hint">Paste a page URL to extract readable text (works best on pages that allow direct fetching).</div>
-        <div class="nav-jump" style="padding-bottom: 12px;">
-          <input class="nav-input" id="urlIn" type="url" placeholder="https://example.com/article" aria-label="Website URL">
-          <button class="pbtn nav-go" id="urlLoadBtn" type="button">Load</button>
-        </div>
+      <div class="nav-jump" style="padding-bottom: 12px;">
+        <input class="nav-input" id="urlIn" type="url" placeholder="https://example.com/article" aria-label="Website URL">
+        <button class="pbtn nav-go" id="urlLoadBtn" type="button">Load</button>
       </div>
 
       <!-- Reading Profiles -->
-      <div class="sec">
+      <div class="sec is-collapsed">
         <div class="sec-label">Reading Profiles</div>
         <div class="sec-hint">Save your current setup, or switch between curated profiles for different reading needs.</div>
         <select class="fsel" id="profileSel" aria-label="Reading profile"></select>
@@ -873,16 +858,12 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
             </label>
           </div>
         </div>
-        <div class="mode-help">
-          <div>Overlay = keeps page structure.</div>
-          <div>Flow = extracts text into continuous reading layout.</div>
-        </div>
       </div>
 
 
       <!-- Background Mode -->
-      <div class="sec">
-        <div class="sec-label">Background Mode</div>
+      <div class="sec is-collapsed">
+        <div class="sec-label">Background lighting</div>
         <div class="presets">
           <button class="pbtn on" data-mode="day"   onclick="setMode('day')">Day</button>
           <button class="pbtn"    data-mode="sepia"  onclick="setMode('sepia')">Sepia</button>
@@ -890,10 +871,16 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
           <button class="pbtn"    data-mode="night"  onclick="setMode('night')">Night</button>
         </div>
         <div class="sec-hint">Warm/dark modes reduce blue-light exposure & eye fatigue (Phipps-Nelson et al., 2009)</div>
+        <div class="sec-hint">Amber overlay mimics f.lux / night shift (Chang et al., 2015)</div>
+        <div class="ctrl">
+          <span class="ctrl-lbl">Warm Tint</span>
+          <input type="range" id="tintR" min="0" max="55" value="0" step="1" oninput="updateTint()">
+          <span class="ctrl-val" id="tintV">Off</span>
+        </div>
       </div>
 
       <!-- Display -->
-      <div class="sec">
+      <div class="sec is-collapsed">
         <div class="sec-label">Display <span class="sci" title="Optimal zoom and line width reduce subvocalization load">✦</span></div>
 
         <div class="ctrl">
@@ -922,8 +909,8 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
       </div>
 
       <!-- Typography -->
-      <div class="sec">
-        <div class="sec-label">Typography Overlay <span class="sci">✦</span></div>
+      <div class="sec is-collapsed">
+        <div class="sec-label">Typography <span class="sci">✦</span></div>
         <div class="sec-hint">Applied as a readable text layer with high-legibility font defaults and dyslexia-focused options</div>
 
         <div class="trow" style="padding-top: 2px;">
@@ -969,7 +956,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
       </div>
 
       <!-- Focus Tools -->
-      <div class="sec">
+      <div class="sec is-collapsed">
         <div class="sec-label">Focus Aids</div>
 
         <div class="trow ctrl-group flow-locked-group">
@@ -1037,28 +1024,17 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         </div>
       </div>
 
-      <!-- Blue Light Tint -->
-      <div class="sec">
-        <div class="sec-label">Warm Light Tint <span class="sci">✦</span></div>
-        <div class="sec-hint">Amber overlay mimics f.lux / night shift (Chang et al., 2015)</div>
-        <div class="ctrl">
-          <span class="ctrl-lbl">Intensity</span>
-          <input type="range" id="tintR" min="0" max="55" value="0" step="1" oninput="updateTint()">
-          <span class="ctrl-val" id="tintV">Off</span>
-        </div>
-      </div>
-
       <!-- Auto-scroll -->
-      <div class="sec">
-        <div class="sec-label">Auto-Scroll <span class="sci">✦</span></div>
+      <div class="sec is-collapsed">
+        <div class="sec-label">Auto Scroll <span class="sci">✦</span></div>
         <div class="sec-hint">Steady pacing reduces regressive saccades (O'Brien & Rayner, 1993)</div>
         <div class="ctrl">
           <span class="ctrl-lbl">Speed</span>
           <input type="range" id="scrollSR" min="0.5" max="12" value="2.5" step="0.5">
+          <button class="scbtn scroll-play-btn" id="scrollBtn" onclick="toggleScroll()" aria-label="Toggle auto scroll">▶</button>
           <span class="ctrl-val" id="scrollSV">2.5</span>
         </div>
         <div class="scroll-ctl">
-          <button class="scbtn" id="scrollBtn" onclick="toggleScroll()">▶</button>
           <span class="scbtn-hint">Hover reader to pause</span>
         </div>
       </div>
@@ -1276,7 +1252,8 @@ function initSidebarSectionToggles() {
     const toggleBtn = document.createElement('button');
     toggleBtn.type = 'button';
     toggleBtn.className = 'sec-toggle';
-    toggleBtn.setAttribute('aria-expanded', 'true');
+    const startsCollapsed = section.classList.contains('is-collapsed');
+    toggleBtn.setAttribute('aria-expanded', String(!startsCollapsed));
     const contentId = `${sectionId}Content`;
     toggleBtn.setAttribute('aria-controls', contentId);
 
