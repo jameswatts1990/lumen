@@ -685,6 +685,9 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   white-space: normal;
   text-wrap: pretty;
 }
+.flow-para-split {
+  margin-bottom: 0.42em;
+}
 .flow-heading {
   margin: 1.1em 0 0.45em;
   color: #f2dcc0;
@@ -1276,6 +1279,13 @@ body.low-interruption-active .session-timer-overlay {
           <input type="range" id="chunkR" min="1" max="5" value="2" step="1">
           <span class="ctrl-val" id="chunkV">2 lines</span>
         </div>
+        <div class="trow ctrl-group flow-only-group">
+          <div class="trow-info">
+            <div class="trow-lbl">Auto-split Long Paragraphs</div>
+            <div class="trow-sub">Flow mode only: breaks long paragraphs into sentence groups sized by chunk height.</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="flowSplitT" onchange="toggleFlowAutoSplit()"><span class="tog-tk"></span></label>
+        </div>
         <div class="chunk-step ctrl-group chunk-group">
           <button class="scbtn" id="chunkUpBtn" type="button" title="Move chunk up (K)" aria-label="Move chunk up">↑</button>
           <button class="scbtn" id="chunkDownBtn" type="button" title="Move chunk down (J)" aria-label="Move chunk down">↓</button>
@@ -1542,7 +1552,8 @@ const DEFAULT_SETTINGS = {
   progressBar: true,
   autoScrollSpeed: 0.8,
   chunkMode: false,
-  chunkHeight: 2
+  chunkHeight: 2,
+  flowAutoSplit: false
 };
 const BUILTIN_PROFILES = [
   {
@@ -1829,6 +1840,7 @@ function captureSettings() {
     autoScrollSpeed: Number(document.getElementById('scrollSR').value),
     chunkMode: document.getElementById('chunkT').checked,
     chunkHeight: Number(document.getElementById('chunkR').value),
+    flowAutoSplit: document.getElementById('flowSplitT').checked,
   };
 }
 
@@ -1869,6 +1881,7 @@ function applySettings(profile) {
   if (settings.ruler !== undefined) document.getElementById('rulerT').checked = Boolean(settings.ruler);
   if (settings.paragraphShading !== undefined) document.getElementById('shadeT').checked = Boolean(settings.paragraphShading);
   if (settings.chunkMode !== undefined) document.getElementById('chunkT').checked = Boolean(settings.chunkMode);
+  if (settings.flowAutoSplit !== undefined) document.getElementById('flowSplitT').checked = Boolean(settings.flowAutoSplit);
   setRangeValue('chunkR', settings.chunkHeight);
   toggleRuler();
   if (settings.focusMode !== undefined) document.getElementById('focusT').checked = Boolean(settings.focusMode);
@@ -2459,13 +2472,38 @@ function buildFlowBlocks(textSegments) {
   return blocks;
 }
 
+function splitIntoSentences(text) {
+  const normalized = normalizeFlowSentence(text);
+  if (!normalized) return [];
+  const matches = normalized.match(/[^.!?]+(?:[.!?]+["'”’)]*)+|[^.!?]+$/g) || [];
+  return matches.map(sentence => normalizeFlowSentence(sentence)).filter(Boolean);
+}
+
+function expandParagraphBlockForFlowSplit(block) {
+  if (!block || block.type !== 'paragraph' || !flowAutoSplitOn()) return [block];
+  const chunkSentenceCount = Math.max(1, Number(document.getElementById('chunkR').value) || 1);
+  const sentences = splitIntoSentences(block.text);
+  if (sentences.length <= chunkSentenceCount) return [block];
+  const grouped = [];
+  for (let i = 0; i < sentences.length; i += chunkSentenceCount) {
+    grouped.push({
+      type: 'paragraph',
+      text: sentences.slice(i, i + chunkSentenceCount).join(' '),
+      splitFromLongParagraph: true
+    });
+  }
+  return grouped;
+}
+
 function renderFlowBlocks(blocks, pageNum) {
   let listEl = null;
   const closeList = () => {
     listEl = null;
   };
 
-  blocks.forEach(block => {
+  blocks.forEach(originalBlock => {
+    const subBlocks = expandParagraphBlockForFlowSplit(originalBlock);
+    subBlocks.forEach(block => {
     if (block.type === 'list-item') {
       if (!listEl) {
         listEl = document.createElement('ul');
@@ -2491,11 +2529,13 @@ function renderFlowBlocks(blocks, pageNum) {
       return;
     }
 
-    const p = document.createElement('p');
-    p.className = 'flow-para';
-    p.dataset.page = String(pageNum);
-    p.textContent = block.text;
-    flowLayer.appendChild(p);
+      const p = document.createElement('p');
+      p.className = 'flow-para';
+      if (block.splitFromLongParagraph) p.classList.add('flow-para-split');
+      p.dataset.page = String(pageNum);
+      p.textContent = block.text;
+      flowLayer.appendChild(p);
+    });
   });
 }
 
@@ -2528,7 +2568,8 @@ function renderTextFlowFromPlainText(text, originLabel = 'Text source') {
 
   return {
     numPages: totalPages,
-    plainText: normalized
+    plainText: normalized,
+    sourceLabel: originLabel
   };
 }
 
@@ -2559,7 +2600,7 @@ async function loadTextDocument(plainText, displayName, sourceLabel) {
   scrollBtn.classList.remove('on');
   reader.scrollTop = 0;
   const extracted = renderTextFlowFromPlainText(plainText, sourceLabel);
-  textDoc = { title: displayName, ...extracted };
+  textDoc = { title: displayName, sourceLabel, ...extracted };
   document.getElementById('upName').textContent = displayName;
   document.getElementById('upName').style.display = 'block';
   reader.classList.remove('drop-ready');
@@ -2766,6 +2807,7 @@ function syncReadingModeControls() {
     if (el) el.disabled = isFlow;
   });
   document.querySelectorAll('.flow-locked-group').forEach(el => el.classList.toggle('collapsed', isFlow));
+  document.querySelectorAll('.flow-only-group').forEach(el => el.classList.toggle('collapsed', !isFlow));
   document.querySelectorAll('.flow-only-note').forEach(el => el.classList.toggle('collapsed', !isFlow));
   const displayModeHint = document.getElementById('displayModeHint');
   if (displayModeHint) displayModeHint.hidden = !isFlow;
@@ -2774,6 +2816,8 @@ function syncReadingModeControls() {
     const el = document.getElementById(id);
     if (el) el.disabled = false;
   });
+  const flowSplitToggle = document.getElementById('flowSplitT');
+  if (flowSplitToggle) flowSplitToggle.disabled = !isFlow;
   setChunkButtonState();
   const focusModeHint = document.getElementById('focusModeHint');
   if (focusModeHint) focusModeHint.hidden = !isFlow;
@@ -3155,7 +3199,11 @@ wire('focusR',  'focusV', '%', null, v => updateFocusVignette(v));
 wire('focusDepthR', 'focusDepthV', 'px', null, v => updateFocusDepth(v));
 wire('chunkR', 'chunkV', ' lines', v => `${Math.round(v)} line${Math.round(v) === 1 ? '' : 's'}`, () => {
   updateChunkOverlay();
-  updateFlowHighlight();
+  if (readingMode === 'flow' && flowAutoSplitOn()) {
+    refreshFlowRenderForChunking();
+  } else {
+    updateFlowHighlight();
+  }
 });
 
 /* ── Tint ── */
@@ -3170,6 +3218,11 @@ function updateTint() {
 /* ── Reading ruler ── */
 function chunkModeOn() {
   return document.getElementById('chunkT').checked;
+}
+
+function flowAutoSplitOn() {
+  const toggle = document.getElementById('flowSplitT');
+  return Boolean(toggle?.checked);
 }
 
 function parseCssColor(value, alphaFallback = 0.14) {
@@ -3215,6 +3268,25 @@ function setChunkButtonState() {
 
 function getFlowHighlightables() {
   return [...flowLayer.querySelectorAll('.flow-para, .flow-heading, .flow-list-item')];
+}
+
+async function refreshFlowRenderForChunking() {
+  if (readingMode !== 'flow') return;
+  if (pdf) {
+    await renderFlowDocument();
+    return;
+  }
+  if (textDoc?.plainText) {
+    const refreshed = renderTextFlowFromPlainText(textDoc.plainText, textDoc.sourceLabel || `File · ${textDoc.title || 'Text source'}`);
+    textDoc = { ...textDoc, ...refreshed };
+    flowChunkIndex = 0;
+    updateFlowHighlight();
+  }
+}
+
+async function toggleFlowAutoSplit() {
+  await refreshFlowRenderForChunking();
+  saveProfilesState();
 }
 
 function ensureFlowHighlightTargets() {
