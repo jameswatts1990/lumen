@@ -6,9 +6,32 @@
 <title>Lumen — Mindful Document Reader</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Mono:wght@400;500&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
-<link href="https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/opendyslexic.css" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Mono:wght@400;500&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet" id="primaryReadableFonts">
+<link href="https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/opendyslexic.css" rel="stylesheet" id="primaryDyslexicFont">
 <style>
+@font-face {
+  font-family: 'OpenDyslexic';
+  src:
+    local('OpenDyslexic Regular'),
+    local('OpenDyslexic-Regular'),
+    url('https://unpkg.com/opendyslexic@1.0.3/alternates/OpenDyslexic-Regular.otf') format('opentype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexic';
+  src:
+    local('OpenDyslexic Bold'),
+    local('OpenDyslexic-Bold'),
+    url('https://unpkg.com/opendyslexic@1.0.3/alternates/OpenDyslexic-Bold.otf') format('opentype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
@@ -627,7 +650,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
       <!-- Typography -->
       <div class="sec">
         <div class="sec-label">Typography Overlay <span class="sci">✦</span></div>
-        <div class="sec-hint">Applied as a readable text layer for improved font comfort</div>
+        <div class="sec-hint">Applied as a readable text layer with high-legibility font defaults and dyslexia-focused options</div>
 
         <div class="ctrl" style="padding-top: 2px; align-items: flex-start;">
           <span class="ctrl-lbl" style="padding-top: 7px;">Mode</span>
@@ -963,13 +986,13 @@ const MODES = {
 };
 const FONT_STACKS = {
   native: 'inherit',
-  georgia: "'Georgia', serif",
-  lora: "'Lora', Georgia, serif",
-  palatino: "'Palatino Linotype', serif",
-  verdana: "'Verdana', sans-serif",
-  atkinson: "'Atkinson Hyperlegible', sans-serif",
-  opendyslexic: "'OpenDyslexic', 'OpenDyslexicAlta', 'Atkinson Hyperlegible', Arial, sans-serif",
-  courier: "'Courier New', monospace",
+  georgia: "'Georgia', 'Charter', 'Times New Roman', serif",
+  lora: "'Lora', 'Baskerville', 'Georgia', serif",
+  palatino: "'Palatino Linotype', 'Book Antiqua', 'Palatino', serif",
+  verdana: "'Verdana', 'Tahoma', 'Trebuchet MS', 'Arial', sans-serif",
+  atkinson: "'Atkinson Hyperlegible', 'Atkinson Hyperlegible Next', 'Verdana', 'Arial', sans-serif",
+  opendyslexic: "'OpenDyslexic', 'OpenDyslexicAlta', 'Atkinson Hyperlegible', 'Verdana', 'Arial', sans-serif",
+  courier: "'DM Mono', 'Courier New', monospace",
 };
 const LEGACY_FONT_KEYS = Object.fromEntries(
   Object.entries(FONT_STACKS).map(([key, stack]) => [stack, key])
@@ -979,6 +1002,57 @@ function normalizeFontKey(fontValue) {
   if (typeof fontValue !== 'string' || !fontValue.trim()) return 'native';
   if (Object.hasOwn(FONT_STACKS, fontValue)) return fontValue;
   return LEGACY_FONT_KEYS[fontValue] || 'native';
+}
+
+const FONT_LOAD_PROMISES = new Map();
+
+function appendStylesheetOnce(id, href) {
+  if (document.getElementById(id)) return;
+  const link = document.createElement('link');
+  link.id = id;
+  link.rel = 'stylesheet';
+  link.href = href;
+  document.head.appendChild(link);
+}
+
+function ensureFontAvailable({ key, family, probe, fallbackHref, fallbackLinkId, timeoutMs = 2300 }) {
+  if (!document.fonts || typeof document.fonts.load !== 'function') return Promise.resolve();
+  if (FONT_LOAD_PROMISES.has(key)) return FONT_LOAD_PROMISES.get(key);
+  const job = (async () => {
+    try {
+      const timer = new Promise(resolve => setTimeout(resolve, timeoutMs));
+      await Promise.race([document.fonts.load(probe), timer]);
+      if (document.fonts.check(probe)) return;
+      appendStylesheetOnce(fallbackLinkId, fallbackHref);
+      await Promise.race([document.fonts.load(probe), timer]);
+      if (!document.fonts.check(probe)) {
+        console.warn(`${family} did not fully load; keeping readable fallback stack.`);
+      }
+    } catch (err) {
+      console.warn(`Error while loading ${family}:`, err);
+    }
+  })();
+  FONT_LOAD_PROMISES.set(key, job);
+  return job;
+}
+
+async function ensureCriticalFontsReady() {
+  await Promise.allSettled([
+    ensureFontAvailable({
+      key: 'atkinson',
+      family: 'Atkinson Hyperlegible',
+      probe: '400 1em "Atkinson Hyperlegible"',
+      fallbackHref: 'https://fonts.bunny.net/css?family=atkinson-hyperlegible:400,700',
+      fallbackLinkId: 'fallbackAtkinsonFont'
+    }),
+    ensureFontAvailable({
+      key: 'opendyslexic',
+      family: 'OpenDyslexic',
+      probe: '400 1em "OpenDyslexic"',
+      fallbackHref: 'https://unpkg.com/opendyslexic@1.0.3/opendyslexic.css',
+      fallbackLinkId: 'fallbackOpenDyslexicFont'
+    })
+  ]);
 }
 
 function setMode(m) {
@@ -2312,6 +2386,9 @@ document.getElementById('profileSel').addEventListener('change', e => useProfile
 document.getElementById('saveProfileBtn').addEventListener('click', handleSaveProfile);
 document.getElementById('deleteProfileBtn').addEventListener('click', handleDeleteProfile);
 useProfile(lastUsedProfileId);
+ensureCriticalFontsReady().then(() => {
+  if (readingMode !== 'pdf') updateStyles();
+});
 if (persistedSettings.readingMode) {
   setReadingMode(persistedSettings.readingMode);
   applyReadingMode();
