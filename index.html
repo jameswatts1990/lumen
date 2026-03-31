@@ -171,6 +171,7 @@ body.sidebar-collapsed .sidebar > * {
 .sidebar-toggle .glyph-open { display: none; }
 body.sidebar-collapsed .sidebar-toggle .glyph-close { display: none; }
 body.sidebar-collapsed .sidebar-toggle .glyph-open { display: inline; }
+body.sidebar-collapsed .sidebar-toggle { left: 8px; }
 .sidebar-head {
   padding: 22px 18px 16px;
   border-bottom: 1px solid var(--sidebar-border);
@@ -233,6 +234,7 @@ body.sidebar-collapsed .sidebar-toggle .glyph-open { display: inline; }
 .sec-content {
   display: grid;
   grid-template-rows: 1fr;
+  overflow: hidden;
   transition: grid-template-rows 0.2s ease, opacity 0.2s ease;
 }
 .sec-content > .sec-inner {
@@ -241,6 +243,7 @@ body.sidebar-collapsed .sidebar-toggle .glyph-open { display: inline; }
 .sec.is-collapsed .sec-content {
   grid-template-rows: 0fr;
   opacity: 0.88;
+  pointer-events: none;
 }
 
 /* Control rows */
