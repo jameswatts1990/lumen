@@ -928,7 +928,9 @@ body.low-interruption-active .chunk-indicator {
         <div class="sec-label">Reading Profiles</div>
         <div class="sec-hint">Save your current setup, or switch between curated profiles for different reading needs.</div>
         <select class="fsel" id="profileSel" aria-label="Reading profile"></select>
+        <div class="sec-hint" id="profileDesc" style="padding-top: 2px;">Balanced defaults for everyday reading.</div>
         <div class="presets" style="padding-top: 4px;">
+          <button class="pbtn" id="compareProfileBtn" type="button">Compare with previous profile</button>
           <button class="pbtn" id="saveProfileBtn" type="button">Save current</button>
           <button class="pbtn" id="deleteProfileBtn" type="button">Delete</button>
         </div>
@@ -1335,31 +1337,54 @@ const DEFAULT_SETTINGS = {
   chunkHeight: 2
 };
 const BUILTIN_PROFILES = [
-  { id: DEFAULT_PROFILE_ID, name: 'Default', settings: DEFAULT_SETTINGS },
+  {
+    id: DEFAULT_PROFILE_ID,
+    name: 'Default',
+    description: 'Balanced defaults for everyday reading.',
+    settings: DEFAULT_SETTINGS
+  },
   {
     id: 'gentle-focus',
     name: 'Gentle Focus',
+    description: 'Light guidance with softer tones and calm pacing.',
     settings: { mode: 'sepia', zoom: 105, width: 760, brightness: 96, contrast: 98, gap: 20, font: 'lora', textSize: 105, lineHeight: 1.7, letterSpacing: 0.25, wordSpacing: 1, ruler: false, paragraphShading: false, focusMode: true, focusVignette: 58, focusDepth: 210, tint: 14, progressBar: true, autoScrollSpeed: 0.7, chunkMode: false, chunkHeight: 2 }
   },
   {
-    id: 'dyslexia-friendly',
-    name: 'Dyslexia Friendly',
-    settings: { mode: 'day', zoom: 110, width: 820, brightness: 100, contrast: 104, gap: 24, font: 'atkinson', textSize: 115, lineHeight: 1.9, letterSpacing: 0.75, wordSpacing: 2.5, ruler: true, paragraphShading: true, focusMode: false, focusVignette: 62, focusDepth: 220, tint: 8, progressBar: true, autoScrollSpeed: 1.5, chunkMode: false, chunkHeight: 2 }
+    id: 'dyslexia-spacing-first',
+    name: 'Dyslexia: spacing-first',
+    description: 'Prioritizes spacing clarity while keeping other aids subtle.',
+    settings: { mode: 'day', zoom: 108, width: 800, brightness: 100, contrast: 102, gap: 22, font: 'atkinson', textSize: 112, lineHeight: 1.82, letterSpacing: 0.6, wordSpacing: 2, ruler: false, paragraphShading: false, focusMode: false, focusVignette: 62, focusDepth: 220, tint: 6, progressBar: true, autoScrollSpeed: 1.3, chunkMode: false, chunkHeight: 2 }
   },
   {
-    id: 'adhd-flow',
-    name: 'ADHD Flow',
-    settings: { mode: 'sepia', zoom: 110, width: 680, brightness: 95, contrast: 102, gap: 28, font: 'verdana', textSize: 110, lineHeight: 1.75, letterSpacing: 0.25, wordSpacing: 1.5, ruler: true, paragraphShading: true, focusMode: true, focusVignette: 68, focusDepth: 180, tint: 16, progressBar: true, autoScrollSpeed: 2.8, chunkMode: true, chunkHeight: 2 }
+    id: 'dyslexia-minimal-visual-aid',
+    name: 'Dyslexia: minimal visual aid',
+    description: 'Readable font and rhythm with minimal overlays or distractions.',
+    settings: { mode: 'day', zoom: 106, width: 790, brightness: 100, contrast: 101, gap: 20, font: 'opendyslexic', textSize: 108, lineHeight: 1.74, letterSpacing: 0.45, wordSpacing: 1.4, ruler: false, paragraphShading: false, focusMode: false, focusVignette: 64, focusDepth: 220, tint: 4, progressBar: true, autoScrollSpeed: 1.1, chunkMode: false, chunkHeight: 2 }
+  },
+  {
+    id: 'adhd-attention-anchoring',
+    name: 'ADHD: attention anchoring',
+    description: 'Uses gentle anchors (ruler and focus) without stacking extremes.',
+    settings: { mode: 'sepia', zoom: 108, width: 710, brightness: 96, contrast: 101, gap: 24, font: 'verdana', textSize: 108, lineHeight: 1.7, letterSpacing: 0.2, wordSpacing: 1.2, ruler: true, paragraphShading: false, focusMode: true, focusVignette: 66, focusDepth: 195, tint: 12, progressBar: true, autoScrollSpeed: 2, chunkMode: true, chunkHeight: 2 }
+  },
+  {
+    id: 'autism-low-sensory-load',
+    name: 'Autism: low sensory load',
+    description: 'Minimizes sensory intensity with reduced contrast and steady spacing.',
+    settings: { mode: 'sepia', zoom: 104, width: 760, brightness: 95, contrast: 96, gap: 20, font: 'lora', textSize: 104, lineHeight: 1.7, letterSpacing: 0.15, wordSpacing: 0.8, ruler: false, paragraphShading: false, focusMode: false, focusVignette: 70, focusDepth: 235, tint: 10, progressBar: true, autoScrollSpeed: 0.9, chunkMode: false, chunkHeight: 2 }
   },
   {
     id: 'high-contrast-calm',
     name: 'High Contrast Calm',
+    description: 'High legibility while avoiding aggressive motion cues.',
     settings: { mode: 'dark', zoom: 120, width: 780, brightness: 90, contrast: 130, gap: 20, font: 'verdana', textSize: 112, lineHeight: 1.8, letterSpacing: 0.5, wordSpacing: 1.5, ruler: false, paragraphShading: false, focusMode: true, focusVignette: 70, focusDepth: 250, tint: 12, progressBar: true, autoScrollSpeed: 1.8, chunkMode: false, chunkHeight: 2 }
   }
 ];
 const BUILTIN_PROFILE_MAP = new Map(BUILTIN_PROFILES.map(p => [p.id, p]));
 let customProfiles = {};
 let lastUsedProfileId = DEFAULT_PROFILE_ID;
+let profileCompareState = null;
+let compareView = 'current';
 let sessionSupportState = {
   durationMin: 0,
   sessionEndTs: 0,
@@ -1692,7 +1717,9 @@ function refreshProfileSelect() {
 
   if (!getProfileById(lastUsedProfileId)) lastUsedProfileId = DEFAULT_PROFILE_ID;
   sel.value = lastUsedProfileId;
+  updateProfileDescription(lastUsedProfileId);
   updateProfileActionState();
+  updateCompareProfileButtonState();
 }
 
 function updateProfileActionState() {
@@ -1700,15 +1727,70 @@ function updateProfileActionState() {
   document.getElementById('deleteProfileBtn').disabled = !customProfiles[id];
 }
 
+function updateProfileDescription(profileId) {
+  const desc = document.getElementById('profileDesc');
+  if (!desc) return;
+  const profile = getProfileById(profileId);
+  if (!profile) {
+    desc.textContent = '';
+    return;
+  }
+  desc.textContent = profile.description || 'Custom profile based on your current reader settings.';
+}
+
+function updateCompareProfileButtonState() {
+  const btn = document.getElementById('compareProfileBtn');
+  if (!btn) return;
+  const canCompare = Boolean(profileCompareState);
+  btn.disabled = !canCompare;
+  if (!canCompare) {
+    btn.textContent = 'Compare with previous profile';
+    btn.classList.remove('on');
+    compareView = 'current';
+    return;
+  }
+  const currentName = profileCompareState.currentName || 'Current';
+  const previousName = profileCompareState.previousName || 'Previous';
+  const showingPrevious = compareView === 'previous';
+  btn.textContent = showingPrevious ? `Back to ${currentName}` : `Compare: ${previousName}`;
+  btn.classList.toggle('on', showingPrevious);
+}
+
 function useProfile(profileId) {
   const profile = getProfileById(profileId);
   if (!profile) return;
+  if (lastUsedProfileId !== profileId) {
+    const previousProfile = getProfileById(lastUsedProfileId) || getProfileById(DEFAULT_PROFILE_ID);
+    profileCompareState = {
+      previousProfileId: lastUsedProfileId,
+      previousSettings: captureSettings(),
+      previousName: previousProfile?.name || 'Previous profile',
+      currentProfileId: profileId,
+      currentSettings: profile.settings || captureSettings(),
+      currentName: profile.name || 'Current profile'
+    };
+  }
+  compareView = 'current';
   applySettings(profile);
   lastUsedProfileId = profileId;
   document.getElementById('profileSel').value = profileId;
+  updateProfileDescription(profileId);
   updateProfileActionState();
+  updateCompareProfileButtonState();
   saveProfilesState();
   saveDocProgress();
+}
+
+function toggleCompareProfile() {
+  if (!profileCompareState) return;
+  if (compareView === 'current') {
+    applySettings(profileCompareState.previousSettings);
+    compareView = 'previous';
+  } else {
+    applySettings(profileCompareState.currentSettings);
+    compareView = 'current';
+  }
+  updateCompareProfileButtonState();
 }
 
 function handleSaveProfile() {
@@ -3367,6 +3449,7 @@ loadSessionSupportState();
 loadProfilesState();
 refreshProfileSelect();
 document.getElementById('profileSel').addEventListener('change', e => useProfile(e.target.value));
+document.getElementById('compareProfileBtn').addEventListener('click', toggleCompareProfile);
 document.getElementById('saveProfileBtn').addEventListener('click', handleSaveProfile);
 document.getElementById('deleteProfileBtn').addEventListener('click', handleDeleteProfile);
 useProfile(lastUsedProfileId);
