@@ -4500,11 +4500,13 @@ function scrollFlowChunkIntoView(list, chunkSize) {
   const last = list[Math.min(list.length - 1, flowChunkIndex + chunkSize - 1)];
   if (!first || !last) return;
   const readerRect = reader.getBoundingClientRect();
-  const top = first.getBoundingClientRect().top - readerRect.top;
-  const bottom = last.getBoundingClientRect().bottom - readerRect.top;
-  const pad = 80;
-  if (top < pad) first.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  else if (bottom > (reader.clientHeight - pad)) last.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  const firstRect = first.getBoundingClientRect();
+  const lastRect = last.getBoundingClientRect();
+  const chunkCenter = ((firstRect.top + lastRect.bottom) / 2) - readerRect.top;
+  const viewCenter = reader.clientHeight / 2;
+  const delta = chunkCenter - viewCenter;
+  if (Math.abs(delta) < 18) return;
+  reader.scrollBy({ top: delta, behavior: 'smooth' });
 }
 
 function updateFlowHighlight() {
@@ -4655,6 +4657,7 @@ function toggleChunkMode() {
       });
       if (visibleIndex >= 0) flowChunkIndex = visibleIndex;
       clampFlowChunkIndex(list, chunkSize);
+      scrollFlowChunkIntoView(list, chunkSize);
     }
   } else if (readingMode === 'flow' && !flowAutoSplitOn()) {
     refreshFlowRenderForChunking();
