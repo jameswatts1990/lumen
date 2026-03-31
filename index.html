@@ -3239,6 +3239,11 @@ function getGoogleDocExportUrl(rawUrl) {
 }
 
 async function fetchPlainTextFromUrl(url) {
+  const parsedUrl = tryParseUrl(url);
+  if (!parsedUrl || !/^https?:$/i.test(parsedUrl.protocol)) {
+    throw new Error('Only HTTP(S) URLs are supported');
+  }
+
   const googleDocExportUrl = getGoogleDocExportUrl(url);
   if (googleDocExportUrl) {
     const exportRes = await fetch(googleDocExportUrl);
@@ -3249,11 +3254,30 @@ async function fetchPlainTextFromUrl(url) {
     }
   }
 
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const html = await res.text();
-  const plainText = stripToPlainText(html, '.html');
-  return { plainText, sourceLabel: 'Web page' };
+  const attempts = [
+    { sourceLabel: 'Web page', requestUrl: parsedUrl.toString(), mode: 'html' },
+    { sourceLabel: 'Web page · Reader mirror', requestUrl: `https://r.jina.ai/${parsedUrl.toString()}`, mode: 'text' }
+  ];
+  const errors = [];
+
+  for (const attempt of attempts) {
+    try {
+      const res = await fetch(attempt.requestUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.text();
+      const plainText = attempt.mode === 'html'
+        ? stripToPlainText(body, '.html')
+        : normalizeReadableText(body);
+      if (plainText) {
+        return { plainText, sourceLabel: attempt.sourceLabel };
+      }
+      errors.push(`${attempt.sourceLabel}: empty response`);
+    } catch (err) {
+      errors.push(`${attempt.sourceLabel}: ${err && err.message ? err.message : 'request failed'}`);
+    }
+  }
+
+  throw new Error(errors.join(' | ') || 'Unable to load URL content');
 }
 
 function normalizeReadableText(text) {
@@ -3626,17 +3650,22 @@ async function loadFromUrl() {
   const rawUrl = (input.value || '').trim();
   if (!rawUrl) return;
   const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+  const parsedUrl = tryParseUrl(url);
+  if (!parsedUrl || !/^https?:$/i.test(parsedUrl.protocol)) {
+    rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Please enter a valid website URL that starts with http:// or https://.</div>';
+    return;
+  }
   setCurrentDocumentMeta({
-    id: `url:${url}`,
-    label: url,
+    id: `url:${parsedUrl.toString()}`,
+    label: parsedUrl.toString(),
     type: 'url'
   });
   try {
-    const { plainText, sourceLabel } = await fetchPlainTextFromUrl(url);
-    await loadTextDocument(plainText, url, sourceLabel);
+    const { plainText, sourceLabel } = await fetchPlainTextFromUrl(parsedUrl.toString());
+    await loadTextDocument(plainText, parsedUrl.toString(), sourceLabel);
   } catch (err) {
     console.warn('Unable to load URL source:', err);
-    rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Could not fetch this URL. The site may block cross-origin requests. For Google Docs, make sure link sharing allows viewer access, then try again—or download as text/HTML and upload it.</div>';
+    rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Could not fetch this URL. The site may block direct requests, so we also tried a reader mirror fallback. For Google Docs, make sure link sharing allows viewer access, then try again—or download as text/HTML and upload it.</div>';
   }
 }
 
