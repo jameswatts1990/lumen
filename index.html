@@ -745,6 +745,9 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   box-shadow: 0 6px 18px rgba(0,0,0,0.32);
 }
 .chunk-indicator.on { display: inline-flex; }
+.chunk-indicator.with-timer {
+  top: 64px;
+}
 .chunk-indicator .dot {
   width: 7px;
   height: 7px;
@@ -2147,11 +2150,13 @@ function updateSessionMeta() {
   const remainingMs = getRemainingSessionMs();
   const timerOverlay = document.getElementById('sessionTimerOverlay');
   const timerValue = document.getElementById('sessionTimerValue');
+  const chunkStatus = document.getElementById('chunkStatus');
   const lowInterruptionOn = Boolean(sessionSupportState.lowInterruption);
   if (remainingMs <= 0) {
     meta.textContent = `No active session. Sessions completed: ${sessionsCompletedThisSession}.`;
     document.querySelectorAll('.session-btn').forEach(btn => btn.classList.remove('on'));
     timerOverlay.classList.remove('on');
+    chunkStatus.classList.remove('with-timer');
     updateLowInterruptionMode();
     return;
   }
@@ -2161,6 +2166,7 @@ function updateSessionMeta() {
   meta.textContent = `Session running • ${formatted} left • Completed this session: ${sessionsCompletedThisSession}`;
   timerValue.textContent = formatted;
   timerOverlay.classList.toggle('on', !lowInterruptionOn);
+  chunkStatus.classList.toggle('with-timer', !lowInterruptionOn);
 }
 
 function showSessionDonePopup(minutes) {
