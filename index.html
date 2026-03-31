@@ -198,6 +198,37 @@ body.sidebar-collapsed .sidebar-toggle { left: 8px; }
 /* Sections */
 .sec { border-bottom: 1px solid var(--sidebar-border); padding: 10px 0; }
 .sec-label { padding: 0 20px 9px; font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; color: #b4a388; font-family: 'DM Mono', monospace; }
+.import-head {
+  padding: 0 14px 9px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.import-head .sec-label {
+  padding: 0;
+}
+.import-reset-btn {
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 10.5px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-family: 'DM Mono', monospace;
+  cursor: pointer;
+  line-height: 1.1;
+  transition: all 0.15s ease;
+}
+.import-reset-btn:hover,
+.import-reset-btn:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+  outline: none;
+}
 .sec-hint { padding: 0 20px 7px; font-size: 12.5px; color: var(--text-muted); line-height: 1.55; }
 .sec-hint code {
   color: var(--accent);
@@ -1100,7 +1131,10 @@ body.low-interruption-active .session-timer-overlay {
     <div class="sidebar-scroll">
 
       <!-- Import -->
-      <div class="sec-label" style="padding-top: 10px;">Import</div>
+      <div class="import-head" style="padding-top: 10px;">
+        <div class="sec-label">Import</div>
+        <button class="import-reset-btn" id="resetDocBtn" type="button" title="Clear loaded document">Reset</button>
+      </div>
       <div class="upload-zone" id="upZone">
         <input type="file" accept=".pdf,.txt,.md,.markdown,.html,.htm,.json,.eml,.msg,application/pdf,text/plain,text/markdown,text/html,application/json,message/rfc822,application/vnd.ms-outlook" id="fileIn">
         <div class="upload-icon">📄</div>
@@ -1529,6 +1563,10 @@ const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
 const SETTINGS_STORAGE_KEY = 'lumen.settings.v1';
 const SESSION_SUPPORT_STORAGE_KEY = 'lumen.session-support.v1';
 const DOC_PROGRESS_STORAGE_KEY = 'lumen.doc-progress.v1';
+const DOC_STATE_STORAGE_KEY = 'lumen.doc-state.v1';
+const DOC_STATE_DB_NAME = 'lumen-documents';
+const DOC_STATE_STORE = 'documents';
+const DOC_STATE_RECORD_ID = 'active';
 const DEFAULT_PROFILE_ID = 'default';
 const DEFAULT_SETTINGS = {
   mode: 'day',
@@ -1613,6 +1651,7 @@ let sessionTick = null;
 let sessionsCompletedThisSession = 0;
 let currentDocMeta = null;
 let pendingResumeState = null;
+let persistSettingsTimer = null;
 
 const reader = document.getElementById('reader');
 const rInner = document.getElementById('rInner');
@@ -1904,7 +1943,8 @@ function saveProfilesState() {
 
 function saveSettings() {
   localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
-    readingMode
+    readingMode,
+    settings: captureSettings()
   }));
 }
 
@@ -1917,6 +1957,104 @@ function loadSettings() {
   } catch (err) {
     console.warn('Unable to load settings:', err);
     return {};
+  }
+}
+
+function queuePersistSettings() {
+  if (persistSettingsTimer) clearTimeout(persistSettingsTimer);
+  persistSettingsTimer = setTimeout(() => {
+    persistSettingsTimer = null;
+    saveSettings();
+  }, 120);
+}
+
+function registerSettingsPersistence() {
+  const ids = [
+    'widthR', 'briR', 'conR', 'gapR', 'fontSel', 'tsizeR', 'lhR', 'lsR', 'wsR',
+    'rulerT', 'shadeT', 'focusT', 'focusR', 'focusDepthR', 'progT', 'tintR',
+    'scrollSR', 'chunkT', 'chunkR', 'flowSplitT', 'lowInterruptT', 'profileSel'
+  ];
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', queuePersistSettings);
+    el.addEventListener('change', queuePersistSettings);
+  });
+}
+
+function openDocStateDb() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      reject(new Error('IndexedDB unavailable'));
+      return;
+    }
+    const request = indexedDB.open(DOC_STATE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(DOC_STATE_STORE)) {
+        db.createObjectStore(DOC_STATE_STORE, { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Failed to open doc state database'));
+  });
+}
+
+async function savePersistedDocument(payload) {
+  try {
+    localStorage.setItem(DOC_STATE_STORAGE_KEY, JSON.stringify({
+      savedAt: Date.now(),
+      meta: currentDocMeta || null
+    }));
+    const db = await openDocStateDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(DOC_STATE_STORE, 'readwrite');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('Failed to save persisted document'));
+      tx.objectStore(DOC_STATE_STORE).put({
+        id: DOC_STATE_RECORD_ID,
+        payload,
+        savedAt: Date.now()
+      });
+    });
+    db.close();
+  } catch (err) {
+    console.warn('Unable to persist document state:', err);
+  }
+}
+
+async function loadPersistedDocumentRecord() {
+  try {
+    const metaRaw = localStorage.getItem(DOC_STATE_STORAGE_KEY);
+    if (!metaRaw) return null;
+    const db = await openDocStateDb();
+    const record = await new Promise((resolve, reject) => {
+      const tx = db.transaction(DOC_STATE_STORE, 'readonly');
+      const req = tx.objectStore(DOC_STATE_STORE).get(DOC_STATE_RECORD_ID);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error || new Error('Failed to read persisted document'));
+    });
+    db.close();
+    return record;
+  } catch (err) {
+    console.warn('Unable to load persisted document state:', err);
+    return null;
+  }
+}
+
+async function clearPersistedDocumentState() {
+  localStorage.removeItem(DOC_STATE_STORAGE_KEY);
+  try {
+    const db = await openDocStateDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(DOC_STATE_STORE, 'readwrite');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('Failed to clear persisted document'));
+      tx.objectStore(DOC_STATE_STORE).delete(DOC_STATE_RECORD_ID);
+    });
+    db.close();
+  } catch (err) {
+    console.warn('Unable to clear persisted document state:', err);
   }
 }
 
@@ -2295,6 +2433,10 @@ window.addEventListener('dragover', e => {
 
 window.addEventListener('drop', e => {
   e.preventDefault();
+});
+window.addEventListener('beforeunload', () => {
+  saveSettings();
+  saveDocProgress();
 });
 
 function isPdfFile(file) {
@@ -2835,6 +2977,13 @@ async function loadTextDocument(plainText, displayName, sourceLabel) {
   applyGap();
   renderOutlineFallback('Outline is only available for PDFs.');
   updateProgressAndStatus();
+  await savePersistedDocument({
+    type: 'text',
+    content: String(plainText || ''),
+    displayName,
+    sourceLabel,
+    docMeta: currentDocMeta || null
+  });
 }
 
 async function loadFromUrl() {
@@ -2888,6 +3037,12 @@ async function loadPDF(file) {
 
   try {
     const buf = await file.arrayBuffer();
+    await savePersistedDocument({
+      type: 'pdf',
+      bytes: buf,
+      name: file.name,
+      docMeta: currentDocMeta || null
+    });
     pdf = await pdfjsLib.getDocument({ data: buf }).promise;
     setPageJumpAvailability(true);
 
@@ -2907,6 +3062,109 @@ async function loadPDF(file) {
     rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Unable to load this PDF. Try another file.</div>';
     setPageJumpAvailability(false);
     renderOutlineFallback('Outline unavailable for this document.');
+  }
+}
+
+async function loadPDFBytes(bytes, name = 'Recovered PDF') {
+  textDoc = null;
+  document.getElementById('upName').textContent = name;
+  document.getElementById('upName').style.display = 'block';
+  reader.classList.remove('drop-ready');
+  rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Restoring previous PDF…</div>';
+  rInner.appendChild(flowLayer);
+  flowLayer.classList.remove('on');
+  flowLayer.innerHTML = '';
+  flowDocCache = null;
+  stopScroll();
+  scrolling = false;
+  const scrollBtn = document.getElementById('scrollBtn');
+  scrollBtn.textContent = '▶';
+  scrollBtn.classList.remove('on');
+  reader.scrollTop = 0;
+  currentPage = 0;
+  setPageJumpAvailability(false);
+  renderOutlineFallback('Loading outline…');
+  try {
+    pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+    setPageJumpAvailability(true);
+    rInner.innerHTML = '';
+    rInner.appendChild(flowLayer);
+    for (let i = 1; i <= pdf.numPages; i++) await renderPage(i);
+    await loadOutline();
+    applyFilters();
+    await applyReadingMode();
+    applyMaxWidth();
+    applyGap();
+    updateProgressAndStatus();
+  } catch (err) {
+    console.error('Failed to restore PDF:', err);
+    await clearPersistedDocumentState();
+  }
+}
+
+function resetLoadedDocumentUI() {
+  pdf = null;
+  textDoc = null;
+  flowDocCache = null;
+  currentDocMeta = null;
+  pendingResumeState = null;
+  stopScroll();
+  scrolling = false;
+  currentPage = 0;
+  reader.scrollTop = 0;
+  document.getElementById('scrollBtn').textContent = '▶';
+  document.getElementById('scrollBtn').classList.remove('on');
+  document.getElementById('upName').textContent = '';
+  document.getElementById('upName').style.display = 'none';
+  document.getElementById('fileIn').value = '';
+  reader.classList.remove('drop-ready');
+  flowLayer.classList.remove('on');
+  flowLayer.innerHTML = '';
+  rInner.classList.remove('flow-mode');
+  rInner.innerHTML = '';
+  rInner.appendChild(flowLayer);
+  const empty = document.createElement('div');
+  empty.className = 'empty';
+  empty.innerHTML = `
+    <div class="empty-icon">📖</div>
+    <div class="empty-title">Open a source to begin</div>
+    <div class="empty-desc">Upload a PDF, TXT, Markdown, HTML, or JSON file—or paste a web link—to read in a plain-text friendly layout.</div>
+    <div class="empty-tags">
+      <span class="etag">Sepia / Dark mode</span>
+      <span class="etag">Reading ruler</span>
+      <span class="etag">Auto-scroll</span>
+      <span class="etag">Focus mode</span>
+      <span class="etag">Warm tint</span>
+      <span class="etag">Typography control</span>
+    </div>
+  `;
+  rInner.appendChild(empty);
+  updateProgressAndStatus();
+  setPageJumpAvailability(false);
+  renderOutlineFallback('Load a PDF to view navigation links.');
+  refreshResumeCard();
+}
+
+async function restorePersistedDocument() {
+  const record = await loadPersistedDocumentRecord();
+  if (!record?.payload) return;
+  const payload = record.payload;
+  if (payload.type === 'pdf' && payload.bytes) {
+    if (payload.docMeta) {
+      setCurrentDocumentMeta(payload.docMeta);
+    } else {
+      setCurrentDocumentMeta({ id: `restored:pdf:${payload.name || 'Recovered PDF'}`, label: payload.name || 'Recovered PDF', type: 'pdf-file' });
+    }
+    await loadPDFBytes(payload.bytes, payload.name || 'Recovered PDF');
+    return;
+  }
+  if (payload.type === 'text') {
+    if (payload.docMeta) {
+      setCurrentDocumentMeta(payload.docMeta);
+    } else {
+      setCurrentDocumentMeta({ id: `restored:text:${payload.displayName || 'Recovered document'}`, label: payload.displayName || 'Recovered document', type: 'text-file' });
+    }
+    await loadTextDocument(payload.content || '', payload.displayName || 'Recovered document', payload.sourceLabel || 'Recovered source');
   }
 }
 
@@ -4070,6 +4328,18 @@ document.getElementById('resumeDismissBtn').addEventListener('click', () => {
   pendingResumeState = null;
   refreshResumeCard();
 });
+document.getElementById('resetDocBtn').addEventListener('click', async () => {
+  await clearPersistedDocumentState();
+  const docId = getCurrentDocId();
+  if (docId) {
+    const map = loadDocProgressMap();
+    if (map[docId]) {
+      delete map[docId];
+      saveDocProgressMap(map);
+    }
+  }
+  resetLoadedDocumentUI();
+});
 
 /* ── Init ── */
 document.getElementById('tintR').addEventListener('input', updateTint);
@@ -4147,10 +4417,15 @@ refreshResumeCard();
 ensureCriticalFontsReady().then(() => {
   if (readingMode !== 'pdf') updateStyles();
 });
+registerSettingsPersistence();
 if (persistedSettings.readingMode) {
   setReadingMode(persistedSettings.readingMode);
   applyReadingMode();
 }
+if (persistedSettings.settings) {
+  applySettings(persistedSettings.settings);
+}
+restorePersistedDocument();
 toggleChunkMode();
 </script>
 </body>
