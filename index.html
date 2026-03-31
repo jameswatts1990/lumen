@@ -10,13 +10,18 @@
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Mono:wght@400;500&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet" id="primaryReadableFonts">
-<link href="https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/opendyslexic.css" rel="stylesheet" id="primaryDyslexicFont">
 <style>
+/* Bump this querystring after font updates to avoid stale caches on long-lived deployments. */
+/* Server note: set Cache-Control: public, max-age=31536000, immutable for /assets/fonts/* paths. */
 @font-face {
   font-family: 'OpenDyslexic';
   src:
+    url('./assets/fonts/opendyslexic/OpenDyslexic-Regular.woff2?v=2026-03-31') format('woff2'),
+    url('./assets/fonts/opendyslexic/OpenDyslexic-Regular.woff?v=2026-03-31') format('woff'),
+    url('./assets/fonts/opendyslexic/OpenDyslexic-Regular.otf?v=2026-03-31') format('opentype'),
     local('OpenDyslexic Regular'),
     local('OpenDyslexic-Regular'),
+    url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/alternates/OpenDyslexic-Regular.otf') format('opentype'),
     url('https://unpkg.com/opendyslexic@1.0.3/alternates/OpenDyslexic-Regular.otf') format('opentype');
   font-style: normal;
   font-weight: 400;
@@ -25,8 +30,40 @@
 @font-face {
   font-family: 'OpenDyslexic';
   src:
+    url('./assets/fonts/opendyslexic/OpenDyslexic-Bold.woff2?v=2026-03-31') format('woff2'),
+    url('./assets/fonts/opendyslexic/OpenDyslexic-Bold.woff?v=2026-03-31') format('woff'),
+    url('./assets/fonts/opendyslexic/OpenDyslexic-Bold.otf?v=2026-03-31') format('opentype'),
     local('OpenDyslexic Bold'),
     local('OpenDyslexic-Bold'),
+    url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/alternates/OpenDyslexic-Bold.otf') format('opentype'),
+    url('https://unpkg.com/opendyslexic@1.0.3/alternates/OpenDyslexic-Bold.otf') format('opentype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexicAlta';
+  src:
+    url('./assets/fonts/opendyslexic/OpenDyslexic-Regular.woff2?v=2026-03-31') format('woff2'),
+    url('./assets/fonts/opendyslexic/OpenDyslexic-Regular.woff?v=2026-03-31') format('woff'),
+    url('./assets/fonts/opendyslexic/OpenDyslexic-Regular.otf?v=2026-03-31') format('opentype'),
+    local('OpenDyslexic Regular'),
+    local('OpenDyslexic-Regular'),
+    url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/alternates/OpenDyslexic-Regular.otf') format('opentype'),
+    url('https://unpkg.com/opendyslexic@1.0.3/alternates/OpenDyslexic-Regular.otf') format('opentype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexicAlta';
+  src:
+    url('./assets/fonts/opendyslexic/OpenDyslexic-Bold.woff2?v=2026-03-31') format('woff2'),
+    url('./assets/fonts/opendyslexic/OpenDyslexic-Bold.woff?v=2026-03-31') format('woff'),
+    url('./assets/fonts/opendyslexic/OpenDyslexic-Bold.otf?v=2026-03-31') format('opentype'),
+    local('OpenDyslexic Bold'),
+    local('OpenDyslexic-Bold'),
+    url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/alternates/OpenDyslexic-Bold.otf') format('opentype'),
     url('https://unpkg.com/opendyslexic@1.0.3/alternates/OpenDyslexic-Bold.otf') format('opentype');
   font-style: normal;
   font-weight: 700;
@@ -1125,7 +1162,7 @@ const FONT_STACKS = {
   palatino: "'Palatino Linotype', 'Book Antiqua', 'Palatino', serif",
   verdana: "'Verdana', 'Tahoma', 'Trebuchet MS', 'Arial', sans-serif",
   atkinson: "'Atkinson Hyperlegible', 'Atkinson Hyperlegible Next', 'Verdana', 'Arial', sans-serif",
-  opendyslexic: "'OpenDyslexic', 'OpenDyslexicAlta', 'Atkinson Hyperlegible', 'Verdana', 'Arial', sans-serif",
+  opendyslexic: "'OpenDyslexic', 'OpenDyslexicAlta', 'Atkinson Hyperlegible', 'Verdana', 'Tahoma', 'Arial', sans-serif",
   courier: "'DM Mono', 'Courier New', monospace",
 };
 const LEGACY_FONT_KEYS = Object.fromEntries(
@@ -1149,17 +1186,18 @@ function appendStylesheetOnce(id, href) {
   document.head.appendChild(link);
 }
 
-function ensureFontAvailable({ key, family, probe, fallbackHref, fallbackLinkId, timeoutMs = 2300 }) {
+function ensureFontAvailable({ key, family, probes, fallbackHref, fallbackLinkId, timeoutMs = 2300 }) {
   if (!document.fonts || typeof document.fonts.load !== 'function') return Promise.resolve();
   if (FONT_LOAD_PROMISES.has(key)) return FONT_LOAD_PROMISES.get(key);
+  const probeList = Array.isArray(probes) && probes.length ? probes : ['400 1em sans-serif'];
   const job = (async () => {
     try {
       const timer = new Promise(resolve => setTimeout(resolve, timeoutMs));
-      await Promise.race([document.fonts.load(probe), timer]);
-      if (document.fonts.check(probe)) return;
+      await Promise.race([Promise.all(probeList.map(probe => document.fonts.load(probe))), timer]);
+      if (probeList.every(probe => document.fonts.check(probe))) return;
       appendStylesheetOnce(fallbackLinkId, fallbackHref);
-      await Promise.race([document.fonts.load(probe), timer]);
-      if (!document.fonts.check(probe)) {
+      await Promise.race([Promise.all(probeList.map(probe => document.fonts.load(probe))), timer]);
+      if (!probeList.every(probe => document.fonts.check(probe))) {
         console.warn(`${family} did not fully load; keeping readable fallback stack.`);
       }
     } catch (err) {
@@ -1175,14 +1213,14 @@ async function ensureCriticalFontsReady() {
     ensureFontAvailable({
       key: 'atkinson',
       family: 'Atkinson Hyperlegible',
-      probe: '400 1em "Atkinson Hyperlegible"',
+      probes: ['400 1em "Atkinson Hyperlegible"', '700 1em "Atkinson Hyperlegible"'],
       fallbackHref: 'https://fonts.bunny.net/css?family=atkinson-hyperlegible:400,700',
       fallbackLinkId: 'fallbackAtkinsonFont'
     }),
     ensureFontAvailable({
       key: 'opendyslexic',
       family: 'OpenDyslexic',
-      probe: '400 1em "OpenDyslexic"',
+      probes: ['400 1em "OpenDyslexic"', '700 1em "OpenDyslexic"'],
       fallbackHref: 'https://unpkg.com/opendyslexic@1.0.3/opendyslexic.css',
       fallbackLinkId: 'fallbackOpenDyslexicFont'
     })
