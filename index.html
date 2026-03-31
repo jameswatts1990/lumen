@@ -98,6 +98,7 @@
   --sidebar-bg: #1e1912;
   --sidebar-border: #302820;
   --accent: #c8874a;
+  --accent-critical: #e26a5a;
   --accent-dim: rgba(200,135,74,0.12);
   --accent-mid: rgba(200,135,74,0.3);
   --text-primary: #ede6d8;
@@ -785,10 +786,64 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   border-radius: 5px;
   transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
+.flow-speed-word-prefix,
+.flow-speed-word-suffix,
+.flow-speed-word-punc {
+  color: inherit;
+}
+.flow-speed-word-orp {
+  color: var(--accent-critical);
+  font-weight: 700;
+}
 .flow-speed-word.active {
   background: linear-gradient(165deg, rgba(226, 168, 111, 0.36), rgba(200, 135, 74, 0.22));
   color: #fff3e3;
   box-shadow: 0 0 0 1px rgba(226, 168, 111, 0.3);
+}
+.flow-word-renderer {
+  position: fixed;
+  left: calc(var(--sidebar-offset) + 50%);
+  top: 18px;
+  transform: translateX(-50%);
+  width: min(460px, calc(100vw - var(--sidebar-offset) - 26px));
+  z-index: 343;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+.flow-word-renderer.on {
+  opacity: 1;
+}
+.flow-word-renderer-track {
+  position: relative;
+  height: 44px;
+  border-radius: 11px;
+  border: 1px solid var(--accent-mid);
+  background: linear-gradient(165deg, rgba(36, 26, 17, 0.93), rgba(20, 14, 10, 0.93));
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.34);
+  overflow: hidden;
+}
+.flow-word-renderer-anchor {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: rgba(226, 168, 111, 0.42);
+}
+.flow-word-renderer-token {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(calc(var(--flow-orp-offset, 0px) * -1), -50%);
+  white-space: nowrap;
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: #f0decb;
+}
+.flow-word-renderer-token .flow-speed-word-orp {
+  color: var(--accent-critical);
 }
 .reader-inner.flow-mode .page-wrap { display: none; }
 
@@ -1023,10 +1078,15 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
     left: calc(var(--sidebar-offset) + 10px);
     min-width: 0;
   }
+  .flow-word-renderer {
+    top: 66px;
+    width: calc(100vw - var(--sidebar-offset) - 20px);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .flow-hold-timer,
-  .flow-speed-hud {
+  .flow-speed-hud,
+  .flow-word-renderer {
     transition: none;
   }
 }
@@ -1664,6 +1724,12 @@ body.low-interruption-active .flow-speed-hud {
     </div>
   </div>
 </div>
+<div class="flow-word-renderer" id="flowWordRenderer" aria-live="polite" aria-hidden="true">
+  <div class="flow-word-renderer-track">
+    <div class="flow-word-renderer-anchor" aria-hidden="true"></div>
+    <div class="flow-word-renderer-token" id="flowWordRendererToken"></div>
+  </div>
+</div>
 <div class="focus-top" id="focTop"></div>
 <div class="focus-bot" id="focBot"></div>
 <div class="tint-lay" id="tintLay"></div>
@@ -1836,6 +1902,7 @@ let flowGestureTimerUiRAF = null;
 let flowGestureTimerTimeoutId = null;
 let flowGestureActivateTimeoutId = null;
 let flowSpeedReadWordNodes = [];
+let flowSpeedReadTokens = [];
 let flowSpeedReadWordIndex = 0;
 let flowSpeedReadLastTs = 0;
 let flowSpeedReadCarryMs = 0;
@@ -1856,6 +1923,8 @@ const flowHudState = document.getElementById('flowHudState');
 const flowHudProgress = document.getElementById('flowHudProgress');
 const flowGestureTimer = document.getElementById('flowGestureTimer');
 const flowGestureTimerValue = document.getElementById('flowGestureTimerValue');
+const flowWordRenderer = document.getElementById('flowWordRenderer');
+const flowWordRendererToken = document.getElementById('flowWordRendererToken');
 const MOBILE_BREAKPOINT = 900;
 let sidebarOpen = true;
 let mobileViewport = false;
@@ -1931,9 +2000,17 @@ function stopFlowGestureTimerUI() {
 }
 
 function clearFlowSpeedReadHighlight() {
-  if (!flowSpeedReadActiveWord) return;
-  flowSpeedReadActiveWord.classList.remove('active');
-  flowSpeedReadActiveWord = null;
+  if (flowSpeedReadActiveWord) {
+    flowSpeedReadActiveWord.classList.remove('active');
+    flowSpeedReadActiveWord = null;
+  }
+  hideFlowWordRenderer();
+}
+
+function hideFlowWordRenderer() {
+  if (!flowWordRenderer) return;
+  flowWordRenderer.classList.remove('on');
+  flowWordRendererToken.textContent = '';
 }
 
 function getAutoScrollWpmBounds() {
@@ -1973,21 +2050,126 @@ function queueFlowSpeedReadTimingSync() {
   }, FLOW_SPEED_READ_INTERVAL_DEBOUNCE_MS);
 }
 
+function splitFlowToken(rawToken = '') {
+  const text = String(rawToken || '');
+  const match = text.match(/^([(\[{'"“”‘’`]+)?([\s\S]*?)([)\]}'"“”‘’`.,!?;:…%]+)?$/);
+  const leading = match?.[1] || '';
+  const core = match?.[2] || '';
+  const trailing = match?.[3] || '';
+  if (!core) {
+    return { leading: '', core: text, trailing: '' };
+  }
+  return { leading, core, trailing };
+}
+
+function computeFlowOrpIndex(coreToken = '') {
+  const token = String(coreToken || '');
+  const len = token.length;
+  if (len <= 2) return 0;
+  if (/[0-9]/.test(token)) return Math.max(0, Math.min(len - 1, Math.floor((len - 1) / 2)));
+  if (len <= 5) return 1;
+  if (len <= 9) return 2;
+  if (len <= 13) return 3;
+  return 4;
+}
+
+function normalizeFlowToken(rawToken = '') {
+  const trimmed = String(rawToken || '').trim();
+  if (!trimmed) return null;
+  const { leading, core, trailing } = splitFlowToken(trimmed);
+  const orpIndex = computeFlowOrpIndex(core);
+  return {
+    raw: trimmed,
+    leading,
+    core,
+    trailing,
+    orpIndex,
+    prefix: core ? core.slice(0, orpIndex) : '',
+    orpChar: core ? core.charAt(orpIndex) : '',
+    suffix: core ? core.slice(orpIndex + 1) : ''
+  };
+}
+
+function escapeFlowWordHtml(value = '') {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function applyFlowWordMarkup(target, token) {
+  if (!target || !token) return;
+  const fragments = [];
+  if (token.leading) fragments.push(`<span class="flow-speed-word-punc">${escapeFlowWordHtml(token.leading)}</span>`);
+  if (token.prefix) fragments.push(`<span class="flow-speed-word-prefix">${escapeFlowWordHtml(token.prefix)}</span>`);
+  if (token.orpChar) fragments.push(`<span class="flow-speed-word-orp">${escapeFlowWordHtml(token.orpChar)}</span>`);
+  if (token.suffix) fragments.push(`<span class="flow-speed-word-suffix">${escapeFlowWordHtml(token.suffix)}</span>`);
+  if (token.trailing) fragments.push(`<span class="flow-speed-word-punc">${escapeFlowWordHtml(token.trailing)}</span>`);
+  if (!fragments.length) fragments.push(`<span class="flow-speed-word-punc">${escapeFlowWordHtml(token.raw)}</span>`);
+  target.innerHTML = fragments.join('');
+}
+
+function getFlowWordFontShorthand() {
+  const source = flowLayer || document.body;
+  const style = getComputedStyle(source);
+  const fontStyle = style.fontStyle || 'normal';
+  const fontVariant = style.fontVariant || 'normal';
+  const fontWeight = style.fontWeight || '400';
+  const fontSize = style.fontSize || '26px';
+  const lineHeight = style.lineHeight && style.lineHeight !== 'normal' ? style.lineHeight : '1.4';
+  const fontFamily = style.fontFamily || 'serif';
+  return `${fontStyle} ${fontVariant} ${fontWeight} ${fontSize}/${lineHeight} ${fontFamily}`;
+}
+
+function measureFlowTextWidth(text, font) {
+  if (!text) return 0;
+  if (!measureFlowTextWidth.canvas) measureFlowTextWidth.canvas = document.createElement('canvas');
+  const ctx = measureFlowTextWidth.canvas.getContext('2d');
+  if (!ctx) return text.length * 8;
+  ctx.font = font;
+  return ctx.measureText(text).width;
+}
+
+function syncFlowWordRenderer() {
+  const token = flowSpeedReadTokens[flowSpeedReadWordIndex];
+  if (!token || !flowWordRendererToken) {
+    flowWordRenderer?.classList.remove('on');
+    return;
+  }
+  applyFlowWordMarkup(flowWordRendererToken, token);
+  const leftSegment = `${token.leading || ''}${token.prefix || ''}`;
+  const font = getFlowWordFontShorthand();
+  const offsetPx = Math.max(0, Math.round(measureFlowTextWidth(leftSegment, font) * 100) / 100);
+  flowWordRendererToken.style.setProperty('--flow-orp-offset', `${offsetPx}px`);
+  flowWordRenderer.classList.add('on');
+}
+
 function syncFlowSpeedReadHighlight() {
   clearFlowSpeedReadHighlight();
   const target = flowSpeedReadWordNodes[flowSpeedReadWordIndex];
   if (!target) return;
   target.classList.add('active');
   flowSpeedReadActiveWord = target;
+  syncFlowWordRenderer();
   target.scrollIntoView({ block: 'center', inline: 'nearest' });
 }
 
 function buildFlowSpeedReadWordNodes() {
   flowSpeedReadWordNodes = [];
+  flowSpeedReadTokens = [];
   const blocks = flowLayer.querySelectorAll('.flow-para, .flow-heading, .flow-list-item');
   blocks.forEach(block => {
     if (block.dataset.speedReadPrepared === '1') {
-      block.querySelectorAll('.flow-speed-word').forEach(word => flowSpeedReadWordNodes.push(word));
+      block.querySelectorAll('.flow-speed-word').forEach(word => {
+        const token = normalizeFlowToken(word.dataset.speedReadRaw || word.textContent || '');
+        if (!token) return;
+        word.dataset.speedReadRaw = token.raw;
+        applyFlowWordMarkup(word, token);
+        flowSpeedReadWordNodes.push(word);
+        flowSpeedReadTokens.push(token);
+      });
       return;
     }
     const text = block.textContent || '';
@@ -2002,7 +2184,14 @@ function buildFlowSpeedReadWordNodes() {
       }
       const word = document.createElement('span');
       word.className = 'flow-speed-word';
-      word.textContent = part;
+      const token = normalizeFlowToken(part);
+      if (!token) {
+        word.textContent = part;
+      } else {
+        word.dataset.speedReadRaw = token.raw;
+        applyFlowWordMarkup(word, token);
+        flowSpeedReadTokens.push(token);
+      }
       flowSpeedReadWordNodes.push(word);
       frag.appendChild(word);
     });
