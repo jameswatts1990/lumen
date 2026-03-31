@@ -759,6 +759,33 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         </div>
       </div>
 
+      <!-- Reading Mode -->
+      <div class="sec">
+        <div class="sec-label">Reading Mode</div>
+        <div class="sec-hint">Choose how text is presented for this document.</div>
+        <div class="ctrl" style="padding-top: 2px; align-items: flex-start;">
+          <span class="ctrl-lbl" style="padding-top: 7px;">Mode</span>
+          <div class="mode-seg" id="readingModeSeg" role="radiogroup" aria-label="Reading mode">
+            <label>
+              <input type="radio" name="readingMode" value="pdf" checked>
+              <span class="mode-opt">Original</span>
+            </label>
+            <label>
+              <input type="radio" name="readingMode" value="overlay">
+              <span class="mode-opt">Overlay</span>
+            </label>
+            <label>
+              <input type="radio" name="readingMode" value="flow">
+              <span class="mode-opt">Flow</span>
+            </label>
+          </div>
+        </div>
+        <div class="mode-help">
+          <div>Overlay = keeps page structure.</div>
+          <div>Flow = extracts text into continuous reading layout.</div>
+        </div>
+      </div>
+
 
       <!-- Background Mode -->
       <div class="sec">
@@ -783,21 +810,22 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         </div>
         <div class="sec-hint" style="margin-top:4px;">Optimal line length: 50–75 chars/line (Rayner et al., 1998)</div>
 
-        <div class="ctrl" style="margin-top:6px;">
+        <div class="ctrl ctrl-group flow-locked-group" style="margin-top:6px;">
           <span class="ctrl-lbl">Brightness</span>
           <input type="range" id="briR" min="40" max="120" value="100" step="1">
           <span class="ctrl-val" id="briV">100%</span>
         </div>
-        <div class="ctrl">
+        <div class="ctrl ctrl-group flow-locked-group">
           <span class="ctrl-lbl">Contrast</span>
           <input type="range" id="conR" min="60" max="160" value="100" step="1">
           <span class="ctrl-val" id="conV">100%</span>
         </div>
-        <div class="ctrl">
+        <div class="ctrl ctrl-group flow-locked-group">
           <span class="ctrl-lbl">Page Gap</span>
           <input type="range" id="gapR" min="4" max="60" value="16" step="4">
           <span class="ctrl-val" id="gapV">16px</span>
         </div>
+        <div class="mode-note ctrl-group flow-only-note" id="displayModeHint" hidden>In flow mode, page-image brightness, contrast, and page gap are hidden because page images are not used.</div>
       </div>
 
       <!-- Typography -->
@@ -805,36 +833,12 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         <div class="sec-label">Typography Overlay <span class="sci">✦</span></div>
         <div class="sec-hint">Applied as a readable text layer with high-legibility font defaults and dyslexia-focused options</div>
 
-        <div class="ctrl" style="padding-top: 2px; align-items: flex-start;">
-          <span class="ctrl-lbl" style="padding-top: 7px;">Mode</span>
-          <div class="mode-seg" id="readingModeSeg" role="radiogroup" aria-label="Reading mode">
-            <label>
-              <input type="radio" name="readingMode" value="pdf" checked>
-              <span class="mode-opt">Original</span>
-            </label>
-            <label>
-              <input type="radio" name="readingMode" value="overlay">
-              <span class="mode-opt">Overlay</span>
-            </label>
-            <label>
-              <input type="radio" name="readingMode" value="flow">
-              <span class="mode-opt">Flow</span>
-            </label>
-          </div>
-        </div>
-        <div class="mode-help">
-          <div>Overlay = keeps page structure.</div>
-          <div>Flow = extracts text into continuous reading layout.</div>
-        </div>
-
         <div class="trow" style="padding-top: 2px;">
           <div class="trow-info">
             <div class="trow-lbl">Typography controls</div>
             <div class="trow-sub">Font and spacing enhancements for overlay and flow modes</div>
           </div>
         </div>
-        <div class="mode-note" id="displayModeHint" hidden>In flow mode, page-image brightness, contrast, and page gap are disabled.</div>
-
         <div style="padding: 4px 0 2px;" id="typoControls" class="ctrl-group typography-group">
           <select class="fsel" id="fontSel" onchange="handleFontSelectionChange()">
             <option value="native">— PDF Native Font —</option>
@@ -875,7 +879,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
       <div class="sec">
         <div class="sec-label">Focus Aids</div>
 
-        <div class="trow">
+        <div class="trow ctrl-group flow-locked-group">
           <div class="trow-info">
             <div class="trow-lbl">Reading Ruler <span class="sci">✦</span></div>
             <div class="trow-sub">Tracks cursor to reduce line-skipping</div>
@@ -883,7 +887,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
           <label class="tog"><input type="checkbox" id="rulerT" onchange="toggleRuler()"><span class="tog-tk"></span></label>
         </div>
 
-        <div class="trow">
+        <div class="trow ctrl-group flow-locked-group">
           <div class="trow-info">
             <div class="trow-lbl">Paragraph Shading <span class="sci">✦</span></div>
             <div class="trow-sub">Highlights text near the ruler line</div>
@@ -891,7 +895,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
           <label class="tog"><input type="checkbox" id="shadeT" onchange="toggleRuler()"><span class="tog-tk"></span></label>
         </div>
 
-        <div class="trow">
+        <div class="trow ctrl-group flow-locked-group">
           <div class="trow-info">
             <div class="trow-lbl">Chunking Mode <span class="sci">✦</span></div>
             <div class="trow-sub">Keeps a narrow reading band fixed while you step</div>
@@ -929,7 +933,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
           <span class="ctrl-val" id="focusDepthV">220px</span>
         </div>
         <div class="sec-hint ctrl-group focus-group" style="padding-top:2px;">Lower for gentle focus, higher for stronger edge dimming</div>
-        <div class="mode-note" id="focusModeHint" hidden>Flow mode disables ruler and chunk overlays (they rely on fixed page geometry).</div>
+        <div class="mode-note ctrl-group flow-only-note" id="focusModeHint" hidden>Flow mode hides ruler and chunk controls because they rely on fixed page geometry.</div>
 
         <div class="trow">
           <div class="trow-info">
@@ -1786,6 +1790,8 @@ function syncReadingModeControls() {
     const el = document.getElementById(id);
     if (el) el.disabled = isFlow;
   });
+  document.querySelectorAll('.flow-locked-group').forEach(el => el.classList.toggle('collapsed', isFlow));
+  document.querySelectorAll('.flow-only-note').forEach(el => el.classList.toggle('collapsed', !isFlow));
   const displayModeHint = document.getElementById('displayModeHint');
   if (displayModeHint) displayModeHint.hidden = !isFlow;
 
