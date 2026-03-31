@@ -24,13 +24,15 @@
   --control-bg: #252015;
   --control-border: #38301f;
   --slider-track: #38301f;
-  --sw: 360px;
+  --sw: 404px;
+  --sidebar-offset: var(--sw);
+  --sidebar-mobile: min(88vw, 420px);
 }
 
 html, body { height: 100%; overflow: hidden; background: var(--app-bg); font-family: 'Lora', Georgia, serif; color: var(--text-primary); font-size: 15px; }
 
 /* ─── Layout ─── */
-.app { display: flex; height: 100vh; }
+.app { display: flex; height: 100vh; position: relative; }
 
 /* ─── Sidebar ─── */
 .sidebar {
@@ -38,6 +40,7 @@ html, body { height: 100%; overflow: hidden; background: var(--app-bg); font-fam
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
   display: flex; flex-direction: column; overflow: hidden; z-index: 10;
+  transition: transform 0.24s ease, width 0.24s ease, min-width 0.24s ease, border-color 0.2s ease;
 }
 .sidebar-head {
   padding: 22px 18px 16px;
@@ -177,7 +180,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .nav-fab {
   position: fixed;
   top: 22px;
-  left: calc(var(--sw) + 18px);
+  left: calc(var(--sidebar-offset) + 18px);
   width: 46px;
   height: 46px;
   border-radius: 50%;
@@ -206,8 +209,8 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .nav-pop {
   position: fixed;
   top: 76px;
-  left: calc(var(--sw) + 18px);
-  width: min(340px, calc(100vw - var(--sw) - 38px));
+  left: calc(var(--sidebar-offset) + 18px);
+  width: min(340px, calc(100vw - var(--sidebar-offset) - 38px));
   max-height: min(70vh, 620px);
   overflow-y: auto;
   border: 1px solid var(--control-border);
@@ -378,18 +381,112 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 /* Overlays */
 .ruler { position: fixed; pointer-events: none; z-index: 200; display: none; }
 .ruler.on { display: block; }
-.ruler-line { position: fixed; left: var(--sw); right: 0; height: 2px; background: var(--accent-mid); box-shadow: 0 0 10px var(--accent-dim); pointer-events: none; z-index: 200; display: none; }
+.ruler-line { position: fixed; left: var(--sidebar-offset); right: 0; height: 2px; background: var(--accent-mid); box-shadow: 0 0 10px var(--accent-dim); pointer-events: none; z-index: 200; display: none; }
 .ruler-line.on { display: block; }
-.ruler-shade-top { position: fixed; left: var(--sw); right: 0; top: 0; pointer-events: none; z-index: 199; background: rgba(0,0,0,0.55); display: none; }
-.ruler-shade-bot { position: fixed; left: var(--sw); right: 0; bottom: 0; pointer-events: none; z-index: 199; background: rgba(0,0,0,0.55); display: none; }
+.ruler-shade-top { position: fixed; left: var(--sidebar-offset); right: 0; top: 0; pointer-events: none; z-index: 199; background: rgba(0,0,0,0.55); display: none; }
+.ruler-shade-bot { position: fixed; left: var(--sidebar-offset); right: 0; bottom: 0; pointer-events: none; z-index: 199; background: rgba(0,0,0,0.55); display: none; }
 .ruler-shade-top.on, .ruler-shade-bot.on { display: block; }
 
-.focus-top { position: fixed; left: var(--sw); right: 0; top: 0; height: 220px; background: linear-gradient(to bottom, rgba(0,0,0,0.72), transparent); pointer-events: none; z-index: 180; display: none; }
-.focus-bot { position: fixed; left: var(--sw); right: 0; bottom: 0; height: 220px; background: linear-gradient(to top, rgba(0,0,0,0.72), transparent); pointer-events: none; z-index: 180; display: none; }
+.focus-top { position: fixed; left: var(--sidebar-offset); right: 0; top: 0; height: 220px; background: linear-gradient(to bottom, rgba(0,0,0,0.72), transparent); pointer-events: none; z-index: 180; display: none; }
+.focus-bot { position: fixed; left: var(--sidebar-offset); right: 0; bottom: 0; height: 220px; background: linear-gradient(to top, rgba(0,0,0,0.72), transparent); pointer-events: none; z-index: 180; display: none; }
 .focus-top.on, .focus-bot.on { display: block; }
 
-.tint-lay { position: fixed; left: var(--sw); right: 0; top: 0; bottom: 0; pointer-events: none; z-index: 170; display: none; }
+.tint-lay { position: fixed; left: var(--sidebar-offset); right: 0; top: 0; bottom: 0; pointer-events: none; z-index: 170; display: none; }
 .tint-lay.on { display: block; }
+
+.sidebar-toggle {
+  position: fixed;
+  top: 50%;
+  left: calc(var(--sidebar-offset) - 16px);
+  transform: translateY(-50%);
+  width: 32px;
+  height: 74px;
+  border-radius: 0 14px 14px 0;
+  border: 1px solid var(--control-border);
+  border-left: none;
+  background: linear-gradient(165deg, rgba(43, 31, 18, 0.98), rgba(25, 18, 11, 0.98));
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  cursor: pointer;
+  z-index: 430;
+  box-shadow: 0 8px 22px rgba(0,0,0,0.45);
+  transition: left 0.24s ease, transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.sidebar-toggle:hover,
+.sidebar-toggle:focus-visible {
+  transform: translateY(-50%) scale(1.03);
+  border-color: var(--accent);
+  outline: none;
+}
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 4, 2, 0.48);
+  backdrop-filter: blur(1px);
+  z-index: 405;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.app.is-mobile:not(.sidebar-collapsed) .sidebar-backdrop {
+  opacity: 1;
+  pointer-events: auto;
+}
+.app.sidebar-collapsed {
+  --sidebar-offset: 0px;
+}
+.app.sidebar-collapsed .sidebar {
+  width: 0;
+  min-width: 0;
+  transform: translateX(-100%);
+  border-right-color: transparent;
+}
+.app.sidebar-collapsed .sidebar-toggle {
+  border-left: 1px solid var(--control-border);
+  border-radius: 0 14px 14px 0;
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: var(--sidebar-mobile);
+    min-width: var(--sidebar-mobile);
+    z-index: 410;
+    box-shadow: 12px 0 36px rgba(0,0,0,0.52);
+  }
+  .app.is-mobile:not(.sidebar-collapsed) {
+    --sidebar-offset: var(--sidebar-mobile);
+  }
+  .app.is-mobile.sidebar-collapsed .sidebar {
+    transform: translateX(calc(-1 * var(--sidebar-mobile) - 8px));
+  }
+  .sidebar-toggle {
+    top: 22px;
+    left: calc(var(--sidebar-offset) - 2px);
+    transform: none;
+    height: 44px;
+    width: 36px;
+    border-radius: 0 12px 12px 0;
+    font-size: 16px;
+  }
+  .sidebar-toggle:hover,
+  .sidebar-toggle:focus-visible {
+    transform: scale(1.03);
+  }
+  .nav-fab {
+    top: 20px;
+  }
+  .nav-pop {
+    top: 74px;
+    max-height: min(72vh, 560px);
+  }
+}
 
 .prog {
   position: sticky;
@@ -545,7 +642,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 <div class="app">
 
   <!-- ── Sidebar ── -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebarPanel">
     <div class="sidebar-head">
       <div class="logo">
         <span class="logo-mark">L</span>
@@ -812,6 +909,8 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
     </div>
   </main>
 </div>
+<button class="sidebar-toggle" id="sidebarToggleBtn" type="button" aria-label="Collapse sidebar" aria-controls="sidebarPanel" aria-expanded="true">❮</button>
+<div class="sidebar-backdrop" id="sidebarBackdrop" aria-hidden="true"></div>
 
 <button class="nav-fab" id="navFabBtn" type="button" aria-haspopup="dialog" aria-controls="navPopout" aria-expanded="false" aria-label="Open navigation menu">🧭</button>
 <div class="nav-pop" id="navPopout" role="dialog" aria-label="Navigation menu" aria-hidden="true">
@@ -938,6 +1037,9 @@ let lastUsedProfileId = DEFAULT_PROFILE_ID;
 const reader = document.getElementById('reader');
 const rInner = document.getElementById('rInner');
 const flowLayer = document.getElementById('flowLayer');
+const appRoot = document.querySelector('.app');
+const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
+const sidebarBackdrop = document.getElementById('sidebarBackdrop');
 
 /* ── Modes ── */
 const MODES = {
@@ -964,6 +1066,40 @@ function normalizeFontKey(fontValue) {
   if (typeof fontValue !== 'string' || !fontValue.trim()) return 'native';
   if (Object.hasOwn(FONT_STACKS, fontValue)) return fontValue;
   return LEGACY_FONT_KEYS[fontValue] || 'native';
+}
+
+function updateSidebarToggleUI() {
+  const collapsed = appRoot.classList.contains('sidebar-collapsed');
+  const isMobile = appRoot.classList.contains('is-mobile');
+  sidebarToggleBtn.textContent = collapsed ? '❯' : '❮';
+  sidebarToggleBtn.setAttribute('aria-expanded', String(!collapsed));
+  sidebarToggleBtn.setAttribute('aria-label', collapsed ? 'Expand sidebar' : 'Collapse sidebar');
+  if (isMobile) {
+    sidebarToggleBtn.setAttribute('title', collapsed ? 'Open controls' : 'Close controls');
+  } else {
+    sidebarToggleBtn.setAttribute('title', collapsed ? 'Expand panel' : 'Collapse panel');
+  }
+}
+
+function setSidebarCollapsed(collapsed) {
+  appRoot.classList.toggle('sidebar-collapsed', collapsed);
+  if (collapsed) setNavigationMenuOpen(false);
+  updateSidebarToggleUI();
+}
+
+function syncSidebarForViewport() {
+  const mobileView = window.matchMedia('(max-width: 900px)').matches;
+  appRoot.classList.toggle('is-mobile', mobileView);
+  if (mobileView) {
+    if (!appRoot.dataset.mobileSidebarInit) {
+      setSidebarCollapsed(true);
+      appRoot.dataset.mobileSidebarInit = 'true';
+    }
+  } else {
+    appRoot.dataset.mobileSidebarInit = '';
+    setSidebarCollapsed(false);
+  }
+  updateSidebarToggleUI();
 }
 
 function setMode(m) {
@@ -2040,6 +2176,11 @@ document.getElementById('closeShortcutsBtn').addEventListener('click', () => set
 document.getElementById('shortcutsOverlay').addEventListener('click', e => {
   if (e.target.id === 'shortcutsOverlay') setShortcutsOpen(false);
 });
+sidebarToggleBtn.addEventListener('click', () => {
+  const collapsed = appRoot.classList.contains('sidebar-collapsed');
+  setSidebarCollapsed(!collapsed);
+});
+sidebarBackdrop.addEventListener('click', () => setSidebarCollapsed(true));
 document.getElementById('navFabBtn').addEventListener('click', () => toggleNavigationMenu());
 document.addEventListener('click', e => {
   const pop = document.getElementById('navPopout');
@@ -2067,6 +2208,11 @@ document.addEventListener('keydown', e => {
   if (navOpen && e.key === 'Escape') {
     e.preventDefault();
     setNavigationMenuOpen(false);
+    return;
+  }
+  if (appRoot.classList.contains('is-mobile') && !appRoot.classList.contains('sidebar-collapsed') && e.key === 'Escape') {
+    e.preventDefault();
+    setSidebarCollapsed(true);
     return;
   }
   if (isTypingTarget(document.activeElement)) return;
@@ -2107,9 +2253,11 @@ document.addEventListener('keydown', e => {
 /* ── Init ── */
 document.getElementById('tintR').addEventListener('input', updateTint);
 window.addEventListener('resize', () => {
+  syncSidebarForViewport();
   updateProgressAndStatus();
   updateChunkOverlay();
 });
+syncSidebarForViewport();
 toggleProg();
 updateTint();
 updateFocusDepth(focusDepth);
