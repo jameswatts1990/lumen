@@ -238,6 +238,37 @@ body.sidebar-collapsed .sidebar-toggle { left: 8px; }
   background: var(--accent-dim);
   outline: none;
 }
+.parse-summary {
+  margin: 6px 14px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--control-border);
+  border-radius: 10px;
+  background: var(--control-bg);
+}
+.parse-summary[hidden] {
+  display: none;
+}
+.parse-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.parse-stat {
+  min-width: 0;
+}
+.parse-stat-label {
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-family: 'DM Mono', monospace;
+}
+.parse-stat-value {
+  color: var(--text-primary);
+  font-size: 15px;
+  font-family: 'DM Mono', monospace;
+  margin-top: 3px;
+}
 .sec-hint { padding: 0 20px 7px; font-size: 12.5px; color: var(--text-muted); line-height: 1.55; }
 .sec-hint code {
   color: var(--accent);
@@ -1479,6 +1510,51 @@ body.low-interruption-active .flow-speed-hud {
         <input class="nav-input" id="urlIn" type="url" placeholder="https://example.com/article" aria-label="Website URL">
         <button class="pbtn nav-go" id="urlLoadBtn" type="button">Load</button>
       </div>
+      <div class="sec is-collapsed">
+        <div class="sec-label">Parsing Quality</div>
+        <div class="sec-hint">Tune Flow parsing quality, then re-parse without uploading again.</div>
+        <div class="trow">
+          <div class="trow-info">
+            <div class="trow-lbl">Column detection</div>
+            <div class="trow-sub">Detect multi-column page layouts when parsing PDF text flow.</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="parseColumnT" checked><span class="tog-tk"></span></label>
+        </div>
+        <div class="trow">
+          <div class="trow-info">
+            <div class="trow-lbl">Remove repeated headers/footers</div>
+            <div class="trow-sub">Filter recurring page artifacts like running headers, footers, and page numbers.</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="parseArtifactsT" checked><span class="tog-tk"></span></label>
+        </div>
+        <div class="trow">
+          <div class="trow-info">
+            <div class="trow-lbl">Aggressive heading detection</div>
+            <div class="trow-sub">Promote more short/title-like lines to headings. Off by default.</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="parseHeadingAggT"><span class="tog-tk"></span></label>
+        </div>
+        <div class="presets" style="padding-top: 4px;">
+          <button class="pbtn" id="reparseBtn" type="button" disabled>Re-parse</button>
+        </div>
+        <div class="parse-summary" id="parseSummaryPanel" hidden>
+          <div class="sec-label" style="padding: 0 0 8px;">Parsing summary</div>
+          <div class="parse-summary-grid">
+            <div class="parse-stat">
+              <div class="parse-stat-label">Pages parsed</div>
+              <div class="parse-stat-value" id="parsePagesV">0</div>
+            </div>
+            <div class="parse-stat">
+              <div class="parse-stat-label">Artifacts removed</div>
+              <div class="parse-stat-value" id="parseArtifactsV">0</div>
+            </div>
+            <div class="parse-stat">
+              <div class="parse-stat-label">Headings detected</div>
+              <div class="parse-stat-value" id="parseHeadingsV">0</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- Reading Profiles -->
       <div class="sec is-collapsed">
@@ -1948,7 +2024,9 @@ let flowDocCache = null;
 let textDoc = null;
 const FLOW_PARSE_FEATURE_FLAGS = {
   columnAwareLineOrdering: true,
-  showRemovedArtifactsInDebug: false
+  showRemovedArtifactsInDebug: false,
+  removeRepeatedArtifacts: true,
+  aggressiveHeadingDetection: false
 };
 let emailThreadModel = null;
 let emailThreadOrder = 'newest-first';
@@ -1989,6 +2067,9 @@ const DEFAULT_SETTINGS = {
   chunkHeight: 2,
   flowAutoSplit: false,
   flowSplitLines: 2,
+  parseColumnDetection: true,
+  parseRemoveArtifacts: true,
+  parseAggressiveHeadings: false,
   emailThreadOrder: 'newest-first'
 };
 const BUILTIN_PROFILES = [
@@ -2093,6 +2174,7 @@ const flowDefinitionCache = new Map();
 const flowGestureEventListeners = new Map();
 const FLOW_SENTENCE_END_PUNCTUATION = /[.!?…]["'”’)\]]*$/;
 const FLOW_SENTENCE_PAUSE_MULTIPLIER = 1.22;
+let lastParsingSummary = null;
 
 const reader = document.getElementById('reader');
 const rInner = document.getElementById('rInner');
@@ -3005,6 +3087,9 @@ function captureSettings() {
     chunkHeight: Number(document.getElementById('chunkR').value),
     flowAutoSplit: document.getElementById('flowSplitT').checked,
     flowSplitLines: Number(document.getElementById('flowSplitLinesR').value),
+    parseColumnDetection: isColumnAwareLineOrderingEnabled(),
+    parseRemoveArtifacts: isArtifactRemovalEnabled(),
+    parseAggressiveHeadings: isAggressiveHeadingDetectionEnabled(),
     emailThreadOrder,
   };
 }
@@ -3062,7 +3147,20 @@ function applySettings(profile) {
   if (settings.flowSentencePauseBoost !== undefined) {
     document.getElementById('flowSentencePauseT').checked = Boolean(settings.flowSentencePauseBoost);
   }
+  if (settings.parseColumnDetection !== undefined) {
+    document.getElementById('parseColumnT').checked = Boolean(settings.parseColumnDetection);
+  } else {
+    const legacyColumnSetting = localStorage.getItem('lumen.flow.column-ordering');
+    if (legacyColumnSetting === 'false' || legacyColumnSetting === 'off') document.getElementById('parseColumnT').checked = false;
+  }
+  if (settings.parseRemoveArtifacts !== undefined) {
+    document.getElementById('parseArtifactsT').checked = Boolean(settings.parseRemoveArtifacts);
+  }
+  if (settings.parseAggressiveHeadings !== undefined) {
+    document.getElementById('parseHeadingAggT').checked = Boolean(settings.parseAggressiveHeadings);
+  }
   setEmailThreadOrder(settings.emailThreadOrder, { rerender: true, persist: false });
+  setReparseAvailability();
 }
 
 function saveProfilesState() {
@@ -3103,7 +3201,8 @@ function registerSettingsPersistence() {
   const ids = [
     'widthR', 'briR', 'conR', 'gapR', 'fontSel', 'tsizeR', 'lhR', 'lsR', 'wsR',
     'rulerT', 'shadeT', 'focusT', 'focusR', 'focusDepthR', 'progT', 'tintR',
-    'scrollSR', 'flowSentencePauseT', 'chunkT', 'chunkR', 'flowSplitT', 'flowSplitLinesR', 'lowInterruptT', 'profileSel', 'emailOrderSel'
+    'scrollSR', 'flowSentencePauseT', 'chunkT', 'chunkR', 'flowSplitT', 'flowSplitLinesR', 'lowInterruptT', 'profileSel', 'emailOrderSel',
+    'parseColumnT', 'parseArtifactsT', 'parseHeadingAggT'
   ];
   ids.forEach(id => {
     const el = document.getElementById(id);
@@ -4047,6 +4146,7 @@ function scoreHeadingCandidate(line, neighbors = {}, pageStats = {}) {
   const followingWhitespace = Number(line.followingWhitespace) || 0;
   const centerednessScore = Number(line.centerednessScore) || 0;
   const medianGap = Number(pageStats.medianLineGap) || 12;
+  const aggressiveHeadings = isAggressiveHeadingDetectionEnabled();
 
   let score = 0;
 
@@ -4076,6 +4176,7 @@ function scoreHeadingCandidate(line, neighbors = {}, pageStats = {}) {
   if (titleCaseLike) score += 0.3;
   if (endsWithColon) score += 0.25;
   if (allCapsLike) score += 0.2;
+  if (aggressiveHeadings && !punctuationEnded && wordCount <= 14) score += 0.35;
 
   // Suppress frequent false positives.
   const shortAllCapsLabel = textCasingRatio >= 0.97 && wordCount <= 3 && !sectionLike && !endsWithColon;
@@ -4099,8 +4200,10 @@ function scoreHeadingCandidate(line, neighbors = {}, pageStats = {}) {
     score -= 0.65;
   }
 
-  if (score >= 3.65) return { kind: relativeFontSize >= 1.24 ? 'h2' : 'h3', score };
-  if (score >= 2.4) return { kind: 'h3', score };
+  const h2Threshold = aggressiveHeadings ? 3.25 : 3.65;
+  const h3Threshold = aggressiveHeadings ? 2.1 : 2.4;
+  if (score >= h2Threshold) return { kind: relativeFontSize >= 1.24 ? 'h2' : 'h3', score };
+  if (score >= h3Threshold) return { kind: 'h3', score };
   return { kind: 'paragraph', score };
 }
 
@@ -4410,6 +4513,13 @@ function renderTextFlowFromPlainText(text, originLabel = 'Text source') {
     flowLayer.appendChild(p);
   }
 
+  lastParsingSummary = {
+    pagesParsed: totalPages,
+    artifactsRemoved: 0,
+    headingsDetected: blocks.filter(block => block.type === 'heading').length
+  };
+  updateParsingSummaryPanel(lastParsingSummary);
+
   return {
     numPages: totalPages,
     plainText: normalized,
@@ -4506,6 +4616,33 @@ function setEmailThreadOrder(nextOrder, options = {}) {
   }
 }
 
+async function reparseCurrentDocument() {
+  if (!pdf && !textDoc) return;
+  const button = document.getElementById('reparseBtn');
+  if (button) {
+    button.disabled = true;
+    button.textContent = 'Re-parsing…';
+  }
+  try {
+    flowDocCache = null;
+    if (pdf) {
+      await renderFlowDocument();
+      if (readingMode === 'flow') await applyReadingMode();
+    } else if (textDoc?.plainText) {
+      const refreshed = renderTextFlowFromPlainText(textDoc.plainText, textDoc.sourceLabel || `File · ${textDoc.title || 'Text source'}`);
+      textDoc = { ...textDoc, ...refreshed };
+      if (readingMode === 'flow') await applyReadingMode();
+      updateProgressAndStatus();
+    }
+    queuePersistSettings();
+  } catch (err) {
+    console.warn('Unable to re-parse current document:', err);
+  } finally {
+    if (button) button.textContent = 'Re-parse';
+    setReparseAvailability();
+  }
+}
+
 async function loadSourceFile(file) {
   if (isPdfFile(file)) return loadPDF(file);
   const lowerName = (file?.name || '').toLowerCase();
@@ -4565,6 +4702,7 @@ async function loadTextDocument(plainText, displayName, sourceLabel, options = {
   renderOutlineFallback('Outline is only available for PDFs.');
   updateProgressAndStatus();
   refreshEmailThreadOrderControls();
+  setReparseAvailability();
   await savePersistedDocument({
     type: 'text',
     content: String(plainText || ''),
@@ -4647,9 +4785,13 @@ async function loadPDF(file) {
     await loadOutline();
     applyFilters();
     await applyReadingMode();
+    const parsedFlow = await extractFlowDocument();
+    lastParsingSummary = parsedFlow.summary || null;
+    updateParsingSummaryPanel(lastParsingSummary);
     applyMaxWidth();
     applyGap();
     updateProgressAndStatus();
+    setReparseAvailability();
   } catch (err) {
     console.error('Failed to load PDF:', err);
     pdf = null;
@@ -4657,6 +4799,8 @@ async function loadPDF(file) {
     rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Unable to load this PDF. Try another file.</div>';
     setPageJumpAvailability(false);
     renderOutlineFallback('Outline unavailable for this document.');
+    updateParsingSummaryPanel(null);
+    setReparseAvailability();
   }
 }
 
@@ -4690,9 +4834,13 @@ async function loadPDFBytes(bytes, name = 'Recovered PDF') {
     await loadOutline();
     applyFilters();
     await applyReadingMode();
+    const parsedFlow = await extractFlowDocument();
+    lastParsingSummary = parsedFlow.summary || null;
+    updateParsingSummaryPanel(lastParsingSummary);
     applyMaxWidth();
     applyGap();
     updateProgressAndStatus();
+    setReparseAvailability();
   } catch (err) {
     console.error('Failed to restore PDF:', err);
     await clearPersistedDocumentState();
@@ -4704,6 +4852,7 @@ function resetLoadedDocumentUI() {
   textDoc = null;
   emailThreadModel = null;
   flowDocCache = null;
+  lastParsingSummary = null;
   currentDocMeta = null;
   pendingResumeState = null;
   stopScroll();
@@ -4742,6 +4891,8 @@ function resetLoadedDocumentUI() {
   renderOutlineFallback('Load a PDF to view navigation links.');
   refreshEmailThreadOrderControls();
   refreshResumeCard();
+  updateParsingSummaryPanel(null);
+  setReparseAvailability();
 }
 
 async function restorePersistedDocument() {
@@ -5002,13 +5153,40 @@ function computeMedian(values) {
 }
 
 function isColumnAwareLineOrderingEnabled() {
-  if (typeof window.__LUMEN_FLOW_COLUMN_ORDERING__ === 'boolean') {
-    return window.__LUMEN_FLOW_COLUMN_ORDERING__;
-  }
-  const storedPref = localStorage.getItem('lumen.flow.column-ordering');
-  if (storedPref === 'false' || storedPref === 'off') return false;
-  if (storedPref === 'true' || storedPref === 'on') return true;
+  const toggle = document.getElementById('parseColumnT');
+  if (toggle) return Boolean(toggle.checked);
   return FLOW_PARSE_FEATURE_FLAGS.columnAwareLineOrdering !== false;
+}
+
+function isArtifactRemovalEnabled() {
+  const toggle = document.getElementById('parseArtifactsT');
+  if (toggle) return Boolean(toggle.checked);
+  return FLOW_PARSE_FEATURE_FLAGS.removeRepeatedArtifacts !== false;
+}
+
+function isAggressiveHeadingDetectionEnabled() {
+  const toggle = document.getElementById('parseHeadingAggT');
+  if (toggle) return Boolean(toggle.checked);
+  return FLOW_PARSE_FEATURE_FLAGS.aggressiveHeadingDetection === true;
+}
+
+function updateParsingSummaryPanel(summary = null) {
+  const panel = document.getElementById('parseSummaryPanel');
+  if (!panel) return;
+  if (!summary) {
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  document.getElementById('parsePagesV').textContent = String(summary.pagesParsed ?? 0);
+  document.getElementById('parseArtifactsV').textContent = String(summary.artifactsRemoved ?? 0);
+  document.getElementById('parseHeadingsV').textContent = String(summary.headingsDetected ?? 0);
+}
+
+function setReparseAvailability() {
+  const btn = document.getElementById('reparseBtn');
+  if (!btn) return;
+  btn.disabled = !pdf && !textDoc;
 }
 
 function isFlowArtifactDebugEnabled() {
@@ -5245,6 +5423,9 @@ async function extractFlowDocument() {
   });
 
   const debugArtifactLines = isFlowArtifactDebugEnabled();
+  const shouldRemoveArtifacts = isArtifactRemovalEnabled();
+  let totalArtifactsRemoved = 0;
+  let totalHeadingsDetected = 0;
   if (!flowParagraphFixtureValidationDone) {
     flowParagraphFixtureValidationDone = true;
     const fixtureResults = runFlowParagraphFixtureChecks();
@@ -5268,7 +5449,7 @@ async function extractFlowDocument() {
         next: idx < pageModel.enrichedLines.length - 1 ? pageModel.enrichedLines[idx + 1] : null
       };
       const preserveHeading = shouldPreserveRepeatedHeading(line, neighbors, pageModel.pageStats);
-      const shouldRemove = repeatedAcrossPages && consistentBand && lowSemanticDensity && !preserveHeading;
+      const shouldRemove = shouldRemoveArtifacts && repeatedAcrossPages && consistentBand && lowSemanticDensity && !preserveHeading;
       return {
         ...line,
         artifactRemoved: shouldRemove,
@@ -5278,21 +5459,35 @@ async function extractFlowDocument() {
 
     const contentLines = artifactAnnotatedLines.filter(line => !line.artifactRemoved);
     const paragraphs = reconstructFlowParagraphs(contentLines, pageModel.pageStats);
+    const pageBlocks = buildFlowBlocks(debugArtifactLines ? artifactAnnotatedLines : contentLines, pageModel.pageStats || {});
+    const pageArtifactsRemoved = artifactAnnotatedLines.length - contentLines.length;
+    const pageHeadings = pageBlocks.filter(block => block.type === 'heading').length;
+    totalArtifactsRemoved += pageArtifactsRemoved;
+    totalHeadingsDetected += pageHeadings;
     pages.push({
       pageNum: pageModel.pageNum,
       paragraphs,
       lines: debugArtifactLines ? artifactAnnotatedLines : contentLines,
+      blocks: pageBlocks,
       pageStats: pageModel.pageStats,
       layoutConfidence: Number(pageModel.layoutModel.layoutConfidence.toFixed(3)),
       lineCount: contentLines.length,
-      artifactLineCount: artifactAnnotatedLines.length - contentLines.length,
+      artifactLineCount: pageArtifactsRemoved,
+      headingCount: pageHeadings,
       clusterCount: pageModel.layoutModel.clusters.length,
       usedLegacyOrdering: !pageModel.shouldUseColumnAwareLayout,
       usedSingleColumnFallback: pageModel.layoutModel.usedFallback
     });
   });
 
-  flowDocCache = { pages };
+  flowDocCache = {
+    pages,
+    summary: {
+      pagesParsed: pages.length,
+      artifactsRemoved: totalArtifactsRemoved,
+      headingsDetected: totalHeadingsDetected
+    }
+  };
   return flowDocCache;
 }
 
@@ -5307,10 +5502,12 @@ async function renderFlowDocument() {
     chip.dataset.page = String(page.pageNum);
     chip.textContent = `Page ${page.pageNum}`;
     flowLayer.appendChild(chip);
-    renderFlowBlocks(buildFlowBlocks(page.lines?.length ? page.lines : page.paragraphs, page.pageStats || {}), page.pageNum);
+    renderFlowBlocks(page.blocks || buildFlowBlocks(page.lines?.length ? page.lines : page.paragraphs, page.pageStats || {}), page.pageNum);
   });
   flowChunkIndex = 0;
   updateFlowHighlight();
+  lastParsingSummary = flowDoc.summary || null;
+  updateParsingSummaryPanel(lastParsingSummary);
 }
 
 async function applyReadingMode() {
@@ -6400,6 +6597,17 @@ document.getElementById('resumeDismissBtn').addEventListener('click', () => {
   pendingResumeState = null;
   refreshResumeCard();
 });
+document.getElementById('reparseBtn').addEventListener('click', () => reparseCurrentDocument());
+['parseColumnT', 'parseArtifactsT', 'parseHeadingAggT'].forEach(id => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('change', () => {
+    queuePersistSettings();
+    if (!pdf && !textDoc) return;
+    const btn = document.getElementById('reparseBtn');
+    if (btn) btn.disabled = false;
+  });
+});
 document.getElementById('resetDocBtn').addEventListener('click', async () => {
   await clearPersistedDocumentState();
   const docId = getCurrentDocId();
@@ -6515,6 +6723,7 @@ if (persistedSettings.settings) {
 restorePersistedDocument();
 refreshEmailThreadOrderControls();
 toggleChunkMode();
+setReparseAvailability();
 </script>
 </body>
 </html>
