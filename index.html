@@ -1686,7 +1686,7 @@ function detectFlowHeading(line) {
   const hasSentencePunctuation = /[.?!]$/.test(trimmed);
   const sectionLike = /^((\d+(\.\d+)*)|([IVXLCM]+))[\].:)\s-]+\S+/i.test(trimmed);
   const titleCaseLike = /^[A-Z0-9][A-Za-z0-9'’"“”(),/&\-]+(?:\s+[A-Z0-9][A-Za-z0-9'’"“”(),/&\-]+){0,9}$/.test(trimmed);
-  const allCapsLike = /^[A-Z0-9][A-Z0-9\s\-:&/]{3,}$/.test(trimmed);
+  const allCapsLike = /^[A-Z0-9][A-Z0-9\s\-—:&/]{3,}$/.test(trimmed);
   const endsWithColon = /:$/.test(trimmed);
 
   if (wordCount <= 10 && !hasSentencePunctuation && (sectionLike || allCapsLike || endsWithColon || titleCaseLike)) {
@@ -1703,11 +1703,42 @@ function detectFlowListItem(line) {
   return normalizeFlowSentence(match[2]);
 }
 
+function splitFlowCompositeLine(line) {
+  const normalized = normalizeFlowSentence(line);
+  if (!normalized) return [];
+
+  const bulletExpanded = normalized
+    .replace(/\s*([•◦▪●◉○■□►▸▹▻➤➢◆◇★☆✓✔✗✘])\s*/g, '\n$1 ')
+    .split(/\n+/)
+    .map(part => normalizeFlowSentence(part))
+    .filter(Boolean);
+
+  const segments = [];
+  bulletExpanded.forEach(part => {
+    const embeddedHeading = part.match(/(^|.+?\s)([A-Z][A-Z0-9/&\-\s]{10,}(?:\s+—\s+[A-Z0-9/&\-\s]{8,})?)(\s+(?:What|How|Why|When|Where|Who|Is|Are|Can|Do|Did|Could|Would)\b.+)$/);
+    if (!embeddedHeading) {
+      segments.push(part);
+      return;
+    }
+
+    const [, beforeRaw, headingRaw, afterRaw] = embeddedHeading;
+    const before = normalizeFlowSentence(beforeRaw || '');
+    const heading = normalizeFlowSentence(headingRaw || '');
+    const after = normalizeFlowSentence(afterRaw || '');
+    if (before) segments.push(before);
+    if (heading) segments.push(heading);
+    if (after) segments.push(after);
+  });
+
+  return segments;
+}
+
 function buildFlowBlocks(textSegments) {
   const blocks = [];
   (textSegments || []).forEach(segment => {
     const lines = String(segment || '')
       .split(/\n+/)
+      .flatMap(line => splitFlowCompositeLine(line))
       .map(line => normalizeFlowSentence(line))
       .filter(Boolean);
     if (!lines.length) return;
