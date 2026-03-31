@@ -415,6 +415,22 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 /* Autoscroll controls */
 .scroll-ctl { padding: 4px 20px 10px; display: flex; align-items: center; gap: 10px; }
 .scroll-play-btn { flex: 0 0 auto; }
+.scroll-wpm-input {
+  width: 78px;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: var(--control-bg);
+  color: var(--text-primary);
+  font-family: 'DM Mono', monospace;
+  font-size: 12.5px;
+  line-height: 1.1;
+  padding: 6px 8px;
+  text-align: right;
+}
+.scroll-wpm-input:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
 .scbtn { padding: 5px 14px; background: var(--control-bg); border: 1px solid var(--control-border); border-radius: 6px; color: var(--text-primary); font-size: 14px; cursor: pointer; transition: all 0.15s; line-height: 1; }
 .scbtn:hover { border-color: var(--accent); color: var(--accent); }
 .scbtn.on { background: var(--accent); color: #1a1200; border-color: var(--accent); }
@@ -827,10 +843,10 @@ body.flow-speed-read-mode .flow-speed-word.active {
 }
 .flow-word-renderer {
   position: fixed;
-  left: calc(var(--sidebar-offset) + 50%);
+  left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: min(460px, calc(100vw - var(--sidebar-offset) - 26px));
+  width: min(460px, calc(100vw - 26px));
   z-index: 343;
   opacity: 0;
   pointer-events: none;
@@ -1644,6 +1660,11 @@ body.low-interruption-active .flow-speed-hud {
           <button class="scbtn scroll-play-btn" id="scrollBtn" onclick="toggleScroll()" aria-label="Toggle auto scroll">▶</button>
           <span class="ctrl-val" id="scrollSV">0.8x</span>
         </div>
+        <div class="ctrl" style="padding-top:0;">
+          <span class="ctrl-lbl">Speed-Read WPM</span>
+          <input type="number" id="scrollWpmIn" class="scroll-wpm-input" min="40" max="720" step="1" value="144" inputmode="numeric" aria-label="Speed-read words per minute">
+          <span class="ctrl-val" id="scrollWpmV">144 wpm</span>
+        </div>
         <div class="scroll-ctl">
           <span class="scbtn-hint">Negative = reverse · Hover reader to pause</span>
         </div>
@@ -1994,6 +2015,7 @@ const flowGestureTimerValue = document.getElementById('flowGestureTimerValue');
 const flowWordRenderer = document.getElementById('flowWordRenderer');
 const flowWordRendererToken = document.getElementById('flowWordRendererToken');
 const flowGestureAnnouncer = document.getElementById('flowGestureAnnouncer');
+const scrollWpmInput = document.getElementById('scrollWpmIn');
 const MOBILE_BREAKPOINT = 900;
 let sidebarOpen = true;
 let mobileViewport = false;
@@ -2123,6 +2145,33 @@ function getAutoScrollWpmValue() {
   return Math.min(max, Math.max(min, estimatedWpm));
 }
 
+function syncAutoScrollWpmUi() {
+  const wpm = getAutoScrollWpmValue();
+  const wpmVal = document.getElementById('scrollWpmV');
+  if (wpmVal) wpmVal.textContent = `${wpm} wpm`;
+  if (scrollWpmInput && document.activeElement !== scrollWpmInput) {
+    scrollWpmInput.value = String(wpm);
+  }
+}
+
+function setAutoScrollWpm(nextWpm) {
+  const slider = document.getElementById('scrollSR');
+  if (!slider) return;
+  const currentSpeed = Number(slider.value);
+  const direction = currentSpeed < 0 ? -1 : 1;
+  const { min, max } = getAutoScrollWpmBounds();
+  const safeWpm = Math.min(max, Math.max(min, Math.round(nextWpm)));
+  const nextSpeedMagnitude = safeWpm / FLOW_BASE_WPM;
+  const sliderMin = Number(slider.min);
+  const sliderMax = Number(slider.max);
+  const signedSpeed = direction * nextSpeedMagnitude;
+  const clampedSpeed = Math.min(sliderMax, Math.max(sliderMin, signedSpeed));
+  slider.value = String(Math.round(clampedSpeed * 10) / 10);
+  slider.dispatchEvent(new Event('input', { bubbles: true }));
+  slider.dispatchEvent(new Event('change', { bubbles: true }));
+  syncAutoScrollWpmUi();
+}
+
 function applyFlowSpeedReadTiming() {
   flowSpeedReadPlaybackWpm = getAutoScrollWpmValue();
   flowSpeedReadIntervalMs = 60000 / flowSpeedReadPlaybackWpm;
@@ -2153,6 +2202,7 @@ function queueFlowSpeedReadTimingSync() {
     if (flowSpeedHud.classList.contains('on') || flowSpeedHud.classList.contains('paused')) {
       flowHudWpm.textContent = String(flowSpeedReadPlaybackWpm);
     }
+    syncAutoScrollWpmUi();
   }, FLOW_SPEED_READ_INTERVAL_DEBOUNCE_MS);
 }
 
@@ -2236,6 +2286,15 @@ function measureFlowTextWidth(text, font) {
   if (!ctx) return text.length * 8;
   ctx.font = font;
   return ctx.measureText(text).width;
+}
+
+function syncFlowWordRendererPlacement() {
+  if (!flowWordRenderer || !reader) return;
+  const readerRect = reader.getBoundingClientRect();
+  flowWordRenderer.style.left = `${Math.round(readerRect.left + (readerRect.width / 2))}px`;
+  flowWordRenderer.style.top = `${Math.round(readerRect.top + (readerRect.height / 2))}px`;
+  const maxWidth = Math.max(220, Math.round(readerRect.width - 26));
+  flowWordRenderer.style.width = `min(460px, ${maxWidth}px)`;
 }
 
 function syncFlowWordRenderer() {
@@ -2466,6 +2525,7 @@ window.flowSpeedPlaybackController = {
 function syncSidebarCssVars() {
   const sidebarOffset = (!mobileViewport && sidebarOpen) ? '404px' : '0px';
   document.documentElement.style.setProperty('--sidebar-offset', sidebarOffset);
+  syncFlowWordRendererPlacement();
 }
 
 function setSidebarOpen(nextOpen) {
@@ -4755,6 +4815,7 @@ wire('wsR',     'wsV',    'px', v => v.toFixed(1)+'px', () => applyReadingMode()
 wire('scrollSR','scrollSV','', v => `${v.toFixed(1)}x`, v => {
   scrollSpeed = v;
   queueFlowSpeedReadTimingSync();
+  syncAutoScrollWpmUi();
 });
 wire('focusR',  'focusV', '%', null, v => updateFocusVignette(v));
 wire('focusDepthR', 'focusDepthV', 'px', null, v => updateFocusDepth(v));
@@ -5577,15 +5638,27 @@ document.getElementById('resetDocBtn').addEventListener('click', async () => {
 
 /* ── Init ── */
 document.getElementById('tintR').addEventListener('input', updateTint);
+scrollWpmInput?.addEventListener('change', e => {
+  const next = Number(e.target.value);
+  if (!Number.isFinite(next)) {
+    syncAutoScrollWpmUi();
+    return;
+  }
+  setAutoScrollWpm(next);
+});
+scrollWpmInput?.addEventListener('blur', () => syncAutoScrollWpmUi());
 window.addEventListener('resize', () => {
   syncSidebarForViewport();
   updateProgressAndStatus();
   updateChunkOverlay();
+  syncFlowWordRendererPlacement();
 });
 syncSidebarForViewport();
 initSidebarSectionToggles();
 enhanceEvidenceBadges();
 toggleProg();
+syncAutoScrollWpmUi();
+syncFlowWordRendererPlacement();
 updateTint();
 updateFocusDepth(focusDepth);
 setPageJumpAvailability(false);
