@@ -2571,6 +2571,19 @@ function ensureFlowSpeedReadWordNodes() {
   buildFlowSpeedReadWordNodes();
 }
 
+function removeFlowSpeedReadWordMarkup() {
+  if (!flowLayer) return;
+  const blocks = flowLayer.querySelectorAll('.flow-para, .flow-heading, .flow-list-item');
+  blocks.forEach(block => {
+    if (block.dataset.speedReadPrepared !== '1' && !block.querySelector('.flow-speed-word')) return;
+    block.querySelectorAll('.flow-speed-word').forEach(word => {
+      const rawValue = String(word.dataset.speedReadRaw || word.textContent || '');
+      word.replaceWith(document.createTextNode(rawValue));
+    });
+    delete block.dataset.speedReadPrepared;
+  });
+}
+
 function stopFlowSpeedReadPlayback() {
   if (flowSpeedReadRAF) cancelAnimationFrame(flowSpeedReadRAF);
   if (flowSpeedReadIntervalUpdateTimer) clearTimeout(flowSpeedReadIntervalUpdateTimer);
@@ -2654,7 +2667,9 @@ function stopFlowGestureController(reason = 'mode_change') {
   resetFlowGestureInteraction();
   stopFlowSpeedReadPlayback();
   clearFlowSpeedReadHighlight();
+  removeFlowSpeedReadWordMarkup();
   flowSpeedReadWordNodes = [];
+  flowSpeedReadTokens = [];
   flowSpeedReadWordIndex = 0;
   clearFlowWordSelection();
   hideFlowDefinitionPopout();
