@@ -1529,7 +1529,7 @@ body.low-interruption-active .flow-speed-hud {
       </div>
 
       <!-- Typography -->
-      <div class="sec is-collapsed">
+      <div class="sec is-collapsed" id="typographySection">
         <div class="sec-label">Typography <span class="sci sci-pref">User-preference</span></div>
         <div class="sec-hint">Applied as a readable text layer with high-legibility defaults; gains are often strongest when readers self-select what feels easiest. See <code>T1</code>.</div>
 
@@ -4440,12 +4440,33 @@ function handleFontSelectionChange() {
   applyReadingMode();
 }
 
+function expandSidebarSection(sectionId) {
+  const section = document.getElementById(sectionId);
+  if (!section) return;
+  const toggleBtn = section.querySelector(':scope > .sec-toggle');
+  if (!toggleBtn || !section.classList.contains('is-collapsed')) return;
+  document.querySelectorAll('#sidebarPanel .sidebar-scroll > .sec').forEach((otherSection) => {
+    if (otherSection === section) return;
+    const otherToggle = otherSection.querySelector(':scope > .sec-toggle');
+    if (!otherToggle) return;
+    otherSection.classList.add('is-collapsed');
+    otherToggle.setAttribute('aria-expanded', 'false');
+  });
+  section.classList.remove('is-collapsed');
+  toggleBtn.setAttribute('aria-expanded', 'true');
+}
+
 function setReadingMode(mode) {
   const normalized = ['pdf', 'overlay', 'flow'].includes(mode) ? mode : 'pdf';
   readingMode = normalized;
   document.querySelectorAll('input[name="readingMode"]').forEach(input => {
     input.checked = input.value === normalized;
   });
+  if (normalized === 'overlay') {
+    expandSidebarSection('typographySection');
+    const fontSel = document.getElementById('fontSel');
+    if (fontSel) fontSel.value = 'atkinson';
+  }
   const modeTextMap = { pdf: 'Original', overlay: 'Overlay', flow: 'Flow' };
   const currentModeLabel = document.getElementById('readingModeCurrent');
   if (currentModeLabel) currentModeLabel.textContent = modeTextMap[normalized] || 'Original';
