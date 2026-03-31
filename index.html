@@ -495,6 +495,49 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   margin-bottom: 0 !important;
   pointer-events: none;
 }
+.mode-seg {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+}
+.mode-seg input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.mode-opt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  border-radius: 7px;
+  border: 1px solid var(--control-border);
+  background: var(--control-bg);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  line-height: 1.2;
+  text-align: center;
+  padding: 6px 8px;
+  font-family: 'DM Mono', monospace;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.mode-opt:hover { border-color: var(--accent); color: var(--accent); }
+.mode-seg input:checked + .mode-opt {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+.mode-help {
+  padding: 2px 20px 8px;
+  display: grid;
+  gap: 2px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+.mode-note { padding: 2px 20px 7px; font-size: 11.5px; color: var(--text-muted); line-height: 1.45; }
 </style>
 </head>
 <body>
@@ -578,22 +621,35 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         <div class="sec-label">Typography Overlay <span class="sci">✦</span></div>
         <div class="sec-hint">Applied as a readable text layer for improved font comfort</div>
 
-        <div class="ctrl" style="padding-top: 2px;">
-          <span class="ctrl-lbl">Presentation</span>
-          <div class="presets" style="padding:0; flex:1;">
-            <button class="pbtn on" id="modePdfBtn" type="button" data-reading-mode="pdf">PDF</button>
-            <button class="pbtn" id="modeOverlayBtn" type="button" data-reading-mode="overlay">Overlay</button>
-            <button class="pbtn" id="modeFlowBtn" type="button" data-reading-mode="flow">Flow</button>
+        <div class="ctrl" style="padding-top: 2px; align-items: flex-start;">
+          <span class="ctrl-lbl" style="padding-top: 7px;">Mode</span>
+          <div class="mode-seg" id="readingModeSeg" role="radiogroup" aria-label="Reading mode">
+            <label>
+              <input type="radio" name="readingMode" value="pdf" checked>
+              <span class="mode-opt">Original PDF</span>
+            </label>
+            <label>
+              <input type="radio" name="readingMode" value="overlay">
+              <span class="mode-opt">Typography Overlay</span>
+            </label>
+            <label>
+              <input type="radio" name="readingMode" value="flow">
+              <span class="mode-opt">Readable Flow (Extracted)</span>
+            </label>
           </div>
+        </div>
+        <div class="mode-help">
+          <div>Overlay = keeps page structure.</div>
+          <div>Flow = extracts text into continuous reading layout.</div>
         </div>
 
         <div class="trow" style="padding-top: 2px;">
           <div class="trow-info">
-            <div class="trow-lbl">Typography overlay</div>
-            <div class="trow-sub">Use a custom text layer for font and spacing adjustments</div>
+            <div class="trow-lbl">Typography controls</div>
+            <div class="trow-sub">Font and spacing enhancements for overlay and flow modes</div>
           </div>
-          <label class="tog"><input type="checkbox" id="typoOverlayT" onchange="toggleTypographyOverlay()"><span class="tog-tk"></span></label>
         </div>
+        <div class="mode-note" id="displayModeHint" hidden>In flow mode, page-image brightness, contrast, and page gap are disabled.</div>
 
         <div style="padding: 4px 0 2px;" id="typoControls" class="ctrl-group typography-group">
           <select class="fsel" id="fontSel" onchange="handleFontSelectionChange()">
@@ -689,6 +745,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
           <span class="ctrl-val" id="focusDepthV">220px</span>
         </div>
         <div class="sec-hint ctrl-group focus-group" style="padding-top:2px;">Lower for gentle focus, higher for stronger edge dimming</div>
+        <div class="mode-note" id="focusModeHint" hidden>Flow mode disables ruler and chunk overlays (they rely on fixed page geometry).</div>
 
         <div class="trow">
           <div class="trow-info">
@@ -825,6 +882,7 @@ let readingMode = 'pdf';
 let flowDocCache = null;
 let chunkCenterY = 0;
 const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
+const SETTINGS_STORAGE_KEY = 'lumen.settings.v1';
 const DEFAULT_PROFILE_ID = 'default';
 const DEFAULT_SETTINGS = {
   mode: 'day',
@@ -929,7 +987,7 @@ function captureSettings() {
     brightness: Number(document.getElementById('briR').value),
     contrast: Number(document.getElementById('conR').value),
     gap: Number(document.getElementById('gapR').value),
-    typographyOverlay: document.getElementById('typoOverlayT').checked,
+    typographyOverlay: readingMode === 'overlay',
     readingMode,
     font: document.getElementById('fontSel').value,
     textSize: Number(document.getElementById('tsizeR').value),
@@ -973,16 +1031,10 @@ function applySettings(profile) {
     const fontSel = document.getElementById('fontSel');
     fontSel.value = normalizeFontKey(settings.font);
   }
-  const overlayToggle = document.getElementById('typoOverlayT');
   let requestedReadingMode = settings.readingMode;
   if (!requestedReadingMode) requestedReadingMode = settings.typographyOverlay ? 'overlay' : 'pdf';
   setReadingMode(requestedReadingMode);
-  if (settings.typographyOverlay !== undefined) {
-    overlayToggle.checked = Boolean(settings.typographyOverlay);
-  } else if (settings.font !== undefined) {
-    overlayToggle.checked = normalizeFontKey(settings.font) !== 'native';
-  }
-  syncTypographyOverlayControls();
+  syncReadingModeControls();
   applyReadingMode();
   setRangeValue('tsizeR', settings.textSize);
   setRangeValue('lhR', settings.lineHeight);
@@ -1010,6 +1062,24 @@ function saveProfilesState() {
     customProfiles,
     lastUsedProfileId
   }));
+}
+
+function saveSettings() {
+  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
+    readingMode
+  }));
+}
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (err) {
+    console.warn('Unable to load settings:', err);
+    return {};
+  }
 }
 
 function loadProfilesState() {
@@ -1286,36 +1356,40 @@ function applyFilters() {
   applyReadingMode();
 }
 
-function syncTypographyOverlayControls() {
-  const overlayEnabled = document.getElementById('typoOverlayT').checked || readingMode === 'flow';
-  document.querySelectorAll('.typography-group').forEach(el => el.classList.toggle('collapsed', !overlayEnabled));
+function syncReadingModeControls() {
+  const typographyEnabled = readingMode === 'overlay' || readingMode === 'flow';
+  const isFlow = readingMode === 'flow';
+  document.querySelectorAll('.typography-group').forEach(el => el.classList.toggle('collapsed', !typographyEnabled));
   const fontSel = document.getElementById('fontSel');
   if (fontSel) {
-    fontSel.disabled = !overlayEnabled;
-    fontSel.closest('#typoControls')?.classList.toggle('collapsed', !overlayEnabled);
+    fontSel.disabled = !typographyEnabled;
+    fontSel.closest('#typoControls')?.classList.toggle('collapsed', !typographyEnabled);
   }
-  const controls = ['tsizeR', 'lhR', 'lsR', 'wsR'];
-  controls.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.disabled = !overlayEnabled;
-  });
-}
 
-function toggleTypographyOverlay() {
-  if (document.getElementById('typoOverlayT').checked && readingMode !== 'flow') {
-    setReadingMode('overlay');
-  } else if (!document.getElementById('typoOverlayT').checked && readingMode === 'overlay') {
-    setReadingMode('pdf');
-  }
-  syncTypographyOverlayControls();
-  applyReadingMode();
+  ['tsizeR', 'lhR', 'lsR', 'wsR'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = !typographyEnabled;
+  });
+
+  ['briR', 'conR', 'gapR'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = isFlow;
+  });
+  const displayModeHint = document.getElementById('displayModeHint');
+  if (displayModeHint) displayModeHint.hidden = !isFlow;
+
+  ['rulerT', 'shadeT', 'chunkT', 'chunkR', 'chunkUpBtn', 'chunkDownBtn'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.disabled = isFlow;
+  });
+  const focusModeHint = document.getElementById('focusModeHint');
+  if (focusModeHint) focusModeHint.hidden = !isFlow;
 }
 
 function handleFontSelectionChange() {
   const fontKey = normalizeFontKey(document.getElementById('fontSel').value);
-  if (fontKey === 'native') {
-    document.getElementById('typoOverlayT').checked = false;
-    syncTypographyOverlayControls();
+  if (fontKey === 'native' && readingMode === 'overlay') {
+    setReadingMode('pdf');
   }
   applyReadingMode();
 }
@@ -1323,12 +1397,13 @@ function handleFontSelectionChange() {
 function setReadingMode(mode) {
   const normalized = ['pdf', 'overlay', 'flow'].includes(mode) ? mode : 'pdf';
   readingMode = normalized;
-  document.querySelectorAll('[data-reading-mode]').forEach(btn =>
-    btn.classList.toggle('on', btn.dataset.readingMode === normalized));
-  const overlayToggle = document.getElementById('typoOverlayT');
-  if (normalized === 'overlay') overlayToggle.checked = true;
-  if (normalized === 'pdf') overlayToggle.checked = false;
-  syncTypographyOverlayControls();
+  document.querySelectorAll('input[name="readingMode"]').forEach(input => {
+    input.checked = input.value === normalized;
+  });
+  syncReadingModeControls();
+  toggleRuler();
+  toggleChunkMode();
+  saveSettings();
 }
 
 function normalizeToken(item) {
@@ -1425,6 +1500,7 @@ async function renderFlowDocument() {
   flowDoc.pages.forEach(page => {
     const chip = document.createElement('div');
     chip.className = 'flow-page-chip';
+    chip.dataset.page = String(page.pageNum);
     chip.textContent = `Page ${page.pageNum}`;
     flowLayer.appendChild(chip);
 
@@ -1441,13 +1517,7 @@ async function applyReadingMode() {
   if (!pdf) return;
 
   const fontKey = normalizeFontKey(document.getElementById('fontSel').value);
-  const overlayToggle = document.getElementById('typoOverlayT');
-  if (fontKey === 'native' && overlayToggle.checked) {
-    overlayToggle.checked = false;
-    syncTypographyOverlayControls();
-  }
-  const overlayEnabled = overlayToggle.checked && fontKey !== 'native';
-  const usingOverlay = readingMode === 'overlay' && overlayEnabled;
+  const usingOverlay = readingMode === 'overlay' && fontKey !== 'native';
   const usingFlow = readingMode === 'flow';
   const fontStack = FONT_STACKS[fontKey] || FONT_STACKS.native;
   const tsize  = Number(document.getElementById('tsizeR').value);
@@ -1541,10 +1611,9 @@ function goToPage(n) {
   if (!Number.isFinite(pageNum)) return;
   const target = Math.min(pdf.numPages, Math.max(1, pageNum));
   if (readingMode === 'flow') {
-    const chips = flowLayer.querySelectorAll('.flow-page-chip');
-    const targetChip = chips[target - 1];
+    const targetChip = getNearestFlowAnchor(target);
     if (targetChip) targetChip.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    document.getElementById('pageJumpIn').value = String(target);
+    document.getElementById('pageJumpIn').value = String(Number(targetChip?.dataset.page || target));
     setNavigationMenuOpen(false);
     return;
   }
@@ -1553,6 +1622,22 @@ function goToPage(n) {
   pageWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
   document.getElementById('pageJumpIn').value = String(target);
   setNavigationMenuOpen(false);
+}
+
+function getNearestFlowAnchor(pageNum) {
+  const chips = [...flowLayer.querySelectorAll('.flow-page-chip')];
+  if (!chips.length) return null;
+  let nearest = chips[0];
+  let nearestDelta = Math.abs(Number(nearest.dataset.page || 1) - pageNum);
+  chips.forEach(chip => {
+    const chipPage = Number(chip.dataset.page || 1);
+    const delta = Math.abs(chipPage - pageNum);
+    if (delta < nearestDelta) {
+      nearest = chip;
+      nearestDelta = delta;
+    }
+  });
+  return nearest;
 }
 
 function navigatePage(delta) {
@@ -1644,7 +1729,7 @@ function debounce(fn, ms) {
 }
 
 /* ── Slider wiring ── */
-syncTypographyOverlayControls();
+syncReadingModeControls();
 
 function wire(id, valId, suffix, fmt, cb) {
   const sl = document.getElementById(id);
@@ -1761,6 +1846,13 @@ function stepChunk(direction) {
 
 function toggleChunkMode() {
   ensureChunkAnchor();
+  if (readingMode === 'flow') {
+    document.querySelectorAll('.chunk-group').forEach(el => el.classList.add('collapsed'));
+    document.getElementById('chunkUpBtn').disabled = true;
+    document.getElementById('chunkDownBtn').disabled = true;
+    toggleRuler();
+    return;
+  }
   setChunkButtonState();
   const on = chunkModeOn();
   document.querySelectorAll('.chunk-group').forEach(el => el.classList.toggle('collapsed', !on));
@@ -1778,6 +1870,12 @@ reader.addEventListener('mousemove', e => {
 });
 
 function toggleRuler() {
+  if (readingMode === 'flow') {
+    document.getElementById('rulerLine').classList.remove('on');
+    document.getElementById('rShadeTop').classList.remove('on');
+    document.getElementById('rShadeBot').classList.remove('on');
+    return;
+  }
   const on  = document.getElementById('rulerT').checked;
   const shd = document.getElementById('shadeT').checked;
   const chunkOn = chunkModeOn();
@@ -2032,9 +2130,10 @@ document.getElementById('scrollBottomBtn').addEventListener('click', () => goToD
 
 document.getElementById('chunkUpBtn').addEventListener('click', () => stepChunk(-1));
 document.getElementById('chunkDownBtn').addEventListener('click', () => stepChunk(1));
-document.querySelectorAll('[data-reading-mode]').forEach(btn => {
-  btn.addEventListener('click', async () => {
-    setReadingMode(btn.dataset.readingMode);
+document.querySelectorAll('input[name="readingMode"]').forEach(input => {
+  input.addEventListener('change', async e => {
+    if (!e.target.checked) return;
+    setReadingMode(e.target.value);
     await applyReadingMode();
   });
 });
@@ -2054,12 +2153,17 @@ document.addEventListener('keydown', e => {
 });
 
 /* ── Profile system init ── */
+const persistedSettings = loadSettings();
 loadProfilesState();
 refreshProfileSelect();
 document.getElementById('profileSel').addEventListener('change', e => useProfile(e.target.value));
 document.getElementById('saveProfileBtn').addEventListener('click', handleSaveProfile);
 document.getElementById('deleteProfileBtn').addEventListener('click', handleDeleteProfile);
 useProfile(lastUsedProfileId);
+if (persistedSettings.readingMode) {
+  setReadingMode(persistedSettings.readingMode);
+  applyReadingMode();
+}
 toggleChunkMode();
 </script>
 </body>
