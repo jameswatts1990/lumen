@@ -1088,7 +1088,7 @@ body.low-interruption-active .session-timer-overlay {
       <div class="sec is-collapsed">
         <div class="sec-label">Display <span class="sci sci-mod" title="Line length and zoom can support readability">Moderate evidence</span></div>
 
-        <div class="ctrl">
+        <div class="ctrl ctrl-group flow-locked-group">
           <span class="ctrl-lbl">Zoom</span>
           <input type="range" id="widthR" min="60" max="160" value="100" step="5">
           <span class="ctrl-val" id="widthV">100%</span>
@@ -1110,7 +1110,7 @@ body.low-interruption-active .session-timer-overlay {
           <input type="range" id="gapR" min="4" max="60" value="16" step="4">
           <span class="ctrl-val" id="gapV">16px</span>
         </div>
-        <div class="mode-note ctrl-group flow-only-note" id="displayModeHint" hidden>In flow mode, page-image brightness, contrast, and page gap are hidden because page images are not used.</div>
+        <div class="mode-note ctrl-group flow-only-note" id="displayModeHint" hidden>In flow mode, zoom, page-image brightness, contrast, and page gap are hidden because page images are not used.</div>
       </div>
 
       <!-- Typography -->
@@ -2641,7 +2641,7 @@ function syncReadingModeControls() {
     if (el) el.disabled = !typographyEnabled;
   });
 
-  ['briR', 'conR', 'gapR'].forEach(id => {
+  ['widthR', 'briR', 'conR', 'gapR'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.disabled = isFlow;
   });
