@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Lumen — Mindful PDF Reader</title>
+<title>Lumen — Mindful Document Reader</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;700&family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Mono:wght@400;500&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
@@ -551,17 +551,25 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         <span class="logo-mark">L</span>
         Lumen
       </div>
-      <div class="logo-sub">Mindful PDF Reader</div>
+      <div class="logo-sub">Mindful Document Reader</div>
     </div>
 
     <div class="sidebar-scroll">
 
       <!-- Upload -->
 <div class="upload-zone" id="upZone">
-        <input type="file" accept=".pdf,application/pdf" id="fileIn">
+        <input type="file" accept=".pdf,.txt,.md,.markdown,.html,.htm,.json,application/pdf,text/plain,text/markdown,text/html,application/json" id="fileIn">
         <div class="upload-icon">📄</div>
-        <div>Drop PDF here or click to open</div>
+        <div>Drop a file here or click to open</div>
         <div class="upload-fname" id="upName"></div>
+      </div>
+      <div class="sec" style="padding-top: 0;">
+        <div class="sec-label">Web link import</div>
+        <div class="sec-hint">Paste a page URL to extract readable text (works best on pages that allow direct fetching).</div>
+        <div class="nav-jump" style="padding-bottom: 12px;">
+          <input class="nav-input" id="urlIn" type="url" placeholder="https://example.com/article" aria-label="Website URL">
+          <button class="pbtn nav-go" id="urlLoadBtn" type="button">Load</button>
+        </div>
       </div>
 
       <!-- Reading Profiles -->
@@ -798,8 +806,8 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
       <article id="flowLayer" class="flow-layer" aria-live="polite"></article>
       <div class="empty">
         <div class="empty-icon">📖</div>
-        <div class="empty-title">Open a document to begin</div>
-        <div class="empty-desc">Upload from the panel on the left, or drag and drop a PDF directly into this reader area.</div>
+        <div class="empty-title">Open a source to begin</div>
+        <div class="empty-desc">Upload a PDF, TXT, Markdown, HTML, or JSON file—or paste a web link—to read in a plain-text friendly layout.</div>
         <div class="empty-tags">
           <span class="etag">Sepia / Dark mode</span>
           <span class="etag">Reading ruler</span>
@@ -880,6 +888,7 @@ let focusDepth = 220;
 let currentPage = 0;
 let readingMode = 'pdf';
 let flowDocCache = null;
+let textDoc = null;
 let chunkCenterY = 0;
 const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
 const SETTINGS_STORAGE_KEY = 'lumen.settings.v1';
@@ -938,6 +947,12 @@ let lastUsedProfileId = DEFAULT_PROFILE_ID;
 const reader = document.getElementById('reader');
 const rInner = document.getElementById('rInner');
 const flowLayer = document.getElementById('flowLayer');
+
+function getTotalPages() {
+  if (pdf) return pdf.numPages;
+  if (textDoc) return textDoc.numPages;
+  return 0;
+}
 
 /* ── Modes ── */
 const MODES = {
@@ -1169,13 +1184,13 @@ function handleDeleteProfile() {
 const fileIn = document.getElementById('fileIn');
 const upZone = document.getElementById('upZone');
 
-fileIn.addEventListener('change', e => { if(e.target.files[0]) loadPDF(e.target.files[0]); });
+fileIn.addEventListener('change', e => { if(e.target.files[0]) loadSourceFile(e.target.files[0]); });
 upZone.addEventListener('dragover', e => { e.preventDefault(); upZone.classList.add('drag'); });
 upZone.addEventListener('dragleave', () => upZone.classList.remove('drag'));
 upZone.addEventListener('drop', e => {
   e.preventDefault(); upZone.classList.remove('drag');
   const f = e.dataTransfer.files[0];
-  if (isPdfFile(f)) loadPDF(f);
+  if (isSupportedFile(f)) loadSourceFile(f);
 });
 
 ['dragenter', 'dragover'].forEach(evt => {
@@ -1195,7 +1210,7 @@ reader.addEventListener('drop', e => {
   e.preventDefault();
   reader.classList.remove('drop-ready');
   const f = e.dataTransfer?.files?.[0];
-  if (isPdfFile(f)) loadPDF(f);
+  if (isSupportedFile(f)) loadSourceFile(f);
 });
 
 window.addEventListener('dragover', e => {
@@ -1211,12 +1226,140 @@ function isPdfFile(file) {
   return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 }
 
+function isTextLikeFile(file) {
+  if (!file) return false;
+  const name = (file.name || '').toLowerCase();
+  const extMatch = /\.(txt|md|markdown|html|htm|json)$/.test(name);
+  const mime = (file.type || '').toLowerCase();
+  return extMatch || mime.startsWith('text/') || mime === 'application/json';
+}
+
+function isSupportedFile(file) {
+  return isPdfFile(file) || isTextLikeFile(file);
+}
+
+function stripToPlainText(rawText, sourceName = '') {
+  const lower = sourceName.toLowerCase();
+  if (lower.endsWith('.html') || lower.endsWith('.htm')) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(rawText, 'text/html');
+    doc.querySelectorAll('script, style, noscript, svg, canvas').forEach(el => el.remove());
+    return (doc.body?.innerText || doc.documentElement?.innerText || '').trim();
+  }
+  return rawText;
+}
+
+function normalizeReadableText(text) {
+  return String(text || '')
+    .replace(/\r\n?/g, '\n')
+    .replace(/\t/g, ' ')
+    .replace(/[ \f\v]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function renderTextFlowFromPlainText(text, originLabel = 'Text source') {
+  const normalized = normalizeReadableText(text);
+  const paragraphs = normalized.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  const chunks = [];
+  for (let i = 0; i < paragraphs.length; i += 8) chunks.push(paragraphs.slice(i, i + 8));
+  const totalPages = Math.max(1, chunks.length || 1);
+
+  flowLayer.innerHTML = '';
+  chunks.forEach((group, idx) => {
+    const pageNum = idx + 1;
+    const chip = document.createElement('div');
+    chip.className = 'flow-page-chip';
+    chip.dataset.page = String(pageNum);
+    chip.textContent = `${originLabel} · Segment ${pageNum}`;
+    flowLayer.appendChild(chip);
+
+    group.forEach(paragraph => {
+      const p = document.createElement('p');
+      p.className = 'flow-para';
+      p.dataset.page = String(pageNum);
+      p.textContent = paragraph;
+      flowLayer.appendChild(p);
+    });
+  });
+
+  if (!paragraphs.length) {
+    const p = document.createElement('p');
+    p.className = 'flow-para';
+    p.dataset.page = '1';
+    p.textContent = 'No readable text was found in this source.';
+    flowLayer.appendChild(p);
+  }
+
+  return {
+    numPages: totalPages,
+    plainText: normalized
+  };
+}
+
+async function loadSourceFile(file) {
+  if (isPdfFile(file)) return loadPDF(file);
+  if (!isTextLikeFile(file)) {
+    rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Unsupported file type. Try PDF, TXT, Markdown, HTML, or JSON.</div>';
+    return;
+  }
+
+  const raw = await file.text();
+  const plainText = stripToPlainText(raw, file.name);
+  return loadTextDocument(plainText, file.name, `File · ${file.name}`);
+}
+
+async function loadTextDocument(plainText, displayName, sourceLabel) {
+  pdf = null;
+  flowDocCache = null;
+  stopScroll();
+  scrolling = false;
+  const scrollBtn = document.getElementById('scrollBtn');
+  scrollBtn.textContent = '▶';
+  scrollBtn.classList.remove('on');
+  reader.scrollTop = 0;
+  const extracted = renderTextFlowFromPlainText(plainText, sourceLabel);
+  textDoc = { title: displayName, ...extracted };
+  document.getElementById('upName').textContent = displayName;
+  document.getElementById('upName').style.display = 'block';
+  reader.classList.remove('drop-ready');
+  rInner.innerHTML = '';
+  rInner.appendChild(flowLayer);
+  flowLayer.classList.add('on');
+  rInner.classList.add('flow-mode');
+  setPageJumpAvailability(true);
+  setReadingMode('flow');
+  await applyReadingMode();
+  applyMaxWidth();
+  applyGap();
+  renderOutlineFallback('Outline is only available for PDFs.');
+  updateProgressAndStatus();
+}
+
+async function loadFromUrl() {
+  const input = document.getElementById('urlIn');
+  const rawUrl = (input.value || '').trim();
+  if (!rawUrl) return;
+  const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const html = await res.text();
+    const plainText = stripToPlainText(html, '.html');
+    await loadTextDocument(plainText, url, 'Web page');
+  } catch (err) {
+    console.warn('Unable to load URL source:', err);
+    rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Could not fetch this URL. The site may block cross-origin requests. Try downloading the page as text/HTML and uploading it instead.</div>';
+  }
+}
+
 async function loadPDF(file) {
   if (!isPdfFile(file)) {
     rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Please upload a valid PDF file.</div>';
     return;
   }
 
+  textDoc = null;
   document.getElementById('upName').textContent = file.name;
   document.getElementById('upName').style.display = 'block';
   reader.classList.remove('drop-ready');
@@ -1514,7 +1657,7 @@ async function renderFlowDocument() {
 }
 
 async function applyReadingMode() {
-  if (!pdf) return;
+  if (!pdf && !textDoc) return;
 
   const fontKey = normalizeFontKey(document.getElementById('fontSel').value);
   const usingOverlay = readingMode === 'overlay' && fontKey !== 'native';
@@ -1596,8 +1739,9 @@ function setPageJumpAvailability(enabled) {
     const ctl = document.getElementById(id);
     if (ctl) ctl.disabled = !enabled;
   });
-  if (enabled && pdf) {
-    input.max = String(pdf.numPages);
+  const total = getTotalPages();
+  if (enabled && total > 0) {
+    input.max = String(total);
     input.value = '1';
   } else {
     input.value = '';
@@ -1606,10 +1750,11 @@ function setPageJumpAvailability(enabled) {
 }
 
 function goToPage(n) {
-  if (!pdf) return;
+  if (!pdf && !textDoc) return;
   const pageNum = Number.parseInt(n, 10);
   if (!Number.isFinite(pageNum)) return;
-  const target = Math.min(pdf.numPages, Math.max(1, pageNum));
+  const total = getTotalPages();
+  const target = Math.min(total, Math.max(1, pageNum));
   if (readingMode === 'flow') {
     const targetChip = getNearestFlowAnchor(target);
     if (targetChip) targetChip.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -1641,14 +1786,15 @@ function getNearestFlowAnchor(pageNum) {
 }
 
 function navigatePage(delta) {
-  if (!pdf) return;
+  if (!pdf && !textDoc) return;
   const base = Number.isFinite(currentPage) && currentPage > 0 ? currentPage : 1;
   goToPage(base + delta);
 }
 
 function goToDocumentEdge(edge) {
-  if (!pdf) return;
-  goToPage(edge === 'bottom' ? pdf.numPages : 1);
+  const total = getTotalPages();
+  if (!total) return;
+  goToPage(edge === 'bottom' ? total : 1);
 }
 
 function flattenOutline(items, depth = 0) {
@@ -1909,14 +2055,16 @@ function toggleFocus() {
 
 /* ── Progress bar ── */
 function updateCurrentPageStatus() {
-  if (!pdf) {
+  const totalPages = getTotalPages();
+  if (!totalPages) {
     currentPage = 0;
     document.getElementById('statPages').textContent = 'No document';
     return;
   }
   if (readingMode === 'flow') {
     currentPage = 0;
-    document.getElementById('statPages').textContent = `Flow document • ${pdf.numPages} pages`;
+    const kindLabel = pdf ? 'Flow document' : 'Flow text';
+    document.getElementById('statPages').textContent = `${kindLabel} • ${totalPages} pages`;
     return;
   }
   const wraps = rInner.querySelectorAll('.page-wrap');
@@ -1928,7 +2076,7 @@ function updateCurrentPageStatus() {
     else break;
   }
   currentPage = visiblePage;
-  document.getElementById('statPages').textContent = `Page ${currentPage} / ${pdf.numPages}`;
+  document.getElementById('statPages').textContent = `Page ${currentPage} / ${totalPages}`;
   document.getElementById('pageJumpIn').value = String(currentPage);
 }
 
@@ -2116,6 +2264,10 @@ updateFocusDepth(focusDepth);
 setChunkButtonState();
 setPageJumpAvailability(false);
 renderOutlineFallback('Load a PDF to view navigation links.');
+document.getElementById('urlLoadBtn').addEventListener('click', loadFromUrl);
+document.getElementById('urlIn').addEventListener('keydown', e => {
+  if (e.key === 'Enter') loadFromUrl();
+});
 
 document.getElementById('pageJumpBtn').addEventListener('click', () => {
   goToPage(document.getElementById('pageJumpIn').value);
