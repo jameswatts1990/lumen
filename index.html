@@ -1030,12 +1030,12 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
         <div class="sec-hint">Steady pacing reduces regressive saccades (O'Brien & Rayner, 1993)</div>
         <div class="ctrl">
           <span class="ctrl-lbl">Speed</span>
-          <input type="range" id="scrollSR" min="0.5" max="12" value="2.5" step="0.5">
+          <input type="range" id="scrollSR" min="-4" max="4" value="0.8" step="0.1">
           <button class="scbtn scroll-play-btn" id="scrollBtn" onclick="toggleScroll()" aria-label="Toggle auto scroll">▶</button>
-          <span class="ctrl-val" id="scrollSV">2.5</span>
+          <span class="ctrl-val" id="scrollSV">0.8</span>
         </div>
         <div class="scroll-ctl">
-          <span class="scbtn-hint">Hover reader to pause</span>
+          <span class="scbtn-hint">Negative = reverse · Hover reader to pause</span>
         </div>
       </div>
 
@@ -1139,8 +1139,9 @@ const BASE_PAGE_WIDTH = 760;
 let maxW = BASE_PAGE_WIDTH;
 let gap = 16;
 let scrolling = false;
-let scrollSI = null;
-let scrollSpeed = 2.5;
+let scrollSpeed = 0.8;
+let scrollRAF = null;
+let lastScrollTs = 0;
 let currentMode = 'day';
 let rendering = false;
 let focusDepth = 220;
@@ -1172,7 +1173,7 @@ const DEFAULT_SETTINGS = {
   focusDepth: 220,
   tint: 0,
   progressBar: true,
-  autoScrollSpeed: 2.5,
+  autoScrollSpeed: 0.8,
   chunkMode: false,
   chunkHeight: 2
 };
@@ -1181,7 +1182,7 @@ const BUILTIN_PROFILES = [
   {
     id: 'gentle-focus',
     name: 'Gentle Focus',
-    settings: { mode: 'sepia', zoom: 105, width: 760, brightness: 96, contrast: 98, gap: 20, font: 'lora', textSize: 105, lineHeight: 1.7, letterSpacing: 0.25, wordSpacing: 1, ruler: false, paragraphShading: false, focusMode: true, focusVignette: 58, focusDepth: 210, tint: 14, progressBar: true, autoScrollSpeed: 2, chunkMode: false, chunkHeight: 2 }
+    settings: { mode: 'sepia', zoom: 105, width: 760, brightness: 96, contrast: 98, gap: 20, font: 'lora', textSize: 105, lineHeight: 1.7, letterSpacing: 0.25, wordSpacing: 1, ruler: false, paragraphShading: false, focusMode: true, focusVignette: 58, focusDepth: 210, tint: 14, progressBar: true, autoScrollSpeed: 0.7, chunkMode: false, chunkHeight: 2 }
   },
   {
     id: 'dyslexia-friendly',
@@ -2653,17 +2654,32 @@ function toggleScroll() {
 }
 
 function startScroll() {
-  clearInterval(scrollSI);
-  scrollSI = setInterval(() => {
+  stopScroll();
+  lastScrollTs = 0;
+  const tick = (ts) => {
+    if (!scrolling) return;
+    if (!lastScrollTs) lastScrollTs = ts;
+    const dt = Math.min(64, ts - lastScrollTs || 16);
+    lastScrollTs = ts;
+    const pxPerSecond = scrollSpeed * 32;
+    if (Math.abs(pxPerSecond) >= 0.05) {
+      reader.scrollBy(0, pxPerSecond * (dt / 1000));
+    }
     const atBottom = reader.scrollTop + reader.clientHeight >= reader.scrollHeight - 1;
-    if (atBottom) {
+    const atTop = reader.scrollTop <= 1;
+    if ((pxPerSecond > 0 && atBottom) || (pxPerSecond < 0 && atTop)) {
       toggleScroll();
       return;
     }
-    reader.scrollBy(0, scrollSpeed * 0.45);
-  }, 16);
+    scrollRAF = requestAnimationFrame(tick);
+  };
+  scrollRAF = requestAnimationFrame(tick);
 }
-function stopScroll() { clearInterval(scrollSI); }
+function stopScroll() {
+  if (scrollRAF) cancelAnimationFrame(scrollRAF);
+  scrollRAF = null;
+  lastScrollTs = 0;
+}
 
 reader.addEventListener('mouseenter', () => { if (scrolling) stopScroll(); });
 reader.addEventListener('mouseleave', () => { if (scrolling) startScroll(); });
