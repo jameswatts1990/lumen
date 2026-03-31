@@ -99,6 +99,7 @@
   --sidebar-border: #302820;
   --accent: #c8874a;
   --accent-critical: #e26a5a;
+  --flow-orp-color: #9e2a1f;
   --accent-dim: rgba(200,135,74,0.12);
   --accent-mid: rgba(200,135,74,0.3);
   --text-primary: #ede6d8;
@@ -112,6 +113,13 @@
 }
 
 html, body { height: 100%; overflow: hidden; background: var(--app-bg); font-family: 'Lora', Georgia, serif; color: var(--text-primary); font-size: 15px; }
+html {
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  font-size: 0.9375rem;
+}
 
 /* ─── Layout ─── */
 .app { display: flex; height: 100vh; }
@@ -792,7 +800,8 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   color: inherit;
 }
 .flow-speed-word-orp {
-  color: var(--accent-critical);
+  color: var(--flow-orp-color);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.2);
   font-weight: 700;
 }
 .flow-speed-word.active {
@@ -837,13 +846,13 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   left: 50%;
   transform: translate(calc(var(--flow-orp-offset, 0px) * -1), -50%);
   white-space: nowrap;
-  font-size: 26px;
+  font-size: 1.625rem;
   line-height: 1;
   letter-spacing: 0.02em;
   color: #f0decb;
 }
 .flow-word-renderer-token .flow-speed-word-orp {
-  color: var(--accent-critical);
+  color: var(--flow-orp-color);
 }
 .reader-inner.flow-mode .page-wrap { display: none; }
 
@@ -1065,6 +1074,21 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   letter-spacing: 0.25px;
   white-space: nowrap;
 }
+.flow-speed-hud-affordance {
+  margin-top: 8px;
+  border-top: 1px solid rgba(226, 168, 111, 0.22);
+  padding-top: 6px;
+  color: #d8c0a2;
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.45px;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.flow-speed-hud.on:not(.paused) .flow-speed-hud-affordance {
+  opacity: 1;
+}
 .flow-speed-hud.paused {
   border-color: rgba(150, 129, 103, 0.45);
   background: rgba(30, 23, 15, 0.84);
@@ -1086,9 +1110,25 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 @media (prefers-reduced-motion: reduce) {
   .flow-hold-timer,
   .flow-speed-hud,
-  .flow-word-renderer {
+  .flow-word-renderer,
+  .flow-speed-word,
+  .flow-highlightable,
+  .flow-speed-hud-affordance {
     transition: none;
   }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  border: 0;
+  padding: 0;
+  white-space: nowrap;
+  clip-path: inset(50%);
+  clip: rect(0 0 0 0);
+  overflow: hidden;
 }
 
 .shortcuts-overlay {
@@ -1723,6 +1763,7 @@ body.low-interruption-active .flow-speed-hud {
       <span class="flow-speed-hud-value" id="flowHudProgress">0%</span>
     </div>
   </div>
+  <div class="flow-speed-hud-affordance" id="flowHudAffordance">Release to pause speed-read</div>
 </div>
 <div class="flow-word-renderer" id="flowWordRenderer" aria-live="polite" aria-hidden="true">
   <div class="flow-word-renderer-track">
@@ -1730,6 +1771,7 @@ body.low-interruption-active .flow-speed-hud {
     <div class="flow-word-renderer-token" id="flowWordRendererToken"></div>
   </div>
 </div>
+<div class="sr-only" id="flowGestureAnnouncer" aria-live="polite" aria-atomic="true"></div>
 <div class="focus-top" id="focTop"></div>
 <div class="focus-bot" id="focBot"></div>
 <div class="tint-lay" id="tintLay"></div>
@@ -1925,9 +1967,13 @@ const flowGestureTimer = document.getElementById('flowGestureTimer');
 const flowGestureTimerValue = document.getElementById('flowGestureTimerValue');
 const flowWordRenderer = document.getElementById('flowWordRenderer');
 const flowWordRendererToken = document.getElementById('flowWordRendererToken');
+const flowGestureAnnouncer = document.getElementById('flowGestureAnnouncer');
 const MOBILE_BREAKPOINT = 900;
 let sidebarOpen = true;
 let mobileViewport = false;
+const prefersReducedMotionQuery = typeof window.matchMedia === 'function'
+  ? window.matchMedia('(prefers-reduced-motion: reduce)')
+  : null;
 
 function onFlowGestureEvent(eventName, listener) {
   if (!flowGestureEventListeners.has(eventName)) flowGestureEventListeners.set(eventName, new Set());
@@ -1948,6 +1994,14 @@ function emitFlowGestureEvent(eventName, payload = {}) {
   });
 }
 
+function announceFlowGesture(message = '') {
+  if (!flowGestureAnnouncer || !message) return;
+  flowGestureAnnouncer.textContent = '';
+  requestAnimationFrame(() => {
+    flowGestureAnnouncer.textContent = message;
+  });
+}
+
 function setFlowGestureState(nextState, reason = '') {
   if (flowGestureState === nextState) return;
   const previousState = flowGestureState;
@@ -1958,6 +2012,11 @@ function setFlowGestureState(nextState, reason = '') {
     reason,
     timestamp: performance.now()
   });
+  if (nextState === FLOW_GESTURE_STATES.SPEED_READ_ACTIVE) {
+    announceFlowGesture('Speed-read mode started. Release press to pause.');
+  } else if (nextState === FLOW_GESTURE_STATES.PAUSED_ON_RELEASE) {
+    announceFlowGesture('Speed-read paused.');
+  }
 }
 
 function clearFlowGestureThresholdTimers() {
@@ -2314,6 +2373,20 @@ function isFlowGestureEnabled() {
   return readingMode === 'flow' && flowLayer.classList.contains('on');
 }
 
+function shouldIgnoreFlowGestureTarget(target) {
+  if (!(target instanceof Element)) return false;
+  const blocked = target.closest(
+    'button, a, input, select, textarea, label, summary, [role="button"], [role="link"], [role="menuitem"], [contenteditable], [data-flow-gesture-ignore]'
+  );
+  if (!blocked) return false;
+  if (blocked.matches(':disabled, [aria-disabled="true"]')) return true;
+  return true;
+}
+
+function prefersReducedMotion() {
+  return Boolean(prefersReducedMotionQuery?.matches);
+}
+
 window.flowGestureController = {
   subscribe: onFlowGestureEvent,
   getState: () => flowGestureState
@@ -2504,6 +2577,8 @@ function setMode(m) {
   currentMode = m;
   document.querySelectorAll('.pbtn[data-mode]').forEach(b =>
     b.classList.toggle('on', b.dataset.mode === m));
+  const orpColor = (m === 'dark' || m === 'night') ? '#ff8f7f' : '#9e2a1f';
+  document.documentElement.style.setProperty('--flow-orp-color', orpColor);
   applyFilters();
 }
 
@@ -4756,7 +4831,7 @@ function scrollFlowChunkIntoView(list, chunkSize) {
   const viewCenter = reader.clientHeight / 2;
   const delta = chunkCenter - viewCenter;
   if (Math.abs(delta) < 18) return;
-  reader.scrollBy({ top: delta, behavior: 'smooth' });
+  reader.scrollBy({ top: delta, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 }
 
 function updateFlowHighlight() {
@@ -5160,6 +5235,7 @@ reader.addEventListener('mouseleave', () => { if (scrolling) startScroll(); });
 reader.addEventListener('pointerdown', e => {
   if (!isFlowGestureEnabled()) return;
   if (e.pointerType === 'mouse' && e.button !== 0) return;
+  if (shouldIgnoreFlowGestureTarget(e.target)) return;
   if (flowGestureState === FLOW_GESTURE_STATES.PAUSED_ON_RELEASE) {
     flowGestureActivePointerId = e.pointerId;
     activateFlowSpeedRead('instant_resume_from_paused');
