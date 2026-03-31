@@ -1125,6 +1125,19 @@ body.low-interruption-active .session-timer-overlay {
         </div>
       </div>
 
+      <!-- Email Thread Order -->
+      <div class="sec is-collapsed">
+        <div class="sec-label">Email Thread Order</div>
+        <div class="sec-hint">Choose how replies are sequenced in flow view, then keep that rhythm across reloads and profile switches.</div>
+        <div class="ctrl" style="padding-top: 2px;">
+          <span class="ctrl-lbl">Thread Flow</span>
+          <select class="fsel" id="emailOrderSel" aria-label="Email thread order">
+            <option value="newest-first">Newest → Oldest</option>
+            <option value="oldest-first">Oldest → Newest</option>
+          </select>
+        </div>
+      </div>
+
       <!-- Session Support -->
       <div class="sec is-collapsed">
         <div class="sec-label">Session Support</div>
@@ -1525,6 +1538,7 @@ let flowDocCache = null;
 let textDoc = null;
 let chunkCenterY = 0;
 let flowChunkIndex = 0;
+let emailThreadOrder = 'newest-first';
 const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
 const SETTINGS_STORAGE_KEY = 'lumen.settings.v1';
 const SESSION_SUPPORT_STORAGE_KEY = 'lumen.session-support.v1';
@@ -1553,7 +1567,8 @@ const DEFAULT_SETTINGS = {
   autoScrollSpeed: 0.8,
   chunkMode: false,
   chunkHeight: 2,
-  flowAutoSplit: false
+  flowAutoSplit: false,
+  emailThreadOrder: 'newest-first'
 };
 const BUILTIN_PROFILES = [
   {
@@ -1841,6 +1856,7 @@ function captureSettings() {
     chunkMode: document.getElementById('chunkT').checked,
     chunkHeight: Number(document.getElementById('chunkR').value),
     flowAutoSplit: document.getElementById('flowSplitT').checked,
+    emailThreadOrder
   };
 }
 
@@ -1893,6 +1909,7 @@ function applySettings(profile) {
   setRangeValue('tintR', settings.tint);
   updateTint();
   setRangeValue('scrollSR', settings.autoScrollSpeed);
+  setEmailThreadOrder(settings.emailThreadOrder, { persist: false });
 }
 
 function saveProfilesState() {
@@ -1904,7 +1921,8 @@ function saveProfilesState() {
 
 function saveSettings() {
   localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({
-    readingMode
+    readingMode,
+    emailThreadOrder
   }));
 }
 
@@ -2497,7 +2515,12 @@ function parseEmailToThread(raw, filename = '') {
   };
 }
 
-function buildEmailThreadPlainText(parsedThread) {
+function getEmailMessagesByOrder(parsedThread, order = emailThreadOrder) {
+  const messages = Array.isArray(parsedThread?.messages) ? parsedThread.messages : [];
+  return order === 'oldest-first' ? [...messages].reverse() : messages;
+}
+
+function buildEmailThreadPlainText(parsedThread, order = emailThreadOrder) {
   const subject = parsedThread?.sourceMeta?.subject ? `Subject: ${parsedThread.sourceMeta.subject}` : '';
   const intro = [
     'Email Thread',
@@ -2505,12 +2528,34 @@ function buildEmailThreadPlainText(parsedThread) {
     parsedThread?.sourceMeta?.totalMessages ? `Messages parsed: ${parsedThread.sourceMeta.totalMessages}` : ''
   ].filter(Boolean).join('\n');
 
-  const blocks = (parsedThread?.messages || []).map((message, idx) => {
+  const orderedMessages = getEmailMessagesByOrder(parsedThread, order);
+  const blocks = orderedMessages.map((message, idx) => {
     const sender = message.sender || 'Unknown sender';
     const date = message.date || 'Unknown date';
     return `Message ${idx + 1}\nFrom: ${sender}\nDate: ${date}\n\n${message.body}`;
   });
   return normalizeReadableText([intro, ...blocks].filter(Boolean).join('\n\n'));
+}
+
+function rerenderEmailThreadFromModel() {
+  if (textDoc?.type !== 'email-thread' || !textDoc.threadModel) return;
+  const refreshed = renderTextFlowFromPlainText(
+    buildEmailThreadPlainText(textDoc.threadModel, emailThreadOrder),
+    textDoc.sourceLabel || `Email · ${textDoc.title || 'Email source'}`
+  );
+  textDoc = { ...textDoc, ...refreshed };
+  flowChunkIndex = 0;
+  updateFlowHighlight();
+  updateProgressAndStatus();
+}
+
+function setEmailThreadOrder(nextOrder, { persist = true } = {}) {
+  const normalized = nextOrder === 'oldest-first' ? 'oldest-first' : 'newest-first';
+  emailThreadOrder = normalized;
+  const select = document.getElementById('emailOrderSel');
+  if (select && select.value !== normalized) select.value = normalized;
+  if (persist) saveSettings();
+  rerenderEmailThreadFromModel();
 }
 
 async function loadEmailFile(file) {
@@ -2533,13 +2578,42 @@ async function loadEmailFile(file) {
   }
 
   const parsedThread = parseEmailToThread(raw, file.name);
-  const threadText = buildEmailThreadPlainText(parsedThread);
   setCurrentDocumentMeta({
     id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
     label: file.name,
     type: 'email-file'
   });
-  return loadTextDocument(threadText, file.name, `Email · ${file.name}`);
+  const sourceLabel = `Email · ${file.name}`;
+  const extracted = renderTextFlowFromPlainText(buildEmailThreadPlainText(parsedThread, emailThreadOrder), sourceLabel);
+  textDoc = {
+    title: file.name,
+    sourceLabel,
+    type: 'email-thread',
+    threadModel: parsedThread,
+    ...extracted
+  };
+  pdf = null;
+  flowDocCache = null;
+  stopScroll();
+  scrolling = false;
+  const scrollBtn = document.getElementById('scrollBtn');
+  scrollBtn.textContent = '▶';
+  scrollBtn.classList.remove('on');
+  reader.scrollTop = 0;
+  document.getElementById('upName').textContent = file.name;
+  document.getElementById('upName').style.display = 'block';
+  reader.classList.remove('drop-ready');
+  rInner.innerHTML = '';
+  rInner.appendChild(flowLayer);
+  flowLayer.classList.add('on');
+  rInner.classList.add('flow-mode');
+  setPageJumpAvailability(true);
+  setReadingMode('flow');
+  await applyReadingMode();
+  applyMaxWidth();
+  applyGap();
+  renderOutlineFallback('Outline is only available for PDFs.');
+  updateProgressAndStatus();
 }
 
 function tryParseUrl(rawUrl) {
@@ -4151,6 +4225,10 @@ if (persistedSettings.readingMode) {
   setReadingMode(persistedSettings.readingMode);
   applyReadingMode();
 }
+setEmailThreadOrder(persistedSettings.emailThreadOrder, { persist: false });
+document.getElementById('emailOrderSel').addEventListener('change', e => {
+  setEmailThreadOrder(e.target.value);
+});
 toggleChunkMode();
 </script>
 </body>
