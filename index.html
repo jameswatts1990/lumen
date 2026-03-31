@@ -2326,6 +2326,222 @@ function stripToPlainText(rawText, sourceName = '') {
   return rawText;
 }
 
+function parseRfc822Headers(headerText) {
+  const headers = {};
+  let currentName = '';
+  String(headerText || '')
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .forEach(line => {
+      if (!line.trim()) return;
+      if (/^\s/.test(line) && currentName) {
+        headers[currentName] = `${headers[currentName]} ${line.trim()}`.trim();
+        return;
+      }
+      const idx = line.indexOf(':');
+      if (idx === -1) return;
+      currentName = line.slice(0, idx).trim().toLowerCase();
+      headers[currentName] = line.slice(idx + 1).trim();
+    });
+  return headers;
+}
+
+function decodeEmailTransferBody(body, transferEncoding = '') {
+  const normalizedBody = String(body || '').replace(/\r\n?/g, '\n');
+  const encoding = String(transferEncoding || '').toLowerCase();
+  if (encoding.includes('quoted-printable')) {
+    return normalizedBody
+      .replace(/=\n/g, '')
+      .replace(/=([0-9a-fA-F]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+  }
+  if (encoding.includes('base64')) {
+    try {
+      const compact = normalizedBody.replace(/\s+/g, '');
+      const binary = atob(compact);
+      const bytes = Uint8Array.from(binary, ch => ch.charCodeAt(0));
+      return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+    } catch (_) {
+      return normalizedBody;
+    }
+  }
+  return normalizedBody;
+}
+
+function extractBestEmailBody(raw) {
+  const normalized = String(raw || '').replace(/\r\n?/g, '\n');
+  const splitIdx = normalized.indexOf('\n\n');
+  if (splitIdx === -1) {
+    return { headers: {}, bodyText: normalized };
+  }
+
+  const rootHeaderText = normalized.slice(0, splitIdx);
+  const rootBody = normalized.slice(splitIdx + 2);
+  const rootHeaders = parseRfc822Headers(rootHeaderText);
+  const contentType = (rootHeaders['content-type'] || '').toLowerCase();
+
+  if (!contentType.includes('multipart/')) {
+    const decoded = decodeEmailTransferBody(rootBody, rootHeaders['content-transfer-encoding']);
+    const bodyText = contentType.includes('text/html') ? stripToPlainText(decoded, '.html') : decoded;
+    return { headers: rootHeaders, bodyText };
+  }
+
+  const boundaryMatch = /boundary="?([^";]+)"?/i.exec(rootHeaders['content-type'] || '');
+  if (!boundaryMatch) return { headers: rootHeaders, bodyText: rootBody };
+  const boundary = boundaryMatch[1];
+  const boundaryToken = `--${boundary}`;
+  const parts = rootBody.split(boundaryToken).map(part => part.trim()).filter(part => part && part !== '--');
+
+  let fallbackText = '';
+  for (const part of parts) {
+    const cleanedPart = part.replace(/--$/, '').trim();
+    if (!cleanedPart) continue;
+    const partSplit = cleanedPart.indexOf('\n\n');
+    if (partSplit === -1) continue;
+    const partHeaders = parseRfc822Headers(cleanedPart.slice(0, partSplit));
+    const partBodyRaw = cleanedPart.slice(partSplit + 2);
+    const partType = (partHeaders['content-type'] || '').toLowerCase();
+    const decodedPart = decodeEmailTransferBody(partBodyRaw, partHeaders['content-transfer-encoding']);
+    if (partType.includes('text/plain')) {
+      return { headers: rootHeaders, bodyText: decodedPart };
+    }
+    if (!fallbackText && partType.includes('text/html')) {
+      fallbackText = stripToPlainText(decodedPart, '.html');
+    }
+  }
+
+  return { headers: rootHeaders, bodyText: fallbackText || rootBody };
+}
+
+function splitEmailThreadMessages(bodyText, rootHeaders = {}) {
+  const lines = String(bodyText || '').replace(/\r\n?/g, '\n').split('\n');
+  const segments = [];
+  let current = [];
+
+  const pushCurrent = () => {
+    if (!current.length) return;
+    const text = normalizeReadableText(current.join('\n'));
+    if (text) segments.push(text);
+    current = [];
+  };
+
+  const isHeaderBlockStart = (idx) => {
+    const line = (lines[idx] || '').trim();
+    if (!/^From:\s+/i.test(line)) return false;
+    const lookahead = lines.slice(idx + 1, idx + 7).join('\n');
+    return /(^|\n)(Sent|Date):\s+/i.test(lookahead) && /(^|\n)Subject:\s+/i.test(lookahead);
+  };
+
+  lines.forEach((line, idx) => {
+    const trimmed = line.trim();
+    const isOnWrote = /^On\b.+\bwrote:\s*$/i.test(trimmed);
+    const isQuote = /^>+/.test(trimmed);
+    const startsHeaderBlock = isHeaderBlockStart(idx);
+
+    if (isOnWrote || startsHeaderBlock) {
+      pushCurrent();
+      current.push(line);
+      return;
+    }
+    if (isQuote && current.length && !current.every(entry => /^>+/.test(entry.trim()))) {
+      pushCurrent();
+    }
+    current.push(line);
+  });
+  pushCurrent();
+
+  const rootSender = rootHeaders.from || rootHeaders.sender || '';
+  const rootDate = rootHeaders.date || '';
+  return segments
+    .map((segment, idx) => {
+      const segmentLines = segment.split('\n');
+      let sender = '';
+      let date = '';
+      const bodyLines = [];
+      segmentLines.forEach(line => {
+        const trimmed = line.trim();
+        if (!sender && /^(From|Sender):\s*/i.test(trimmed)) {
+          sender = trimmed.replace(/^(From|Sender):\s*/i, '').trim();
+          return;
+        }
+        if (!date && /^(Date|Sent):\s*/i.test(trimmed)) {
+          date = trimmed.replace(/^(Date|Sent):\s*/i, '').trim();
+          return;
+        }
+        if (/^(To|Cc|Bcc|Subject):\s*/i.test(trimmed)) return;
+        bodyLines.push(line.replace(/^>+\s?/, ''));
+      });
+      const body = normalizeReadableText(bodyLines.join('\n'));
+      return {
+        sender: sender || (idx === 0 ? rootSender : ''),
+        date: date || (idx === 0 ? rootDate : ''),
+        body
+      };
+    })
+    .filter(entry => entry.body);
+}
+
+function parseEmailToThread(raw, filename = '') {
+  const lower = String(filename || '').toLowerCase();
+  const format = lower.endsWith('.msg') ? 'msg' : 'eml';
+  const { headers, bodyText } = extractBestEmailBody(raw);
+  const messages = splitEmailThreadMessages(bodyText, headers);
+  return {
+    messages,
+    latestMessage: messages[0] || null,
+    sourceMeta: {
+      filename,
+      format,
+      subject: headers.subject || '',
+      totalMessages: messages.length
+    }
+  };
+}
+
+function buildEmailThreadPlainText(parsedThread) {
+  const subject = parsedThread?.sourceMeta?.subject ? `Subject: ${parsedThread.sourceMeta.subject}` : '';
+  const intro = [
+    'Email Thread',
+    subject,
+    parsedThread?.sourceMeta?.totalMessages ? `Messages parsed: ${parsedThread.sourceMeta.totalMessages}` : ''
+  ].filter(Boolean).join('\n');
+
+  const blocks = (parsedThread?.messages || []).map((message, idx) => {
+    const sender = message.sender || 'Unknown sender';
+    const date = message.date || 'Unknown date';
+    return `Message ${idx + 1}\nFrom: ${sender}\nDate: ${date}\n\n${message.body}`;
+  });
+  return normalizeReadableText([intro, ...blocks].filter(Boolean).join('\n\n'));
+}
+
+async function loadEmailFile(file) {
+  const lowerName = (file.name || '').toLowerCase();
+  const raw = await file.text();
+
+  if (lowerName.endsWith('.msg')) {
+    const sample = String(raw || '').slice(0, 4096);
+    const printableCount = (sample.match(/[\x09\x0A\x0D\x20-\x7E]/g) || []).length;
+    const printableRatio = sample.length ? printableCount / sample.length : 0;
+    if (printableRatio < 0.7) {
+      const guidance = `This .msg file is not readable as plain text in the browser.\n\nTo keep your reading flow uninterrupted, export the email as .eml or forward it to yourself and save it as .txt, then drop it here again.`;
+      setCurrentDocumentMeta({
+        id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
+        label: file.name,
+        type: 'email-file'
+      });
+      return loadTextDocument(guidance, file.name, `Email file · ${file.name}`);
+    }
+  }
+
+  const parsedThread = parseEmailToThread(raw, file.name);
+  const threadText = buildEmailThreadPlainText(parsedThread);
+  setCurrentDocumentMeta({
+    id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
+    label: file.name,
+    type: 'email-file'
+  });
+  return loadTextDocument(threadText, file.name, `Email · ${file.name}`);
+}
+
 function tryParseUrl(rawUrl) {
   try {
     return new URL(rawUrl);
@@ -2575,6 +2791,10 @@ function renderTextFlowFromPlainText(text, originLabel = 'Text source') {
 
 async function loadSourceFile(file) {
   if (isPdfFile(file)) return loadPDF(file);
+  const lowerName = (file?.name || '').toLowerCase();
+  if (lowerName.endsWith('.eml') || lowerName.endsWith('.msg')) {
+    return loadEmailFile(file);
+  }
   if (!isTextLikeFile(file)) {
     rInner.innerHTML = '<div style="padding:40px;color:var(--text-muted);font-size:12px;text-align:center;font-family:\'DM Mono\',monospace;">Unsupported file type. Try PDF, TXT, Markdown, HTML, JSON, or email files (.eml/.msg).</div>';
     return;
