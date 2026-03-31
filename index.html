@@ -1725,7 +1725,7 @@ body.low-interruption-active .flow-speed-hud {
         <div class="sec-label">Speed Reading <span class="sci sci-mixed">Mixed evidence</span></div>
         <div class="sec-hint">RSVP-style speed drills can raise pace, but comprehension and retention may drop as words-per-minute increases. See <code>A2</code>.</div>
         <div class="ctrl-group">
-          <div class="mode-note">How to start: switch to Flow mode, then press and hold anywhere in the reader for 3 seconds. Release to pause.</div>
+          <div class="mode-note">How to start: switch to Flow mode, then press and hold anywhere in the reader for 2.5 seconds. Release to pause.</div>
           <div class="ctrl" style="padding-top:0;">
             <span class="ctrl-lbl">Speed-Read WPM</span>
             <input type="number" id="scrollWpmIn" class="scroll-wpm-input" min="40" max="900" step="1" value="144" inputmode="numeric" aria-label="Speed-read words per minute">
@@ -2057,7 +2057,7 @@ let flowHoldState = {
   holdRaf: null
 };
 const FLOW_HOLD_TIMER_THRESHOLD_MS = 1000;
-const FLOW_HUD_THRESHOLD_MS = 3000;
+const FLOW_HUD_THRESHOLD_MS = 2500;
 const FLOW_BASE_WPM = 180;
 const FLOW_SPEED_READ_MAX_WPM = 900;
 const FLOW_SPEED_READ_FALLBACK_WPM = Math.max(40, Math.round(Math.abs(DEFAULT_SETTINGS.autoScrollSpeed) * FLOW_BASE_WPM));
@@ -2069,7 +2069,7 @@ const FLOW_GESTURE_STATES = Object.freeze({
   PAUSED_ON_RELEASE: 'paused_on_release'
 });
 const FLOW_GESTURE_TIMER_VISIBLE_MS = 1000;
-const FLOW_GESTURE_ACTIVATE_MS = 3000;
+const FLOW_GESTURE_ACTIVATE_MS = 2500;
 const FLOW_SPEED_READ_INTERVAL_DEBOUNCE_MS = 120;
 let flowGestureState = FLOW_GESTURE_STATES.IDLE;
 let flowGesturePressStartTs = 0;
@@ -6151,6 +6151,13 @@ reader.addEventListener('pointerleave', e => {
   if (!isFlowGestureEnabled()) return;
   if (flowGestureState === FLOW_GESTURE_STATES.SPEED_READ_ACTIVE) return;
   releaseFlowGestureHold(e.pointerId, 'pointer_leave');
+});
+flowLayer.addEventListener('pointerdown', e => {
+  if (readingMode !== 'flow') return;
+  ensureFlowSpeedReadWordNodes();
+  const wordNode = e.target instanceof Element ? e.target.closest('.flow-speed-word') : null;
+  if (!wordNode) return;
+  setFlowWordSelection(wordNode);
 });
 flowLayer.addEventListener('pointermove', e => {
   if (readingMode !== 'flow') return;
