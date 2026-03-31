@@ -580,6 +580,17 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   line-height: inherit;
   text-wrap: pretty;
 }
+.flow-highlightable {
+  border-radius: 8px;
+  transition: background-color 0.16s ease, box-shadow 0.16s ease, outline-color 0.16s ease, opacity 0.16s ease;
+}
+.flow-highlight-active {
+  background: linear-gradient(90deg, rgba(200, 135, 74, 0.2), rgba(200, 135, 74, 0.08));
+  outline: 1px solid var(--accent-mid);
+  box-shadow: inset 0 0 0 1px rgba(226, 168, 111, 0.15), 0 0 0 1px rgba(0,0,0,0.04);
+}
+.flow-layer.flow-shaded .flow-highlightable { opacity: 0.58; }
+.flow-layer.flow-shaded .flow-highlight-active { opacity: 1; }
 .reader-inner.flow-mode .page-wrap { display: none; }
 
 /* Overlays */
@@ -1024,7 +1035,7 @@ body.low-interruption-active .chunk-indicator {
       <div class="sec is-collapsed">
         <div class="sec-label">Focus Aids</div>
 
-        <div class="trow ctrl-group flow-locked-group">
+        <div class="trow ctrl-group">
           <div class="trow-info">
             <div class="trow-lbl">Reading Ruler <span class="sci">✦</span></div>
             <div class="trow-sub">Tracks cursor to reduce line-skipping</div>
@@ -1032,7 +1043,7 @@ body.low-interruption-active .chunk-indicator {
           <label class="tog"><input type="checkbox" id="rulerT" onchange="toggleRuler()"><span class="tog-tk"></span></label>
         </div>
 
-        <div class="trow ctrl-group flow-locked-group">
+        <div class="trow ctrl-group">
           <div class="trow-info">
             <div class="trow-lbl">Paragraph Shading <span class="sci">✦</span></div>
             <div class="trow-sub">Highlights text near the ruler line</div>
@@ -1040,7 +1051,7 @@ body.low-interruption-active .chunk-indicator {
           <label class="tog"><input type="checkbox" id="shadeT" onchange="toggleRuler()"><span class="tog-tk"></span></label>
         </div>
 
-        <div class="trow ctrl-group flow-locked-group">
+        <div class="trow ctrl-group">
           <div class="trow-info">
             <div class="trow-lbl">Chunking Mode <span class="sci">✦</span></div>
             <div class="trow-sub">Keeps a narrow reading band fixed while you step</div>
@@ -1078,7 +1089,7 @@ body.low-interruption-active .chunk-indicator {
           <span class="ctrl-val" id="focusDepthV">220px</span>
         </div>
         <div class="sec-hint ctrl-group focus-group" style="padding-top:2px;">Lower for gentle focus, higher for stronger edge dimming</div>
-        <div class="mode-note ctrl-group flow-only-note" id="focusModeHint" hidden>Flow mode hides ruler and chunk controls because they rely on fixed page geometry.</div>
+        <div class="mode-note ctrl-group flow-only-note" id="focusModeHint" hidden>In flow mode, ruler and chunking adapt into paragraph-band highlighting with the same J/K stepping rhythm.</div>
 
         <div class="trow">
           <div class="trow-info">
@@ -1217,6 +1228,7 @@ let readingMode = 'pdf';
 let flowDocCache = null;
 let textDoc = null;
 let chunkCenterY = 0;
+let flowChunkIndex = 0;
 const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
 const SETTINGS_STORAGE_KEY = 'lumen.settings.v1';
 const SESSION_SUPPORT_STORAGE_KEY = 'lumen.session-support.v1';
@@ -2313,10 +2325,11 @@ function syncReadingModeControls() {
   const displayModeHint = document.getElementById('displayModeHint');
   if (displayModeHint) displayModeHint.hidden = !isFlow;
 
-  ['rulerT', 'shadeT', 'chunkT', 'chunkR', 'chunkUpBtn', 'chunkDownBtn'].forEach(id => {
+  ['rulerT', 'shadeT', 'chunkT', 'chunkR'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.disabled = isFlow;
+    if (el) el.disabled = false;
   });
+  setChunkButtonState();
   const focusModeHint = document.getElementById('focusModeHint');
   if (focusModeHint) focusModeHint.hidden = !isFlow;
 }
@@ -2441,6 +2454,8 @@ async function renderFlowDocument() {
     flowLayer.appendChild(chip);
     renderFlowBlocks(buildFlowBlocks(page.paragraphs), page.pageNum);
   });
+  flowChunkIndex = 0;
+  updateFlowHighlight();
 }
 
 async function applyReadingMode() {
@@ -2465,8 +2480,10 @@ async function applyReadingMode() {
   if (usingFlow) {
     if (!flowLayer.innerHTML.trim()) await renderFlowDocument();
     flowLayer.classList.add('on');
+    updateFlowHighlight();
   } else {
     flowLayer.classList.remove('on');
+    updateFlowHighlight();
   }
 
   rInner.querySelectorAll('.textLayer').forEach(tl => {
@@ -2688,7 +2705,10 @@ wire('wsR',     'wsV',    'px', v => v.toFixed(1)+'px', () => applyReadingMode()
 wire('scrollSR','scrollSV','', v => `${v.toFixed(1)}x`, v => { scrollSpeed = v; });
 wire('focusR',  'focusV', '%', null, v => updateFocusVignette(v));
 wire('focusDepthR', 'focusDepthV', 'px', null, v => updateFocusDepth(v));
-wire('chunkR', 'chunkV', ' lines', v => `${Math.round(v)} line${Math.round(v) === 1 ? '' : 's'}`, () => updateChunkOverlay());
+wire('chunkR', 'chunkV', ' lines', v => `${Math.round(v)} line${Math.round(v) === 1 ? '' : 's'}`, () => {
+  updateChunkOverlay();
+  updateFlowHighlight();
+});
 
 /* ── Tint ── */
 function updateTint() {
@@ -2745,6 +2765,70 @@ function setChunkButtonState() {
   document.getElementById('chunkDownBtn').disabled = !enabled;
 }
 
+function getFlowHighlightables() {
+  return [...flowLayer.querySelectorAll('.flow-para, .flow-heading, .flow-list-item')];
+}
+
+function ensureFlowHighlightTargets() {
+  getFlowHighlightables().forEach(el => el.classList.add('flow-highlightable'));
+}
+
+function clampFlowChunkIndex(list, chunkSize) {
+  if (!list.length) {
+    flowChunkIndex = 0;
+    return;
+  }
+  const maxStart = Math.max(0, list.length - chunkSize);
+  flowChunkIndex = Math.max(0, Math.min(flowChunkIndex, maxStart));
+}
+
+function scrollFlowChunkIntoView(list, chunkSize) {
+  if (!list.length) return;
+  const first = list[flowChunkIndex];
+  const last = list[Math.min(list.length - 1, flowChunkIndex + chunkSize - 1)];
+  if (!first || !last) return;
+  const readerRect = reader.getBoundingClientRect();
+  const top = first.getBoundingClientRect().top - readerRect.top;
+  const bottom = last.getBoundingClientRect().bottom - readerRect.top;
+  const pad = 80;
+  if (top < pad) first.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  else if (bottom > (reader.clientHeight - pad)) last.scrollIntoView({ behavior: 'smooth', block: 'end' });
+}
+
+function updateFlowHighlight() {
+  if (readingMode !== 'flow') {
+    flowLayer.classList.remove('flow-shaded');
+    getFlowHighlightables().forEach(el => el.classList.remove('flow-highlight-active'));
+    return;
+  }
+  ensureFlowHighlightTargets();
+  const list = getFlowHighlightables();
+  const chunkSize = Math.max(1, Number(document.getElementById('chunkR').value) || 1);
+  const rulerOn = document.getElementById('rulerT').checked;
+  if (!chunkModeOn() && rulerOn && list.length) {
+    const center = window.innerHeight * 0.42;
+    let nearestIdx = 0;
+    let nearestDelta = Number.POSITIVE_INFINITY;
+    list.forEach((el, idx) => {
+      const rect = el.getBoundingClientRect();
+      const mid = rect.top + (rect.height / 2);
+      const delta = Math.abs(mid - center);
+      if (delta < nearestDelta) {
+        nearestDelta = delta;
+        nearestIdx = idx;
+      }
+    });
+    flowChunkIndex = nearestIdx;
+  }
+  clampFlowChunkIndex(list, chunkSize);
+  list.forEach((el, idx) => {
+    const active = idx >= flowChunkIndex && idx < flowChunkIndex + chunkSize;
+    el.classList.toggle('flow-highlight-active', active && (rulerOn || chunkModeOn()));
+  });
+  const showShading = document.getElementById('shadeT').checked || chunkModeOn();
+  flowLayer.classList.toggle('flow-shaded', showShading);
+}
+
 function updateChunkOverlay() {
   const shadeTop = document.getElementById('rShadeTop');
   const shadeBot = document.getElementById('rShadeBot');
@@ -2786,6 +2870,15 @@ function stepChunkPage(direction) {
 
 function stepChunk(direction) {
   if (!chunkModeOn()) return;
+  if (readingMode === 'flow') {
+    const list = getFlowHighlightables();
+    const stepSize = Math.max(1, Number(document.getElementById('chunkR').value) || 1);
+    flowChunkIndex += direction * stepSize;
+    clampFlowChunkIndex(list, stepSize);
+    updateFlowHighlight();
+    scrollFlowChunkIntoView(list, stepSize);
+    return;
+  }
   ensureChunkAnchor();
   const chunkHeight = getChunkHeightPx();
   const half = Math.round(chunkHeight / 2);
@@ -2804,21 +2897,26 @@ function stepChunk(direction) {
 
 function toggleChunkMode() {
   ensureChunkAnchor();
-  if (readingMode === 'flow') {
-    document.querySelectorAll('.chunk-group').forEach(el => el.classList.add('collapsed'));
-    document.getElementById('chunkUpBtn').disabled = true;
-    document.getElementById('chunkDownBtn').disabled = true;
-    document.getElementById('chunkStatus').classList.remove('on');
-    toggleRuler();
-    return;
-  }
   setChunkButtonState();
   const on = chunkModeOn();
   document.querySelectorAll('.chunk-group').forEach(el => el.classList.toggle('collapsed', !on));
   document.getElementById('chunkStatus').classList.toggle('on', on);
-  if (on) resetChunkPosition(true);
+  if (on && readingMode !== 'flow') resetChunkPosition(true);
+  if (readingMode === 'flow' && on) {
+    const list = getFlowHighlightables();
+    const chunkSize = Math.max(1, Number(document.getElementById('chunkR').value) || 1);
+    if (list.length) {
+      const visibleIndex = list.findIndex(el => {
+        const rect = el.getBoundingClientRect();
+        return rect.top >= 80 && rect.bottom <= (window.innerHeight - 80);
+      });
+      if (visibleIndex >= 0) flowChunkIndex = visibleIndex;
+      clampFlowChunkIndex(list, chunkSize);
+    }
+  }
   toggleRuler();
   updateChunkOverlay();
+  updateFlowHighlight();
 }
 
 reader.addEventListener('mousemove', e => {
@@ -2835,6 +2933,7 @@ function toggleRuler() {
     document.getElementById('rulerLine').classList.remove('on');
     document.getElementById('rShadeTop').classList.remove('on');
     document.getElementById('rShadeBot').classList.remove('on');
+    updateFlowHighlight();
     return;
   }
   const on  = document.getElementById('rulerT').checked;
@@ -2917,6 +3016,7 @@ function updateProgressAndStatus() {
 reader.addEventListener('scroll', () => {
   updateProgressAndStatus();
   updateChunkOverlay();
+  updateFlowHighlight();
   saveDocProgress();
 });
 
