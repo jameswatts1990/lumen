@@ -515,6 +515,32 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .ruler-shade-top { position: fixed; left: var(--sidebar-offset); right: 0; top: 0; pointer-events: none; z-index: 199; background: rgba(0,0,0,0.55); display: none; }
 .ruler-shade-bot { position: fixed; left: var(--sidebar-offset); right: 0; bottom: 0; pointer-events: none; z-index: 199; background: rgba(0,0,0,0.55); display: none; }
 .ruler-shade-top.on, .ruler-shade-bot.on { display: block; }
+.chunk-indicator {
+  position: fixed;
+  top: 16px;
+  right: 18px;
+  z-index: 320;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-mid);
+  background: rgba(24, 18, 12, 0.9);
+  color: #e6cfb3;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.32);
+}
+.chunk-indicator.on { display: inline-flex; }
+.chunk-indicator .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-mid);
+}
 
 .focus-top { position: fixed; left: var(--sidebar-offset); right: 0; top: 0; height: 220px; background: linear-gradient(to bottom, rgba(0,0,0,0.72), transparent); pointer-events: none; z-index: 180; display: none; }
 .focus-bot { position: fixed; left: var(--sidebar-offset); right: 0; bottom: 0; height: 220px; background: linear-gradient(to top, rgba(0,0,0,0.72), transparent); pointer-events: none; z-index: 180; display: none; }
@@ -1032,6 +1058,10 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 <div class="ruler-line" id="rulerLine"></div>
 <div class="ruler-shade-top" id="rShadeTop"></div>
 <div class="ruler-shade-bot" id="rShadeBot"></div>
+<div class="chunk-indicator" id="chunkStatus" aria-live="polite">
+  <span class="dot" aria-hidden="true"></span>
+  <span>Chunking enabled · Move with <kbd>J</kbd>/<kbd>K</kbd></span>
+</div>
 <div class="focus-top" id="focTop"></div>
 <div class="focus-bot" id="focBot"></div>
 <div class="tint-lay" id="tintLay"></div>
@@ -2233,7 +2263,6 @@ function setChunkButtonState() {
 }
 
 function updateChunkOverlay() {
-  const rl = document.getElementById('rulerLine');
   const shadeTop = document.getElementById('rShadeTop');
   const shadeBot = document.getElementById('rShadeBot');
   if (!chunkModeOn()) return;
@@ -2243,12 +2272,6 @@ function updateChunkOverlay() {
   const y = chunkCenterY;
   const rootStyles = getComputedStyle(document.documentElement);
   const accentDim = parseCssColor(rootStyles.getPropertyValue('--accent-dim'), 0.12);
-  const accentMid = parseCssColor(rootStyles.getPropertyValue('--accent-mid'), 0.35);
-
-  rl.style.top = `${y}px`;
-  rl.style.height = `${Math.max(2, Math.round(chunkHeight * 0.08))}px`;
-  rl.style.background = accentMid;
-  rl.style.boxShadow = `0 0 10px ${accentDim}`;
 
   shadeTop.style.height = `${Math.max(0, y - half)}px`;
   shadeBot.style.height = `${Math.max(0, window.innerHeight - y - half)}px`;
@@ -2256,10 +2279,42 @@ function updateChunkOverlay() {
   shadeBot.style.background = `linear-gradient(to top, rgba(8,6,4,0.76), ${accentDim})`;
 }
 
+function resetChunkPosition(atTop = true) {
+  const chunkHeight = getChunkHeightPx();
+  const margin = Math.max(72, Math.round(window.innerHeight * 0.12));
+  if (atTop) {
+    chunkCenterY = margin + Math.round(chunkHeight / 2);
+  } else {
+    chunkCenterY = window.innerHeight - margin - Math.round(chunkHeight / 2);
+  }
+  ensureChunkAnchor();
+}
+
+function stepChunkPage(direction) {
+  const total = getTotalPages();
+  if (!total || readingMode === 'flow') return false;
+  const nextPage = currentPage + direction;
+  if (nextPage < 1 || nextPage > total) return false;
+  goToPage(nextPage);
+  resetChunkPosition(direction > 0);
+  updateChunkOverlay();
+  return true;
+}
+
 function stepChunk(direction) {
   if (!chunkModeOn()) return;
   ensureChunkAnchor();
-  chunkCenterY += direction * getChunkHeightPx();
+  const chunkHeight = getChunkHeightPx();
+  const half = Math.round(chunkHeight / 2);
+  const nextCenter = chunkCenterY + (direction * chunkHeight);
+  const nextTop = nextCenter - half;
+  const nextBottom = nextCenter + half;
+  if (direction > 0 && nextBottom > window.innerHeight - 24) {
+    if (stepChunkPage(1)) return;
+  } else if (direction < 0 && nextTop < 24) {
+    if (stepChunkPage(-1)) return;
+  }
+  chunkCenterY = nextCenter;
   ensureChunkAnchor();
   updateChunkOverlay();
 }
@@ -2270,12 +2325,15 @@ function toggleChunkMode() {
     document.querySelectorAll('.chunk-group').forEach(el => el.classList.add('collapsed'));
     document.getElementById('chunkUpBtn').disabled = true;
     document.getElementById('chunkDownBtn').disabled = true;
+    document.getElementById('chunkStatus').classList.remove('on');
     toggleRuler();
     return;
   }
   setChunkButtonState();
   const on = chunkModeOn();
   document.querySelectorAll('.chunk-group').forEach(el => el.classList.toggle('collapsed', !on));
+  document.getElementById('chunkStatus').classList.toggle('on', on);
+  if (on) resetChunkPosition(true);
   toggleRuler();
   updateChunkOverlay();
 }
@@ -2299,7 +2357,7 @@ function toggleRuler() {
   const on  = document.getElementById('rulerT').checked;
   const shd = document.getElementById('shadeT').checked;
   const chunkOn = chunkModeOn();
-  document.getElementById('rulerLine').classList.toggle('on', on || chunkOn);
+  document.getElementById('rulerLine').classList.toggle('on', on && !chunkOn);
   document.getElementById('rShadeTop').classList.toggle('on', shd || chunkOn);
   document.getElementById('rShadeBot').classList.toggle('on', shd || chunkOn);
   if (chunkOn) updateChunkOverlay();
