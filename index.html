@@ -268,6 +268,9 @@ body.sidebar-collapsed .sidebar-toggle { left: 8px; }
   opacity: 0.88;
   pointer-events: none;
 }
+.sec.is-disabled .sec-inner {
+  opacity: 0.62;
+}
 
 /* Control rows */
 .ctrl { padding: 4px 20px; display: flex; align-items: center; gap: 10px; }
@@ -1182,6 +1185,21 @@ body.low-interruption-active .session-timer-overlay {
         </div>
       </div>
 
+
+      <!-- Email Thread Order -->
+      <div class="sec is-collapsed" id="emailOrderSection">
+        <div class="sec-label">Email Thread Order</div>
+        <div class="sec-hint">Choose how thread replies stack in flow mode. Newest-first matches the latest-response reading rhythm used by default.</div>
+        <select class="fsel" id="emailOrderSel" aria-label="Email thread order">
+          <option value="newest-first">Newest → Oldest</option>
+          <option value="oldest-first">Oldest → Newest</option>
+        </select>
+        <div class="presets" style="padding-top: 2px;">
+          <button class="pbtn" type="button" data-email-order="newest-first">Newest → Oldest</button>
+          <button class="pbtn" type="button" data-email-order="oldest-first">Oldest → Newest</button>
+        </div>
+      </div>
+
       <!-- Session Support -->
       <div class="sec is-collapsed">
         <div class="sec-label">Session Support</div>
@@ -1580,6 +1598,8 @@ let currentPage = 0;
 let readingMode = 'pdf';
 let flowDocCache = null;
 let textDoc = null;
+let emailThreadModel = null;
+let emailThreadOrder = 'newest-first';
 let chunkCenterY = 0;
 let flowChunkIndex = 0;
 const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
@@ -1614,7 +1634,8 @@ const DEFAULT_SETTINGS = {
   autoScrollSpeed: 0.8,
   chunkMode: false,
   chunkHeight: 2,
-  flowAutoSplit: false
+  flowAutoSplit: false,
+  emailThreadOrder: 'newest-first'
 };
 const BUILTIN_PROFILES = [
   {
@@ -1903,6 +1924,7 @@ function captureSettings() {
     chunkMode: document.getElementById('chunkT').checked,
     chunkHeight: Number(document.getElementById('chunkR').value),
     flowAutoSplit: document.getElementById('flowSplitT').checked,
+    emailThreadOrder,
   };
 }
 
@@ -1955,6 +1977,7 @@ function applySettings(profile) {
   setRangeValue('tintR', settings.tint);
   updateTint();
   setRangeValue('scrollSR', settings.autoScrollSpeed);
+  setEmailThreadOrder(settings.emailThreadOrder, { rerender: true, persist: false });
 }
 
 function saveProfilesState() {
@@ -1995,7 +2018,7 @@ function registerSettingsPersistence() {
   const ids = [
     'widthR', 'briR', 'conR', 'gapR', 'fontSel', 'tsizeR', 'lhR', 'lsR', 'wsR',
     'rulerT', 'shadeT', 'focusT', 'focusR', 'focusDepthR', 'progT', 'tintR',
-    'scrollSR', 'chunkT', 'chunkR', 'flowSplitT', 'lowInterruptT', 'profileSel'
+    'scrollSR', 'chunkT', 'chunkR', 'flowSplitT', 'lowInterruptT', 'profileSel', 'emailOrderSel'
   ];
   ids.forEach(id => {
     const el = document.getElementById(id);
@@ -2752,7 +2775,16 @@ function parseEmailToThread(raw, filename = '') {
   };
 }
 
-function buildEmailThreadPlainText(parsedThread) {
+function getOrderedEmailMessages(parsedThread, order = emailThreadOrder) {
+  const messages = Array.isArray(parsedThread?.messages) ? [...parsedThread.messages] : [];
+  return order === 'oldest-first' ? messages.reverse() : messages;
+}
+
+function normalizeEmailThreadOrder(value) {
+  return value === 'oldest-first' ? 'oldest-first' : 'newest-first';
+}
+
+function buildEmailThreadPlainText(parsedThread, order = emailThreadOrder) {
   const subject = parsedThread?.sourceMeta?.subject ? `Subject: ${parsedThread.sourceMeta.subject}` : '';
   const intro = [
     'Email Thread',
@@ -2760,7 +2792,7 @@ function buildEmailThreadPlainText(parsedThread) {
     parsedThread?.sourceMeta?.totalMessages ? `Messages parsed: ${parsedThread.sourceMeta.totalMessages}` : ''
   ].filter(Boolean).join('\n');
 
-  const blocks = (parsedThread?.messages || []).map((message, idx) => {
+  const blocks = getOrderedEmailMessages(parsedThread, order).map((message, idx) => {
     const sender = message.sender || 'Unknown sender';
     const date = message.date || 'Unknown date';
     return `Message ${idx + 1}\nFrom: ${sender}\nDate: ${date}\n\n${message.body}`;
@@ -2788,13 +2820,13 @@ async function loadEmailFile(file) {
   }
 
   const parsedThread = parseEmailToThread(raw, file.name);
-  const threadText = buildEmailThreadPlainText(parsedThread);
   setCurrentDocumentMeta({
     id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
     label: file.name,
     type: 'email-file'
   });
-  return loadTextDocument(threadText, file.name, `Email · ${file.name}`);
+  emailThreadModel = parsedThread;
+  return reRenderEmailThreadFromModel(file.name, `Email · ${file.name}`, { persist: true });
 }
 
 function tryParseUrl(rawUrl) {
@@ -3044,6 +3076,82 @@ function renderTextFlowFromPlainText(text, originLabel = 'Text source') {
   };
 }
 
+async function reRenderEmailThreadFromModel(displayName, sourceLabel, options = {}) {
+  if (!emailThreadModel) return;
+  const nextOrder = normalizeEmailThreadOrder(options.order ?? emailThreadOrder);
+  const preserveScroll = options.preserveScroll !== false;
+  const persistDoc = options.persist !== false;
+  const previousRatio = preserveScroll && reader.scrollHeight > reader.clientHeight
+    ? reader.scrollTop / Math.max(1, reader.scrollHeight - reader.clientHeight)
+    : 0;
+
+  const threadText = buildEmailThreadPlainText(emailThreadModel, nextOrder);
+  emailThreadOrder = nextOrder;
+  refreshEmailThreadOrderControls();
+  const extracted = renderTextFlowFromPlainText(threadText, sourceLabel || `Email · ${displayName || emailThreadModel?.sourceMeta?.filename || 'Thread'}`);
+  textDoc = {
+    ...(textDoc || {}),
+    title: displayName || textDoc?.title || emailThreadModel?.sourceMeta?.filename || 'Email thread',
+    sourceLabel: sourceLabel || textDoc?.sourceLabel || `Email · ${displayName || 'Thread'}`,
+    isEmailThread: true,
+    ...extracted
+  };
+
+  if (!rInner.contains(flowLayer)) rInner.appendChild(flowLayer);
+  flowLayer.classList.add('on');
+  rInner.classList.add('flow-mode');
+  setPageJumpAvailability(true);
+  if (readingMode !== 'flow') setReadingMode('flow');
+  await applyReadingMode();
+  applyMaxWidth();
+  applyGap();
+  renderOutlineFallback('Outline is only available for PDFs.');
+
+  if (preserveScroll) {
+    const maxScroll = Math.max(0, reader.scrollHeight - reader.clientHeight);
+    reader.scrollTop = maxScroll * Math.max(0, Math.min(1, previousRatio));
+  }
+  updateProgressAndStatus();
+
+  if (persistDoc) {
+    await savePersistedDocument({
+      type: 'text',
+      content: threadText,
+      displayName: textDoc.title,
+      sourceLabel: textDoc.sourceLabel,
+      docMeta: currentDocMeta || null
+    });
+  }
+}
+
+function refreshEmailThreadOrderControls() {
+  const section = document.getElementById('emailOrderSection');
+  const select = document.getElementById('emailOrderSel');
+  if (!section || !select) return;
+  const active = normalizeEmailThreadOrder(emailThreadOrder);
+  const enabled = Boolean(emailThreadModel);
+  section.classList.toggle('is-disabled', !enabled);
+  select.disabled = !enabled;
+  select.value = active;
+  document.querySelectorAll('.pbtn[data-email-order]').forEach(btn => {
+    const on = btn.dataset.emailOrder === active;
+    btn.classList.toggle('on', on);
+    btn.disabled = !enabled;
+  });
+}
+
+function setEmailThreadOrder(nextOrder, options = {}) {
+  const normalized = normalizeEmailThreadOrder(nextOrder);
+  const shouldPersist = options.persist !== false;
+  const shouldRerender = options.rerender !== false;
+  emailThreadOrder = normalized;
+  refreshEmailThreadOrderControls();
+  if (shouldPersist) queuePersistSettings();
+  if (shouldRerender && emailThreadModel) {
+    reRenderEmailThreadFromModel(textDoc?.title || emailThreadModel?.sourceMeta?.filename || 'Email thread', textDoc?.sourceLabel || `Email · ${emailThreadModel?.sourceMeta?.filename || 'Thread'}`, { order: normalized, preserveScroll: true, persist: false });
+  }
+}
+
 async function loadSourceFile(file) {
   if (isPdfFile(file)) return loadPDF(file);
   const lowerName = (file?.name || '').toLowerCase();
@@ -3076,9 +3184,10 @@ async function loadSourceFile(file) {
   return loadTextDocument(plainText, file.name, `File · ${file.name}`);
 }
 
-async function loadTextDocument(plainText, displayName, sourceLabel) {
+async function loadTextDocument(plainText, displayName, sourceLabel, options = {}) {
   pdf = null;
   flowDocCache = null;
+  emailThreadModel = options.emailThreadModel || null;
   stopScroll();
   scrolling = false;
   const scrollBtn = document.getElementById('scrollBtn');
@@ -3086,7 +3195,7 @@ async function loadTextDocument(plainText, displayName, sourceLabel) {
   scrollBtn.classList.remove('on');
   reader.scrollTop = 0;
   const extracted = renderTextFlowFromPlainText(plainText, sourceLabel);
-  textDoc = { title: displayName, sourceLabel, ...extracted };
+  textDoc = { title: displayName, sourceLabel, isEmailThread: Boolean(options.emailThreadModel), ...extracted };
   document.getElementById('upName').textContent = displayName;
   document.getElementById('upName').style.display = 'block';
   reader.classList.remove('drop-ready');
@@ -3101,6 +3210,7 @@ async function loadTextDocument(plainText, displayName, sourceLabel) {
   applyGap();
   renderOutlineFallback('Outline is only available for PDFs.');
   updateProgressAndStatus();
+  refreshEmailThreadOrderControls();
   await savePersistedDocument({
     type: 'text',
     content: String(plainText || ''),
@@ -3136,6 +3246,8 @@ async function loadPDF(file) {
   }
 
   textDoc = null;
+  emailThreadModel = null;
+  refreshEmailThreadOrderControls();
   setCurrentDocumentMeta({
     id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
     label: file.name,
@@ -3191,6 +3303,8 @@ async function loadPDF(file) {
 
 async function loadPDFBytes(bytes, name = 'Recovered PDF') {
   textDoc = null;
+  emailThreadModel = null;
+  refreshEmailThreadOrderControls();
   document.getElementById('upName').textContent = name;
   document.getElementById('upName').style.display = 'block';
   reader.classList.remove('drop-ready');
@@ -3229,6 +3343,7 @@ async function loadPDFBytes(bytes, name = 'Recovered PDF') {
 function resetLoadedDocumentUI() {
   pdf = null;
   textDoc = null;
+  emailThreadModel = null;
   flowDocCache = null;
   currentDocMeta = null;
   pendingResumeState = null;
@@ -3266,6 +3381,7 @@ function resetLoadedDocumentUI() {
   updateProgressAndStatus();
   setPageJumpAvailability(false);
   renderOutlineFallback('Load a PDF to view navigation links.');
+  refreshEmailThreadOrderControls();
   refreshResumeCard();
 }
 
@@ -4502,6 +4618,12 @@ document.getElementById('scrollBottomBtn').addEventListener('click', () => goToD
 
 document.getElementById('chunkUpBtn').addEventListener('click', () => stepChunk(-1));
 document.getElementById('chunkDownBtn').addEventListener('click', () => stepChunk(1));
+document.getElementById('emailOrderSel').addEventListener('change', e => {
+  setEmailThreadOrder(e.target.value, { rerender: true, persist: true });
+});
+document.querySelectorAll('.pbtn[data-email-order]').forEach(btn => {
+  btn.addEventListener('click', () => setEmailThreadOrder(btn.dataset.emailOrder, { rerender: true, persist: true }));
+});
 document.querySelectorAll('input[name="readingMode"]').forEach(input => {
   input.addEventListener('change', async e => {
     if (!e.target.checked) return;
@@ -4553,6 +4675,7 @@ if (persistedSettings.settings) {
   applySettings(persistedSettings.settings);
 }
 restorePersistedDocument();
+refreshEmailThreadOrderControls();
 toggleChunkMode();
 </script>
 </body>
