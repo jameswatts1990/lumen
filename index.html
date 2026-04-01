@@ -7791,17 +7791,52 @@ function getFlowHighlightables() {
   return [...flowLayer.querySelectorAll('.flow-para, .flow-heading, .flow-list-item')];
 }
 
+function getFlowChunkAnchor(list = getFlowHighlightables()) {
+  if (!list.length) return null;
+  const clampedIndex = Math.max(0, Math.min(flowChunkIndex, list.length - 1));
+  const el = list[clampedIndex];
+  if (!el) return { index: clampedIndex, text: '' };
+  const text = (el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+  return { index: clampedIndex, text };
+}
+
+function restoreFlowChunkAnchor(anchor, chunkSize) {
+  const list = getFlowHighlightables();
+  if (!list.length) {
+    flowChunkIndex = 0;
+    return;
+  }
+  if (!anchor) {
+    clampFlowChunkIndex(list, chunkSize);
+    return;
+  }
+  const desiredText = anchor.text || '';
+  let restoredIndex = Math.max(0, Math.min(anchor.index || 0, list.length - 1));
+  if (desiredText) {
+    const exactIndex = list.findIndex(el => ((el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase()) === desiredText);
+    if (exactIndex >= 0) restoredIndex = exactIndex;
+  }
+  flowChunkIndex = restoredIndex;
+  clampFlowChunkIndex(list, chunkSize);
+}
+
 async function refreshFlowRenderForChunking() {
   if (readingMode !== 'flow') return;
+  const chunkSize = Math.max(1, Number(document.getElementById('chunkR').value) || 1);
+  const anchor = getFlowChunkAnchor();
   if (pdf) {
     await renderFlowDocument();
+    restoreFlowChunkAnchor(anchor, chunkSize);
+    updateFlowHighlight();
+    scrollFlowChunkIntoView(getFlowHighlightables(), chunkSize);
     return;
   }
   if (textDoc?.plainText) {
     const refreshed = renderTextFlowFromPlainText(textDoc.plainText, textDoc.sourceLabel || `File · ${textDoc.title || 'Text source'}`);
     textDoc = { ...textDoc, ...refreshed };
-    flowChunkIndex = 0;
+    restoreFlowChunkAnchor(anchor, chunkSize);
     updateFlowHighlight();
+    scrollFlowChunkIntoView(getFlowHighlightables(), chunkSize);
   }
 }
 
