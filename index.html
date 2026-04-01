@@ -3501,8 +3501,31 @@ function maybeOfferResumeForCurrentDoc() {
   refreshResumeCard();
 }
 
+function getAvailableReadingModesForCurrentContent() {
+  const metaType = String(currentDocMeta?.type || '').toLowerCase();
+  if (!metaType) return ['pdf', 'overlay', 'flow'];
+  if (metaType === 'pdf' || metaType === 'pdf-file') return ['pdf', 'overlay', 'flow'];
+  return ['flow'];
+}
+
+function syncReadingModeAvailability() {
+  const availableModes = getAvailableReadingModesForCurrentContent();
+  const modeInputs = Array.from(document.querySelectorAll('input[name="readingMode"]'));
+  modeInputs.forEach((input) => {
+    const modeAvailable = availableModes.includes(input.value);
+    const modeLabel = input.closest('label');
+    if (modeLabel) modeLabel.hidden = !modeAvailable;
+    input.disabled = !modeAvailable;
+    if (!modeAvailable) input.checked = false;
+  });
+  if (!availableModes.includes(readingMode)) {
+    setReadingMode(availableModes[0] || 'flow');
+  }
+}
+
 function setCurrentDocumentMeta(meta) {
   currentDocMeta = meta;
+  syncReadingModeAvailability();
   maybeOfferResumeForCurrentDoc();
 }
 
@@ -5138,20 +5161,23 @@ function expandSidebarSection(sectionId) {
 }
 
 function setReadingMode(mode) {
+  const availableModes = getAvailableReadingModesForCurrentContent();
   const normalized = ['pdf', 'overlay', 'flow'].includes(mode) ? mode : 'pdf';
-  readingMode = normalized;
+  const nextMode = availableModes.includes(normalized) ? normalized : (availableModes[0] || 'flow');
+  syncReadingModeAvailability();
+  readingMode = nextMode;
   document.querySelectorAll('input[name="readingMode"]').forEach(input => {
-    input.checked = input.value === normalized;
+    input.checked = input.value === nextMode;
   });
-  if (normalized === 'overlay') {
+  if (nextMode === 'overlay') {
     expandSidebarSection('typographySection');
     const fontSel = document.getElementById('fontSel');
     if (fontSel) fontSel.value = 'atkinson';
   }
   const modeTextMap = { pdf: 'Original', overlay: 'Overlay', flow: 'Flow' };
   const currentModeLabel = document.getElementById('readingModeCurrent');
-  if (currentModeLabel) currentModeLabel.textContent = modeTextMap[normalized] || 'Original';
-  if (normalized !== 'flow') {
+  if (currentModeLabel) currentModeLabel.textContent = modeTextMap[nextMode] || 'Original';
+  if (nextMode !== 'flow') {
     resetFlowHoldHud({ keepPausedHud: false });
     clearFlowWordSelection();
     hideFlowDefinitionPopout();
