@@ -559,14 +559,34 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   display: grid;
   gap: 6px;
 }
+.recent-doc-toolbar {
+  margin: 0 20px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.recent-doc-sort {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: var(--control-bg);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+  padding: 6px 8px;
+}
 .recent-doc-item {
   border: 1px solid var(--control-border);
   border-radius: 8px;
   background: var(--control-bg);
-  padding: 8px 9px;
+  padding: 8px 9px 7px;
 }
 .recent-doc-item.active {
   border-color: var(--accent-mid);
+}
+.recent-doc-item.is-pinned {
+  border-color: #815a34;
 }
 .recent-doc-btn {
   width: 100%;
@@ -598,6 +618,30 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   font-size: 10.5px;
   color: var(--text-muted);
   font-family: 'DM Mono', monospace;
+}
+.recent-doc-actions {
+  margin-top: 7px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.recent-doc-action {
+  border: 1px solid var(--control-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-family: 'DM Mono', monospace;
+  letter-spacing: 0.3px;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+.recent-doc-action:hover,
+.recent-doc-action:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+  outline: none;
 }
 
 /* Navigation */
@@ -1840,6 +1884,13 @@ body.low-interruption-active .flow-speed-hud {
           <button class="pbtn" id="chunkRecoverBtn" type="button" disabled>Return to previous chunk</button>
         </div>
         <div class="resume-title" style="padding: 0 20px 4px;">Recent documents</div>
+        <div class="recent-doc-toolbar">
+          <select class="recent-doc-sort" id="recentDocSortSel" aria-label="Sort recent documents">
+            <option value="last-opened">Sort: last opened</option>
+            <option value="saved">Sort: last saved</option>
+            <option value="title">Sort: title</option>
+          </select>
+        </div>
         <ul class="recent-doc-list" id="recentDocList" aria-live="polite">
           <li class="recent-doc-item">
             <span class="recent-doc-meta">No recent documents yet.</span>
@@ -2351,9 +2402,10 @@ const PORTABLE_SCHEMA_VERSION = 1;
 const PORTABLE_KDF_ITERATIONS = 250000;
 const DOC_STATE_DB_NAME = 'lumen-documents';
 const DOC_STATE_STORE = 'documents';
-const DOC_STATE_RECORD_ID = 'active';
+const DOC_STATE_LEGACY_ACTIVE_RECORD_ID = 'active';
 const DOC_STATE_RECENT_MAX = 5;
-const DOC_STATE_RECENT_PREFIX = 'doc:';
+const DOC_STATE_MIGRATION_FLAG = 'legacyImportedV1';
+const DOC_SORT_KEY = 'lumen.recent-doc-sort.v1';
 const DEFAULT_PROFILE_ID = 'default';
 const DEFAULT_SETTINGS = {
   mode: 'day',
@@ -2451,6 +2503,7 @@ let statsState = {
 let currentDocMeta = null;
 let pendingResumeState = null;
 let recentDocEntries = [];
+let recentDocSortMode = 'last-opened';
 let persistSettingsTimer = null;
 let flowHoldState = {
   active: false,
@@ -3677,76 +3730,82 @@ function openDocStateDb() {
   });
 }
 
-function getDocRecordId(docId) {
-  return `${DOC_STATE_RECENT_PREFIX}${docId}`;
+function sanitizeSourceType(value) {
+  const raw = String(value || '').toLowerCase().trim();
+  if (!raw) return 'unknown';
+  return raw.slice(0, 80);
 }
 
-function updateRecentDocsCache(docMeta, payload = {}, savedAt = Date.now()) {
-  if (!docMeta?.id) return;
-  const payloadType = payload.type === 'pdf' ? 'pdf' : 'text';
-  const nextEntry = {
-    docId: docMeta.id,
-    label: (docMeta.label || payload.displayName || payload.sourceLabel || 'Recovered document').slice(0, 200),
-    type: docMeta.type || payloadType,
-    payloadType,
-    savedAt
-  };
-  const deduped = recentDocEntries.filter(entry => entry.docId !== nextEntry.docId);
-  recentDocEntries = [nextEntry, ...deduped].slice(0, DOC_STATE_RECENT_MAX);
-  saveRecentDocStoragePayload({
+function buildPreviewExcerpt(payload = {}, fallbackExcerpt = '') {
+  const preferred = normalizeResumeExcerpt(
+    fallbackExcerpt
+    || payload.previewExcerpt
+    || payload.sourceLabel
+    || payload.displayName
+    || payload.name
+    || ''
+  );
+  return preferred || 'No preview available yet.';
+}
+
+function buildRecentDocEntry(docMeta, payload = {}, timestamps = {}) {
+  if (!docMeta?.id) return null;
+  const savedAt = Number(timestamps.savedAt || Date.now());
+  const lastOpenedAt = Number(timestamps.lastOpenedAt || savedAt);
+  return {
+    docId: String(docMeta.id),
+    title: String(docMeta.label || payload.displayName || payload.sourceLabel || 'Recovered document').slice(0, 200),
+    sourceType: sanitizeSourceType(docMeta.type || payload.type || 'unknown'),
     savedAt,
-    meta: docMeta,
-    recentDocs: recentDocEntries
-  });
-  renderRecentDocList();
+    lastOpenedAt,
+    previewExcerpt: buildPreviewExcerpt(payload, timestamps.previewExcerpt || ''),
+    payloadRef: String(docMeta.id),
+    pinned: Boolean(timestamps.pinned)
+  };
+}
+
+function upsertRecentDocEntry(nextEntry, options = {}) {
+  if (!nextEntry?.docId) return;
+  const merge = options.merge !== false;
+  const previous = recentDocEntries.find(entry => entry.docId === nextEntry.docId);
+  const merged = merge && previous ? { ...previous, ...nextEntry } : nextEntry;
+  const deduped = recentDocEntries.filter(entry => entry.docId !== merged.docId);
+  recentDocEntries = [merged, ...deduped].slice(0, DOC_STATE_RECENT_MAX);
 }
 
 async function savePersistedDocument(payload) {
   try {
     const savedAt = Date.now();
     const docMeta = currentDocMeta || payload.docMeta || null;
-    updateRecentDocsCache(docMeta, payload, savedAt);
+    if (!docMeta?.id) return;
+    const previewExcerpt = buildPreviewExcerpt(payload, buildResumeExcerpt({ page: currentPage || 1 }));
+    const entry = buildRecentDocEntry(docMeta, payload, { savedAt, lastOpenedAt: savedAt, previewExcerpt });
+    if (!entry) return;
+    upsertRecentDocEntry(entry);
+    saveRecentDocStoragePayload({
+      activeDocId: entry.docId,
+      recentDocs: recentDocEntries
+    });
+    renderRecentDocList();
     const db = await openDocStateDb();
     await new Promise((resolve, reject) => {
       const tx = db.transaction(DOC_STATE_STORE, 'readwrite');
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error || new Error('Failed to save persisted document'));
-      const store = tx.objectStore(DOC_STATE_STORE);
-      store.put({
-        id: DOC_STATE_RECORD_ID,
+      tx.objectStore(DOC_STATE_STORE).put({
+        id: entry.payloadRef,
         payload,
-        savedAt
+        title: entry.title,
+        sourceType: entry.sourceType,
+        savedAt: entry.savedAt,
+        lastOpenedAt: entry.lastOpenedAt,
+        previewExcerpt: entry.previewExcerpt,
+        payloadRef: entry.payloadRef
       });
-      if (docMeta?.id) {
-        store.put({
-          id: getDocRecordId(docMeta.id),
-          payload,
-          savedAt
-        });
-      }
     });
     db.close();
   } catch (err) {
     console.warn('Unable to persist document state:', err);
-  }
-}
-
-async function loadPersistedDocumentRecord() {
-  try {
-    const metaState = getRecentDocStoragePayload();
-    if (!metaState || (!metaState.meta && !metaState.savedAt)) return null;
-    const db = await openDocStateDb();
-    const record = await new Promise((resolve, reject) => {
-      const tx = db.transaction(DOC_STATE_STORE, 'readonly');
-      const req = tx.objectStore(DOC_STATE_STORE).get(DOC_STATE_RECORD_ID);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => reject(req.error || new Error('Failed to read persisted document'));
-    });
-    db.close();
-    return record;
-  } catch (err) {
-    console.warn('Unable to load persisted document state:', err);
-    return null;
   }
 }
 
@@ -3756,7 +3815,7 @@ async function loadPersistedDocumentRecordByDocId(docId) {
     const db = await openDocStateDb();
     const record = await new Promise((resolve, reject) => {
       const tx = db.transaction(DOC_STATE_STORE, 'readonly');
-      const req = tx.objectStore(DOC_STATE_STORE).get(getDocRecordId(docId));
+      const req = tx.objectStore(DOC_STATE_STORE).get(docId);
       req.onsuccess = () => resolve(req.result || null);
       req.onerror = () => reject(req.error || new Error('Failed to read cached document'));
     });
@@ -3787,19 +3846,7 @@ async function clearPersistedDocumentState() {
 }
 
 async function clearActivePersistedDocumentState() {
-  saveRecentDocStoragePayload({ meta: null, savedAt: 0 });
-  try {
-    const db = await openDocStateDb();
-    await new Promise((resolve, reject) => {
-      const tx = db.transaction(DOC_STATE_STORE, 'readwrite');
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error || new Error('Failed to clear active persisted document'));
-      tx.objectStore(DOC_STATE_STORE).delete(DOC_STATE_RECORD_ID);
-    });
-    db.close();
-  } catch (err) {
-    console.warn('Unable to clear active persisted document state:', err);
-  }
+  saveRecentDocStoragePayload({ activeDocId: null });
 }
 
 function loadProfilesState() {
@@ -4098,13 +4145,17 @@ function saveDocProgressMap(nextMap) {
 function getRecentDocStoragePayload() {
   try {
     const raw = localStorage.getItem(DOC_STATE_STORAGE_KEY);
-    if (!raw) return { recentDocs: [] };
+    if (!raw) return { recentDocs: [], activeDocId: null };
     const parsed = JSON.parse(raw);
     const recentDocs = Array.isArray(parsed?.recentDocs) ? parsed.recentDocs : [];
-    return { ...parsed, recentDocs };
+    return {
+      ...parsed,
+      activeDocId: typeof parsed?.activeDocId === 'string' ? parsed.activeDocId : null,
+      recentDocs
+    };
   } catch (err) {
     console.warn('Unable to parse recent document cache metadata:', err);
-    return { recentDocs: [] };
+    return { recentDocs: [], activeDocId: null };
   }
 }
 
@@ -4116,13 +4167,56 @@ function saveRecentDocStoragePayload(updates = {}) {
 
 function syncRecentDocListFromStorage() {
   const payload = getRecentDocStoragePayload();
-  recentDocEntries = Array.isArray(payload.recentDocs) ? payload.recentDocs : [];
+  recentDocEntries = (Array.isArray(payload.recentDocs) ? payload.recentDocs : [])
+    .map((entry) => ({
+      docId: String(entry?.docId || ''),
+      title: String(entry?.title || entry?.label || 'Recovered document').slice(0, 200),
+      sourceType: sanitizeSourceType(entry?.sourceType || entry?.type || 'unknown'),
+      savedAt: Number(entry?.savedAt || 0),
+      lastOpenedAt: Number(entry?.lastOpenedAt || entry?.savedAt || 0),
+      previewExcerpt: buildPreviewExcerpt(entry, entry?.previewExcerpt || ''),
+      payloadRef: String(entry?.payloadRef || entry?.docId || ''),
+      pinned: Boolean(entry?.pinned)
+    }))
+    .filter(entry => entry.docId);
+}
+
+function getRecentDocSortMode() {
+  const fromStorage = localStorage.getItem(DOC_SORT_KEY);
+  if (fromStorage === 'saved' || fromStorage === 'title' || fromStorage === 'last-opened') return fromStorage;
+  return 'last-opened';
+}
+
+function setRecentDocSortMode(nextMode) {
+  recentDocSortMode = (nextMode === 'saved' || nextMode === 'title' || nextMode === 'last-opened') ? nextMode : 'last-opened';
+  localStorage.setItem(DOC_SORT_KEY, recentDocSortMode);
+  const sel = document.getElementById('recentDocSortSel');
+  if (sel) sel.value = recentDocSortMode;
+}
+
+function getSortedRecentDocEntries() {
+  const collator = new Intl.Collator(undefined, { sensitivity: 'base' });
+  return [...recentDocEntries].sort((a, b) => {
+    if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
+    if (recentDocSortMode === 'title') {
+      const titleCmp = collator.compare(a.title || '', b.title || '');
+      if (titleCmp !== 0) return titleCmp;
+      return Number(b.lastOpenedAt || 0) - Number(a.lastOpenedAt || 0);
+    }
+    if (recentDocSortMode === 'saved') {
+      return Number(b.savedAt || 0) - Number(a.savedAt || 0);
+    }
+    return Number(b.lastOpenedAt || 0) - Number(a.lastOpenedAt || 0);
+  });
 }
 
 function formatRecentDocPosition(info = {}) {
-  const page = Math.max(1, Number(info.page) || 1);
+  const progressMap = loadDocProgressMap();
+  const progress = info?.docId ? progressMap[info.docId] : null;
+  const page = Math.max(1, Number(progress?.page || info.page) || 1);
+  const openedAt = formatSessionDate(info.lastOpenedAt || info.savedAt);
   const savedAt = formatSessionDate(info.savedAt);
-  return `Page ${page} • Saved ${savedAt}`;
+  return `Page ${page} • Opened ${openedAt} • Saved ${savedAt}`;
 }
 
 function escapeHtml(raw = '') {
@@ -4137,7 +4231,6 @@ function escapeHtml(raw = '') {
 function renderRecentDocList() {
   const list = document.getElementById('recentDocList');
   if (!list) return;
-  const progressMap = loadDocProgressMap();
   const currentDocId = getCurrentDocId();
   if (!recentDocEntries.length) {
     list.innerHTML = `
@@ -4148,21 +4241,48 @@ function renderRecentDocList() {
     return;
   }
   list.innerHTML = '';
-  recentDocEntries.forEach((entry) => {
+  getSortedRecentDocEntries().forEach((entry) => {
     const li = document.createElement('li');
     li.className = 'recent-doc-item';
     if (currentDocId && entry.docId === currentDocId) li.classList.add('active');
+    if (entry.pinned) li.classList.add('is-pinned');
 
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'recent-doc-btn';
     btn.dataset.docId = entry.docId;
     btn.innerHTML = `
-      <span class="recent-doc-title">${escapeHtml(entry.label || 'Recovered document')}</span>
-      <span class="recent-doc-meta">${escapeHtml(formatRecentDocPosition(progressMap[entry.docId] || entry))}</span>
+      <span class="recent-doc-title">${escapeHtml(entry.title || 'Recovered document')}</span>
+      <span class="recent-doc-meta">${escapeHtml(formatRecentDocPosition(entry))}</span>
+      <span class="recent-doc-meta">${escapeHtml(entry.previewExcerpt || 'No preview available yet.')}</span>
     `;
     btn.addEventListener('click', () => recallRecentDocument(entry.docId));
     li.appendChild(btn);
+
+    const actions = document.createElement('div');
+    actions.className = 'recent-doc-actions';
+
+    const pinBtn = document.createElement('button');
+    pinBtn.type = 'button';
+    pinBtn.className = 'recent-doc-action';
+    pinBtn.textContent = entry.pinned ? 'Unpin' : 'Pin';
+    pinBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleRecentDocPin(entry.docId);
+    });
+    actions.appendChild(pinBtn);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'recent-doc-action';
+    removeBtn.textContent = 'Remove';
+    removeBtn.addEventListener('click', async (event) => {
+      event.stopPropagation();
+      await removeRecentDocument(entry.docId);
+    });
+    actions.appendChild(removeBtn);
+
+    li.appendChild(actions);
     list.appendChild(li);
   });
 }
@@ -4188,7 +4308,55 @@ function saveDocProgress() {
     label: docTitle
   };
   saveDocProgressMap(map);
+  upsertRecentDocEntry({
+    docId,
+    title: docTitle,
+    sourceType: sanitizeSourceType(currentDocMeta?.type),
+    savedAt: map[docId].savedAt,
+    lastOpenedAt: Date.now(),
+    previewExcerpt: map[docId].excerpt || 'No preview available yet.',
+    payloadRef: docId
+  });
+  saveRecentDocStoragePayload({
+    activeDocId: docId,
+    recentDocs: recentDocEntries
+  });
   renderRecentDocList();
+}
+
+function toggleRecentDocPin(docId) {
+  if (!docId) return;
+  recentDocEntries = recentDocEntries.map(entry => entry.docId === docId ? { ...entry, pinned: !entry.pinned } : entry);
+  saveRecentDocStoragePayload({ recentDocs: recentDocEntries });
+  renderRecentDocList();
+}
+
+async function removeRecentDocument(docId) {
+  if (!docId) return;
+  recentDocEntries = recentDocEntries.filter(entry => entry.docId !== docId);
+  const progressMap = loadDocProgressMap();
+  if (progressMap[docId]) {
+    delete progressMap[docId];
+    saveDocProgressMap(progressMap);
+  }
+  const existing = getRecentDocStoragePayload();
+  saveRecentDocStoragePayload({
+    activeDocId: existing.activeDocId === docId ? null : existing.activeDocId,
+    recentDocs: recentDocEntries
+  });
+  renderRecentDocList();
+  try {
+    const db = await openDocStateDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(DOC_STATE_STORE, 'readwrite');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('Failed to remove cached document'));
+      tx.objectStore(DOC_STATE_STORE).delete(docId);
+    });
+    db.close();
+  } catch (err) {
+    console.warn('Unable to remove cached document:', err);
+  }
 }
 
 function normalizeResumeExcerpt(raw, maxLen = 180) {
@@ -4294,6 +4462,9 @@ function syncReadingModeAvailability() {
 
 function setCurrentDocumentMeta(meta) {
   currentDocMeta = meta;
+  if (meta?.id) {
+    saveRecentDocStoragePayload({ activeDocId: meta.id });
+  }
   syncReadingModeAvailability();
   renderRecentDocList();
   maybeOfferResumeForCurrentDoc();
@@ -6237,26 +6408,117 @@ function resetLoadedDocumentUI() {
   refreshResumeCard();
 }
 
-async function restorePersistedDocument() {
-  const record = await loadPersistedDocumentRecord();
-  if (!record?.payload) return;
-  const payload = record.payload;
-  if (payload.type === 'pdf' && payload.bytes) {
-    if (payload.docMeta) {
-      setCurrentDocumentMeta(payload.docMeta);
+async function migrateLegacyActiveRecordIfNeeded() {
+  const current = getRecentDocStoragePayload();
+  if (current?.[DOC_STATE_MIGRATION_FLAG]) return;
+  try {
+    const db = await openDocStateDb();
+    const legacyRecord = await new Promise((resolve, reject) => {
+      const tx = db.transaction(DOC_STATE_STORE, 'readonly');
+      const req = tx.objectStore(DOC_STATE_STORE).get(DOC_STATE_LEGACY_ACTIVE_RECORD_ID);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error || new Error('Failed to read legacy persisted document'));
+    });
+    if (legacyRecord?.payload) {
+      const payload = legacyRecord.payload;
+      const fallbackId = payload?.docMeta?.id || `legacy:${payload.type || 'document'}:${legacyRecord.savedAt || Date.now()}`;
+      const docMeta = payload?.docMeta || {
+        id: fallbackId,
+        label: payload.displayName || payload.name || 'Recovered document',
+        type: payload.type === 'pdf' ? 'pdf-file' : 'text-file'
+      };
+      const entry = buildRecentDocEntry(docMeta, payload, {
+        savedAt: Number(legacyRecord.savedAt || Date.now()),
+        lastOpenedAt: Number(legacyRecord.savedAt || Date.now())
+      });
+      if (entry) {
+        upsertRecentDocEntry(entry);
+        await new Promise((resolve, reject) => {
+          const tx = db.transaction(DOC_STATE_STORE, 'readwrite');
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error || new Error('Failed to migrate legacy document'));
+          const store = tx.objectStore(DOC_STATE_STORE);
+          store.put({
+            id: entry.docId,
+            payload,
+            title: entry.title,
+            sourceType: entry.sourceType,
+            savedAt: entry.savedAt,
+            lastOpenedAt: entry.lastOpenedAt,
+            previewExcerpt: entry.previewExcerpt,
+            payloadRef: entry.docId
+          });
+          store.delete(DOC_STATE_LEGACY_ACTIVE_RECORD_ID);
+        });
+        saveRecentDocStoragePayload({
+          activeDocId: entry.docId,
+          recentDocs: recentDocEntries,
+          [DOC_STATE_MIGRATION_FLAG]: true
+        });
+      }
     } else {
-      setCurrentDocumentMeta({ id: `restored:pdf:${payload.name || 'Recovered PDF'}`, label: payload.name || 'Recovered PDF', type: 'pdf-file' });
+      saveRecentDocStoragePayload({ [DOC_STATE_MIGRATION_FLAG]: true });
     }
-    await loadPDFBytes(payload.bytes, payload.name || 'Recovered PDF');
-    return;
+    db.close();
+  } catch (err) {
+    console.warn('Unable to migrate legacy document cache:', err);
+    saveRecentDocStoragePayload({ [DOC_STATE_MIGRATION_FLAG]: true });
+  }
+}
+
+async function tryOpenRecord(record, fallbackEntry = null) {
+  const payload = record?.payload;
+  if (!payload) return false;
+  const fallbackMeta = {
+    id: fallbackEntry?.docId || record?.id || `recovered:${Date.now()}`,
+    label: fallbackEntry?.title || record?.title || payload.displayName || payload.name || 'Recovered document',
+    type: fallbackEntry?.sourceType || record?.sourceType || payload?.docMeta?.type || payload?.type || 'text-file'
+  };
+  if (payload.type === 'pdf' && payload.bytes) {
+    setCurrentDocumentMeta(payload.docMeta || fallbackMeta);
+    await loadPDFBytes(payload.bytes, payload.name || fallbackMeta.label);
+    return true;
   }
   if (payload.type === 'text') {
-    if (payload.docMeta) {
-      setCurrentDocumentMeta(payload.docMeta);
-    } else {
-      setCurrentDocumentMeta({ id: `restored:text:${payload.displayName || 'Recovered document'}`, label: payload.displayName || 'Recovered document', type: 'text-file' });
+    setCurrentDocumentMeta(payload.docMeta || fallbackMeta);
+    await loadTextDocument(payload.content || '', payload.displayName || fallbackMeta.label, payload.sourceLabel || `Recovered source · ${fallbackMeta.label}`);
+    return true;
+  }
+  return false;
+}
+
+async function restorePersistedDocument() {
+  await migrateLegacyActiveRecordIfNeeded();
+  const payload = getRecentDocStoragePayload();
+  const preferredId = payload.activeDocId || null;
+  const sortedCandidates = getSortedRecentDocEntries();
+  const ordered = preferredId
+    ? [preferredId, ...sortedCandidates.map(item => item.docId).filter(id => id !== preferredId)]
+    : sortedCandidates.map(item => item.docId);
+  for (const docId of ordered) {
+    const entry = recentDocEntries.find(item => item.docId === docId) || null;
+    const record = await loadPersistedDocumentRecordByDocId(docId);
+    if (!record?.payload) continue;
+    try {
+      const opened = await tryOpenRecord(record, entry);
+      if (!opened) throw new Error('Unsupported payload format');
+      upsertRecentDocEntry({
+        ...(entry || {}),
+        docId,
+        title: record.title || entry?.title || 'Recovered document',
+        sourceType: sanitizeSourceType(record.sourceType || entry?.sourceType || 'unknown'),
+        savedAt: Number(record.savedAt || entry?.savedAt || Date.now()),
+        lastOpenedAt: Date.now(),
+        previewExcerpt: buildPreviewExcerpt(record, entry?.previewExcerpt || ''),
+        payloadRef: String(record.payloadRef || docId)
+      });
+      saveRecentDocStoragePayload({ activeDocId: docId, recentDocs: recentDocEntries });
+      renderRecentDocList();
+      return;
+    } catch (err) {
+      console.warn(`Skipping unreadable cached document ${docId}:`, err);
+      await removeRecentDocument(docId);
     }
-    await loadTextDocument(payload.content || '', payload.displayName || 'Recovered document', payload.sourceLabel || 'Recovered source');
   }
 }
 
@@ -6265,22 +6527,7 @@ async function recallRecentDocument(docId) {
   const record = await loadPersistedDocumentRecordByDocId(docId);
   if (!record?.payload) return;
   const entry = recentDocEntries.find(item => item.docId === docId);
-  const payload = record.payload;
-  const fallbackMeta = {
-    id: docId,
-    label: entry?.label || payload?.displayName || payload?.name || 'Recovered document',
-    type: entry?.type || payload?.type || 'text-file'
-  };
-
-  if (payload.type === 'pdf' && payload.bytes) {
-    setCurrentDocumentMeta(payload.docMeta || fallbackMeta);
-    await loadPDFBytes(payload.bytes, payload.name || fallbackMeta.label);
-  } else if (payload.type === 'text') {
-    setCurrentDocumentMeta(payload.docMeta || fallbackMeta);
-    await loadTextDocument(payload.content || '', payload.displayName || fallbackMeta.label, payload.sourceLabel || `Recovered source · ${fallbackMeta.label}`);
-  } else {
-    return;
-  }
+  await tryOpenRecord(record, entry);
 
   const progress = loadDocProgressMap()[docId];
   if (progress) {
@@ -6288,6 +6535,17 @@ async function recallRecentDocument(docId) {
     refreshResumeCard();
     await restoreSavedPosition();
   }
+  upsertRecentDocEntry({
+    ...(entry || {}),
+    docId,
+    title: record.title || entry?.title || progress?.docTitle || 'Recovered document',
+    sourceType: sanitizeSourceType(record.sourceType || entry?.sourceType || 'unknown'),
+    savedAt: Number(record.savedAt || entry?.savedAt || Date.now()),
+    lastOpenedAt: Date.now(),
+    previewExcerpt: buildPreviewExcerpt(record, progress?.excerpt || entry?.previewExcerpt || ''),
+    payloadRef: String(record.payloadRef || docId)
+  });
+  saveRecentDocStoragePayload({ activeDocId: docId, recentDocs: recentDocEntries });
   renderRecentDocList();
 }
 
@@ -8067,6 +8325,7 @@ document.addEventListener('keydown', e => {
 /* ── Profile system init ── */
 const persistedSettings = loadSettings();
 loadSessionSupportState();
+setRecentDocSortMode(getRecentDocSortMode());
 loadStatsState();
 syncRecentDocListFromStorage();
 renderRecentDocList();
@@ -8103,6 +8362,10 @@ if (persistedSettings.settings) {
 restorePersistedDocument();
 refreshEmailThreadOrderControls();
 toggleChunkMode();
+document.getElementById('recentDocSortSel')?.addEventListener('change', (event) => {
+  setRecentDocSortMode(event.target.value);
+  renderRecentDocList();
+});
 </script>
 </body>
 </html>
