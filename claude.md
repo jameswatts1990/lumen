@@ -34,3 +34,8 @@
 - Context: when wiring focus-aid toggles in Flow reading mode.
 - Guidance: enabling chunk mode should clear ruler and paragraph shading toggles, and flow chunking should avoid the fixed top/bottom shading bands.
 - Reason: preserves J/K chunk stepping behavior and keeps chunk focus visuals aligned with expected flow UX.
+
+### [Flow Chunking] Preserve anchor across flow re-renders
+- Context: when changing chunk length or auto-split settings in Flow mode triggers re-rendering of flow blocks.
+- Guidance: snapshot the current chunk anchor (index + normalized text) before re-render and restore `flowChunkIndex` afterward; avoid resetting to the first chunk.
+- Reason: prevents J/K navigation from feeling stuck or jumping after chunk-size adjustments.
