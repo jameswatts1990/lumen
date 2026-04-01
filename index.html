@@ -184,7 +184,7 @@ body.sidebar-collapsed .sidebar > * {
   border: 1px solid #6f4f32;
   background: linear-gradient(170deg, rgba(51, 36, 22, 0.98), rgba(29, 21, 13, 0.98));
   color: #efc79a;
-  z-index: 430;
+  z-index: 334;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -589,6 +589,20 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 }
 .privacy-row {
   padding: 0 20px 8px;
+}
+.history-retention-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.history-retention-wrap .numin {
+  width: 78px;
+}
+.history-retention-suffix {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: 'DM Mono', monospace;
+  text-transform: lowercase;
 }
 .resume-card {
   margin: 0 20px 10px;
@@ -2026,6 +2040,19 @@ body.low-interruption-active .prog {
           <label class="tog"><input type="checkbox" id="sessionFullscreenT" aria-label="Enable fullscreen during timed sessions"><span class="tog-tk"></span></label>
         </div>
         <div class="session-meta" id="sessionMeta">No active session.</div>
+        <div class="trow">
+          <div class="trow-info">
+            <div class="trow-lbl">Keep history for</div>
+            <div class="trow-sub">Automatically remove older document history from this device</div>
+          </div>
+          <div class="history-retention-wrap">
+            <input class="numin" id="historyRetentionDaysIn" type="number" min="1" max="3650" step="1" value="30" aria-label="Keep history for days">
+            <span class="history-retention-suffix">days</span>
+          </div>
+        </div>
+        <div class="privacy-row" style="padding-top: 2px;">
+          <button class="pbtn" id="clearHistoryBtn" type="button">Clear history</button>
+        </div>
         <hr class="session-divider" aria-hidden="true">
         <div class="resume-row" style="padding: 0 20px 8px;">
           <button class="pbtn" id="chunkRecoverBtn" type="button" disabled>Return to previous chunk</button>
@@ -2565,6 +2592,10 @@ const DOC_STATE_LEGACY_ACTIVE_RECORD_ID = 'active';
 const DOC_STATE_RECENT_MAX = 5;
 const DOC_STATE_MIGRATION_FLAG = 'legacyImportedV1';
 const DOC_SORT_KEY = 'lumen.recent-doc-sort.v1';
+const DOC_PROGRESS_MAX_DOCS = 200;
+const DOC_PROGRESS_MAX_BYTES = 1200000;
+const DOC_HISTORY_RETENTION_DEFAULT_DAYS = 30;
+const DOC_HISTORY_RETENTION_MAX_DAYS = 3650;
 const DEFAULT_PROFILE_ID = 'default';
 const DEFAULT_SETTINGS = {
   mode: 'day',
@@ -2650,6 +2681,7 @@ let sessionSupportState = {
   insightsView: 'summary',
   lowInterruption: false,
   sessionFullscreen: false,
+  historyRetentionDays: DOC_HISTORY_RETENTION_DEFAULT_DAYS,
   chunkMemory: {
     current: null,
     previous: null
@@ -4015,6 +4047,24 @@ async function clearActivePersistedDocumentState() {
   saveRecentDocStoragePayload({ activeDocId: null });
 }
 
+async function clearHistoryState({ includeCurrentDocument = false } = {}) {
+  localStorage.removeItem(DOC_PROGRESS_STORAGE_KEY);
+  pendingResumeState = null;
+  refreshResumeCard();
+  if (includeCurrentDocument) {
+    await clearPersistedDocumentState();
+    resetLoadedDocumentUI();
+    return;
+  }
+  const currentDocId = getCurrentDocId();
+  recentDocEntries = recentDocEntries.filter(entry => entry.docId === currentDocId);
+  saveRecentDocStoragePayload({
+    activeDocId: currentDocId || null,
+    recentDocs: recentDocEntries
+  });
+  renderRecentDocList();
+}
+
 function loadProfilesState() {
   try {
     const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
@@ -4292,20 +4342,104 @@ function getCurrentDocId() {
   return currentDocMeta?.id || null;
 }
 
+function sanitizeHistoryRetentionDays(value) {
+  const num = Math.round(Number(value));
+  if (!Number.isFinite(num) || num < 1) return DOC_HISTORY_RETENTION_DEFAULT_DAYS;
+  return Math.min(DOC_HISTORY_RETENTION_MAX_DAYS, num);
+}
+
+function normalizeDocProgressEntry(docId, value = {}) {
+  if (!value || typeof value !== 'object') return null;
+  const savedAt = Math.max(0, Number(value.savedAt || Date.now()));
+  const lastOpenedAt = Math.max(0, Number(value.lastOpenedAt || savedAt));
+  return {
+    ...value,
+    label: String(value.label || value.docTitle || 'Document').slice(0, 200),
+    docTitle: String(value.docTitle || value.label || 'Document').slice(0, 200),
+    savedAt,
+    lastOpenedAt,
+    openCount: Math.max(1, Math.round(Number(value.openCount || 1))),
+    pinned: Boolean(value.pinned)
+  };
+}
+
+function cleanupDocProgressMap(sourceMap = {}, options = {}) {
+  const retentionDays = sanitizeHistoryRetentionDays(options.retentionDays ?? sessionSupportState.historyRetentionDays);
+  const now = Number(options.now || Date.now());
+  const cutoffTs = now - (retentionDays * 24 * 60 * 60 * 1000);
+  const normalizedEntries = Object.entries(sourceMap || {})
+    .map(([docId, value]) => {
+      const normalized = normalizeDocProgressEntry(docId, value);
+      return normalized ? [docId, normalized] : null;
+    })
+    .filter(Boolean)
+    .filter(([, value]) => Math.max(Number(value.lastOpenedAt || 0), Number(value.savedAt || 0)) >= cutoffTs);
+
+  const pinned = [];
+  const unpinned = [];
+  normalizedEntries.forEach(entry => {
+    if (entry[1].pinned) pinned.push(entry);
+    else unpinned.push(entry);
+  });
+
+  unpinned.sort((a, b) => Number(a[1].lastOpenedAt || 0) - Number(b[1].lastOpenedAt || 0));
+
+  const orderedForEviction = [...pinned, ...unpinned];
+  let cleaned = Object.fromEntries(orderedForEviction);
+  const getByteSize = () => new Blob([JSON.stringify(cleaned)]).size;
+  const overflow = () => Object.keys(cleaned).length > DOC_PROGRESS_MAX_DOCS || getByteSize() > DOC_PROGRESS_MAX_BYTES;
+
+  while (overflow() && unpinned.length) {
+    const [evictDocId] = unpinned.shift();
+    delete cleaned[evictDocId];
+  }
+
+  return cleaned;
+}
+
+function syncRecentDocsWithProgressMap(progressMap) {
+  const allowed = new Set(Object.keys(progressMap || {}));
+  if (!allowed.size) {
+    recentDocEntries = [];
+    saveRecentDocStoragePayload({ activeDocId: null, recentDocs: [] });
+    return;
+  }
+  const nextEntries = recentDocEntries
+    .filter(entry => allowed.has(entry.docId))
+    .map(entry => {
+      const progress = progressMap[entry.docId] || {};
+      return {
+        ...entry,
+        pinned: Boolean(progress.pinned || entry.pinned),
+        lastOpenedAt: Number(progress.lastOpenedAt || entry.lastOpenedAt || entry.savedAt || 0)
+      };
+    });
+  recentDocEntries = nextEntries;
+  const existing = getRecentDocStoragePayload();
+  saveRecentDocStoragePayload({
+    activeDocId: existing.activeDocId && allowed.has(existing.activeDocId) ? existing.activeDocId : null,
+    recentDocs: recentDocEntries
+  });
+}
+
 function loadDocProgressMap() {
   try {
     const raw = localStorage.getItem(DOC_PROGRESS_STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    if (!parsed || typeof parsed !== 'object') return {};
+    return cleanupDocProgressMap(parsed);
   } catch (err) {
     console.warn('Unable to load document progress:', err);
     return {};
   }
 }
 
-function saveDocProgressMap(nextMap) {
-  localStorage.setItem(DOC_PROGRESS_STORAGE_KEY, JSON.stringify(nextMap));
+function saveDocProgressMap(nextMap, options = {}) {
+  const cleaned = cleanupDocProgressMap(nextMap, options);
+  localStorage.setItem(DOC_PROGRESS_STORAGE_KEY, JSON.stringify(cleaned));
+  syncRecentDocsWithProgressMap(cleaned);
+  return cleaned;
 }
 
 function getRecentDocStoragePayload() {
@@ -4459,8 +4593,11 @@ function saveDocProgress() {
   const map = loadDocProgressMap();
   rememberChunkSnapshot({ promotePrevious: false });
   const page = currentPage || 1;
-  const docTitle = (currentDocMeta?.label || currentDocMeta?.name || 'Document').trim();
+  const now = Date.now();
+  const previous = normalizeDocProgressEntry(docId, map[docId]) || {};
+  const docTitle = (currentDocMeta?.label || currentDocMeta?.name || previous.docTitle || 'Document').trim();
   map[docId] = {
+    ...previous,
     scrollTop: Math.round(reader.scrollTop),
     page,
     profileId: lastUsedProfileId,
@@ -4470,18 +4607,23 @@ function saveDocProgress() {
     chunkSnapshot: (sessionSupportState.chunkMemory && sessionSupportState.chunkMemory.current && sessionSupportState.chunkMemory.current.docId === docId)
       ? sessionSupportState.chunkMemory.current
       : null,
-    savedAt: Date.now(),
+    savedAt: now,
+    lastOpenedAt: now,
+    openCount: Math.max(1, Number(previous.openCount || 0)) + 1,
+    pinned: Boolean(previous.pinned),
     label: docTitle
   };
-  saveDocProgressMap(map);
+  const cleanedMap = saveDocProgressMap(map);
+  if (!cleanedMap[docId]) return;
   upsertRecentDocEntry({
     docId,
     title: docTitle,
     sourceType: sanitizeSourceType(currentDocMeta?.type),
-    savedAt: map[docId].savedAt,
-    lastOpenedAt: Date.now(),
-    previewExcerpt: map[docId].excerpt || 'No preview available yet.',
-    payloadRef: docId
+    savedAt: cleanedMap[docId].savedAt,
+    lastOpenedAt: cleanedMap[docId].lastOpenedAt,
+    previewExcerpt: cleanedMap[docId].excerpt || 'No preview available yet.',
+    payloadRef: docId,
+    pinned: cleanedMap[docId].pinned
   });
   saveRecentDocStoragePayload({
     activeDocId: docId,
@@ -4492,7 +4634,20 @@ function saveDocProgress() {
 
 function toggleRecentDocPin(docId) {
   if (!docId) return;
-  recentDocEntries = recentDocEntries.map(entry => entry.docId === docId ? { ...entry, pinned: !entry.pinned } : entry);
+  let nextPinned = false;
+  recentDocEntries = recentDocEntries.map(entry => {
+    if (entry.docId !== docId) return entry;
+    nextPinned = !entry.pinned;
+    return { ...entry, pinned: nextPinned };
+  });
+  const progressMap = loadDocProgressMap();
+  if (progressMap[docId]) {
+    progressMap[docId] = {
+      ...progressMap[docId],
+      pinned: nextPinned
+    };
+    saveDocProgressMap(progressMap);
+  }
   saveRecentDocStoragePayload({ recentDocs: recentDocEntries });
   renderRecentDocList();
 }
@@ -4811,6 +4966,7 @@ function loadSessionSupportState() {
     }
     sessionSupportState.sessionFullscreen = Boolean(sessionSupportState.sessionFullscreen);
     sessionSupportState.plannedDurationMin = Math.max(0, Number(sessionSupportState.plannedDurationMin || sessionSupportState.durationMin || 0));
+    sessionSupportState.historyRetentionDays = sanitizeHistoryRetentionDays(sessionSupportState.historyRetentionDays);
   } catch (err) {
     console.warn('Unable to load session support settings:', err);
   }
@@ -6766,21 +6922,31 @@ async function recallRecentDocument(docId) {
   const entry = recentDocEntries.find(item => item.docId === docId);
   await tryOpenRecord(record, entry);
 
-  const progress = loadDocProgressMap()[docId];
+  const progressMap = loadDocProgressMap();
+  const progress = normalizeDocProgressEntry(docId, progressMap[docId]);
   if (progress) {
-    pendingResumeState = progress;
+    const now = Date.now();
+    progressMap[docId] = {
+      ...progress,
+      lastOpenedAt: now,
+      openCount: Math.max(1, Number(progress.openCount || 0)) + 1
+    };
+    const cleanedMap = saveDocProgressMap(progressMap);
+    pendingResumeState = cleanedMap[docId] || progressMap[docId];
     refreshResumeCard();
     await restoreSavedPosition();
   }
+  const refreshed = loadDocProgressMap()[docId] || progress || {};
   upsertRecentDocEntry({
     ...(entry || {}),
     docId,
-    title: record.title || entry?.title || progress?.docTitle || 'Recovered document',
+    title: record.title || entry?.title || refreshed?.docTitle || 'Recovered document',
     sourceType: sanitizeSourceType(record.sourceType || entry?.sourceType || 'unknown'),
     savedAt: Number(record.savedAt || entry?.savedAt || Date.now()),
-    lastOpenedAt: Date.now(),
-    previewExcerpt: buildPreviewExcerpt(record, progress?.excerpt || entry?.previewExcerpt || ''),
-    payloadRef: String(record.payloadRef || docId)
+    lastOpenedAt: Number(refreshed.lastOpenedAt || Date.now()),
+    previewExcerpt: buildPreviewExcerpt(record, refreshed?.excerpt || entry?.previewExcerpt || ''),
+    payloadRef: String(record.payloadRef || docId),
+    pinned: Boolean(refreshed.pinned || entry?.pinned)
   });
   saveRecentDocStoragePayload({ activeDocId: docId, recentDocs: recentDocEntries });
   renderRecentDocList();
@@ -8523,6 +8689,18 @@ document.getElementById('sessionFullscreenDismissBtn').addEventListener('click',
 });
 document.addEventListener('fullscreenchange', () => {
   syncSessionFullscreenState();
+document.getElementById('historyRetentionDaysIn')?.addEventListener('change', e => {
+  const nextDays = sanitizeHistoryRetentionDays(e.target.value);
+  e.target.value = String(nextDays);
+  sessionSupportState.historyRetentionDays = nextDays;
+  saveSessionSupportState();
+  saveDocProgressMap(loadDocProgressMap(), { retentionDays: nextDays });
+  renderRecentDocList();
+});
+document.getElementById('clearHistoryBtn')?.addEventListener('click', async () => {
+  const shouldClear = window.confirm('Clear saved reading history from this device? This removes resume positions and recent document history.');
+  if (!shouldClear) return;
+  await clearHistoryState({ includeCurrentDocument: false });
 });
 document.getElementById('sessionInsightsViewSel').addEventListener('change', e => {
   sessionSupportState.insightsView = e.target.value;
@@ -8650,9 +8828,16 @@ document.addEventListener('keydown', e => {
 /* ── Profile system init ── */
 const persistedSettings = loadSettings();
 loadSessionSupportState();
+const historyRetentionInput = document.getElementById('historyRetentionDaysIn');
+if (historyRetentionInput) {
+  historyRetentionInput.value = String(sanitizeHistoryRetentionDays(sessionSupportState.historyRetentionDays));
+}
 setRecentDocSortMode(getRecentDocSortMode());
 loadStatsState();
 syncRecentDocListFromStorage();
+saveDocProgressMap(loadDocProgressMap(), {
+  retentionDays: sessionSupportState.historyRetentionDays
+});
 renderRecentDocList();
 updateChunkRecoverButton();
 loadProfilesState();
