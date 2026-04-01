@@ -8730,6 +8730,7 @@ document.getElementById('sessionFullscreenDismissBtn').addEventListener('click',
 });
 document.addEventListener('fullscreenchange', () => {
   syncSessionFullscreenState();
+});
 document.getElementById('historyRetentionDaysIn')?.addEventListener('change', e => {
   const nextDays = sanitizeHistoryRetentionDays(e.target.value);
   e.target.value = String(nextDays);
