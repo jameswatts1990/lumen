@@ -466,6 +466,78 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .session-btn { padding: 7px 0; font-size: 12px; }
 .session-btn.on { background: var(--accent); color: #1a1200; border-color: var(--accent); }
 .session-meta { padding: 0 20px 8px; font-size: 11.5px; color: var(--text-muted); line-height: 1.45; }
+.insights-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 2px 20px 10px;
+}
+.insight-card {
+  border: 1px solid var(--control-border);
+  background: linear-gradient(160deg, rgba(41, 33, 24, 0.92), rgba(30, 24, 17, 0.92));
+  border-radius: 8px;
+  padding: 8px 9px;
+  min-height: 62px;
+}
+.insight-label {
+  font-family: 'DM Mono', monospace;
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.insight-value {
+  margin-top: 4px;
+  color: var(--text-primary);
+  font-size: 16px;
+}
+.insight-sub {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+.trend-wrap {
+  padding: 0 20px 10px;
+}
+.trend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.trend-title {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.trend-total {
+  color: var(--accent);
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+}
+.trend-bars {
+  height: 46px;
+  border: 1px solid var(--control-border);
+  border-radius: 7px;
+  padding: 6px;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  background: rgba(23, 18, 12, 0.7);
+}
+.trend-bar {
+  flex: 1;
+  border-radius: 3px 3px 1px 1px;
+  background: linear-gradient(180deg, rgba(216, 153, 94, 0.92), rgba(137, 85, 41, 0.92));
+  min-height: 4px;
+  opacity: 0.42;
+}
+.trend-bar.active {
+  opacity: 1;
+}
+.privacy-row {
+  padding: 0 20px 8px;
+}
 .resume-card {
   margin: 0 20px 10px;
   border: 1px solid var(--control-border);
@@ -1783,6 +1855,60 @@ body.low-interruption-active .flow-speed-hud {
         </div>
       </div>
 
+      <!-- Reading Insights -->
+      <div class="sec is-collapsed">
+        <div class="sec-label">Reading Insights</div>
+        <div class="sec-hint">Private on-device summaries of your reading rhythm. Trend lines update from saved sessions.</div>
+        <div class="insights-grid">
+          <div class="insight-card">
+            <div class="insight-label">Current streak</div>
+            <div class="insight-value" id="insightStreakValue">0 days</div>
+            <div class="insight-sub" id="insightBestStreak">Best: 0 days</div>
+          </div>
+          <div class="insight-card">
+            <div class="insight-label">Average session</div>
+            <div class="insight-value" id="insightAvgSession">0 min</div>
+            <div class="insight-sub" id="insightSessionCount">0 sessions</div>
+          </div>
+        </div>
+        <div class="trend-wrap">
+          <div class="trend-head">
+            <div class="trend-title">Last 7 days</div>
+            <div class="trend-total" id="insight7Total">0 min</div>
+          </div>
+          <div class="trend-bars" id="insightTrend7" aria-label="Last 7 days reading minutes trend"></div>
+        </div>
+        <div class="trend-wrap" style="padding-top:0;">
+          <div class="trend-head">
+            <div class="trend-title">Last 30 days</div>
+            <div class="trend-total" id="insight30Total">0 min</div>
+          </div>
+          <div class="trend-bars" id="insightTrend30" aria-label="Last 30 days reading minutes trend"></div>
+        </div>
+        <div class="insights-grid" style="padding-top:0;">
+          <div class="insight-card">
+            <div class="insight-label">Personal best day</div>
+            <div class="insight-value" id="insightBestDayValue">0 min</div>
+            <div class="insight-sub" id="insightBestDayDate">—</div>
+          </div>
+          <div class="insight-card">
+            <div class="insight-label">Longest session</div>
+            <div class="insight-value" id="insightBestSessionValue">0 min</div>
+            <div class="insight-sub" id="insightBestSessionMeta">No sessions yet</div>
+          </div>
+        </div>
+        <div class="trow">
+          <div class="trow-info">
+            <div class="trow-lbl">Collect reading stats</div>
+            <div class="trow-sub">Store session history on this device only</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="statsCollectT"><span class="tog-tk"></span></label>
+        </div>
+        <div class="privacy-row">
+          <button class="pbtn" id="deleteStatsBtn" type="button">Delete all stats</button>
+        </div>
+      </div>
+
       <!-- Background Mode -->
       <div class="sec is-collapsed">
         <div class="sec-label">Background lighting <span class="sci sci-mixed">Mixed evidence</span></div>
@@ -2217,6 +2343,7 @@ let flowChunkIndex = 0;
 const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
 const SETTINGS_STORAGE_KEY = 'lumen.settings.v1';
 const SESSION_SUPPORT_STORAGE_KEY = 'lumen.session-support.v1';
+const STATS_STORAGE_KEY = 'lumen.stats.v1';
 const DOC_PROGRESS_STORAGE_KEY = 'lumen.doc-progress.v1';
 const DOC_STATE_STORAGE_KEY = 'lumen.doc-state.v1';
 const PORTABLE_SCHEMA_NAME = 'lumen-portable-state';
@@ -2316,6 +2443,11 @@ let sessionSupportState = {
 };
 let sessionTick = null;
 let sessionsCompletedThisSession = 0;
+let activeSessionRecord = null;
+let statsState = {
+  enabled: true,
+  sessions: []
+};
 let currentDocMeta = null;
 let pendingResumeState = null;
 let recentDocEntries = [];
@@ -4167,6 +4299,161 @@ function setCurrentDocumentMeta(meta) {
   maybeOfferResumeForCurrentDoc();
 }
 
+function getIsoDay(ts) {
+  const date = new Date(ts);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function rollupWindowDays(dayMap, days) {
+  const series = [];
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const ts = now.getTime() - (i * 86400000);
+    const day = getIsoDay(ts);
+    const min = Number(dayMap.get(day) || 0);
+    series.push({ day, minutes: min });
+  }
+  return series;
+}
+
+function renderTrendBars(targetId, series) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  el.innerHTML = '';
+  const max = Math.max(1, ...series.map(item => Number(item.minutes) || 0));
+  series.forEach(item => {
+    const bar = document.createElement('div');
+    const pct = Math.max(0.1, (Number(item.minutes) || 0) / max);
+    bar.className = `trend-bar${item.minutes > 0 ? ' active' : ''}`;
+    bar.style.height = `${Math.max(8, Math.round(pct * 100))}%`;
+    bar.title = `${item.day}: ${Math.round(item.minutes)} min`;
+    el.appendChild(bar);
+  });
+}
+
+function computeLongestStreak(dayMap) {
+  const days = Array.from(dayMap.keys()).sort();
+  let longest = 0;
+  let run = 0;
+  let prevTs = null;
+  days.forEach(day => {
+    if ((dayMap.get(day) || 0) <= 0) return;
+    const ts = new Date(`${day}T00:00:00`).getTime();
+    if (prevTs !== null && (ts - prevTs) === 86400000) run += 1;
+    else run = 1;
+    prevTs = ts;
+    if (run > longest) longest = run;
+  });
+  return longest;
+}
+
+function computeCurrentStreak(dayMap) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayKey = getIsoDay(today.getTime());
+  const hasToday = (dayMap.get(todayKey) || 0) > 0;
+  const startOffset = hasToday ? 0 : 1;
+  let streak = 0;
+  for (let i = 0; i < 3650; i += 1) {
+    const day = getIsoDay(today.getTime() - ((i + startOffset) * 86400000));
+    if ((dayMap.get(day) || 0) > 0) {
+      streak += 1;
+      continue;
+    }
+    break;
+  }
+  return streak;
+}
+
+function renderReadingInsights() {
+  const sessions = Array.isArray(statsState.sessions) ? statsState.sessions : [];
+  const dayMap = new Map();
+  sessions.forEach(session => {
+    const day = getIsoDay(Number(session.endedAt || session.startedAt || Date.now()));
+    const prev = Number(dayMap.get(day) || 0);
+    dayMap.set(day, prev + Math.max(0, Number(session.durationMin) || 0));
+  });
+  const series7 = rollupWindowDays(dayMap, 7);
+  const series30 = rollupWindowDays(dayMap, 30);
+  const total7 = series7.reduce((sum, item) => sum + item.minutes, 0);
+  const total30 = series30.reduce((sum, item) => sum + item.minutes, 0);
+  const sessionCount = sessions.length;
+  const avgSession = sessionCount ? sessions.reduce((sum, item) => sum + Math.max(0, Number(item.durationMin) || 0), 0) / sessionCount : 0;
+  const currentStreak = computeCurrentStreak(dayMap);
+  const bestStreak = computeLongestStreak(dayMap);
+  const bestSession = sessions.reduce((best, item) => ((Number(item.durationMin) || 0) > (Number(best?.durationMin) || 0) ? item : best), null);
+
+  let bestDay = { day: null, minutes: 0 };
+  dayMap.forEach((minutes, day) => {
+    if (minutes > bestDay.minutes) bestDay = { day, minutes };
+  });
+
+  document.getElementById('insight7Total').textContent = `${Math.round(total7)} min`;
+  document.getElementById('insight30Total').textContent = `${Math.round(total30)} min`;
+  document.getElementById('insightStreakValue').textContent = `${currentStreak} day${currentStreak === 1 ? '' : 's'}`;
+  document.getElementById('insightBestStreak').textContent = `Best: ${bestStreak} day${bestStreak === 1 ? '' : 's'}`;
+  document.getElementById('insightAvgSession').textContent = `${Math.round(avgSession)} min`;
+  document.getElementById('insightSessionCount').textContent = `${sessionCount} session${sessionCount === 1 ? '' : 's'}`;
+  document.getElementById('insightBestDayValue').textContent = `${Math.round(bestDay.minutes)} min`;
+  document.getElementById('insightBestDayDate').textContent = bestDay.day ? new Date(`${bestDay.day}T00:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+  document.getElementById('insightBestSessionValue').textContent = `${Math.round(Number(bestSession?.durationMin) || 0)} min`;
+  document.getElementById('insightBestSessionMeta').textContent = bestSession
+    ? `${new Date(Number(bestSession.endedAt || bestSession.startedAt)).toLocaleDateString([], { month: 'short', day: 'numeric' })} • ${bestSession.mode || 'unknown mode'}`
+    : 'No sessions yet';
+
+  renderTrendBars('insightTrend7', series7);
+  renderTrendBars('insightTrend30', series30);
+}
+
+function loadStatsState() {
+  try {
+    const raw = localStorage.getItem(STATS_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return;
+    statsState.enabled = parsed.enabled !== false;
+    statsState.sessions = Array.isArray(parsed.sessions) ? parsed.sessions.slice(-400) : [];
+  } catch (err) {
+    console.warn('Unable to load stats state:', err);
+  }
+}
+
+function saveStatsState() {
+  localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify({
+    enabled: statsState.enabled !== false,
+    sessions: Array.isArray(statsState.sessions) ? statsState.sessions.slice(-400) : []
+  }));
+}
+
+function persistSessionStat(record) {
+  if (!statsState.enabled || !record) return;
+  const next = {
+    startedAt: Number(record.startedAt) || Date.now(),
+    endedAt: Number(record.endedAt) || Date.now(),
+    durationMin: Math.max(0, Number(record.durationMin) || 0),
+    docId: record.docId || null,
+    mode: record.mode || readingMode || 'pdf'
+  };
+  if (Number.isFinite(record.wordsReadEstimate) && record.wordsReadEstimate > 0) {
+    next.wordsReadEstimate = Math.round(record.wordsReadEstimate);
+  }
+  statsState.sessions.push(next);
+  statsState.sessions = statsState.sessions.slice(-400);
+  saveStatsState();
+  renderReadingInsights();
+}
+
+function deleteAllStats() {
+  statsState.sessions = [];
+  activeSessionRecord = null;
+  saveStatsState();
+  renderReadingInsights();
+}
+
 function loadSessionSupportState() {
   try {
     const raw = localStorage.getItem(SESSION_SUPPORT_STORAGE_KEY);
@@ -4506,6 +4793,7 @@ function hideSessionDonePopup() {
 
 function stopSessionTimer(clearSchedule = true, markCompleted = false) {
   const finishedMinutes = Number(sessionSupportState.durationMin || 0);
+  const finishedAt = Date.now();
   if (sessionTick) {
     clearInterval(sessionTick);
     sessionTick = null;
@@ -4513,6 +4801,20 @@ function stopSessionTimer(clearSchedule = true, markCompleted = false) {
   if (markCompleted && finishedMinutes > 0) {
     sessionsCompletedThisSession += 1;
     showSessionDonePopup(finishedMinutes);
+  }
+  if (activeSessionRecord && finishedMinutes > 0) {
+    const startedAt = Number(activeSessionRecord.startedAt) || (finishedAt - (finishedMinutes * 60000));
+    const durationMin = Math.max(0.1, (finishedAt - startedAt) / 60000);
+    const wordsReadEstimate = getAutoScrollWpmValue() * durationMin;
+    persistSessionStat({
+      startedAt,
+      endedAt: finishedAt,
+      durationMin,
+      docId: activeSessionRecord.docId || getCurrentDocId(),
+      mode: activeSessionRecord.mode || readingMode,
+      wordsReadEstimate
+    });
+    activeSessionRecord = null;
   }
   if (clearSchedule) {
     sessionSupportState.sessionEndTs = 0;
@@ -4523,16 +4825,27 @@ function stopSessionTimer(clearSchedule = true, markCompleted = false) {
   updateLowInterruptionMode();
 }
 
-function startSessionTimer(minutes) {
+function startSessionTimer(minutes, options = {}) {
   stopSessionTimer(false);
   hideSessionDonePopup();
-  sessionSupportState.durationMin = minutes;
-  sessionSupportState.sessionEndTs = Date.now() + (minutes * 60 * 1000);
+  const now = Date.now();
+  const resumedStartTs = Number(options?.startTs);
+  const startedAt = Number.isFinite(resumedStartTs) && resumedStartTs > 0 ? resumedStartTs : now;
+  const durationMinutes = Number(minutes) || 0;
+  sessionSupportState.durationMin = durationMinutes;
+  sessionSupportState.sessionEndTs = now + (durationMinutes * 60 * 1000);
   saveSessionSupportState();
+  activeSessionRecord = statsState.enabled
+    ? {
+      startedAt,
+      docId: getCurrentDocId(),
+      mode: readingMode
+    }
+    : null;
   updateSessionMeta();
   updateLowInterruptionMode();
   document.querySelectorAll('.session-btn').forEach(btn => {
-    btn.classList.toggle('on', Number(btn.dataset.minutes) === minutes);
+    btn.classList.toggle('on', Number(btn.dataset.minutes) === durationMinutes);
   });
   sessionTick = setInterval(() => {
     const remaining = getRemainingSessionMs();
@@ -7634,6 +7947,17 @@ document.getElementById('lowInterruptT').addEventListener('change', e => {
   updateLowInterruptionMode();
 });
 document.getElementById('sessionDoneDismissBtn').addEventListener('click', () => hideSessionDonePopup());
+document.getElementById('statsCollectT').addEventListener('change', e => {
+  statsState.enabled = e.target.checked;
+  if (!statsState.enabled) activeSessionRecord = null;
+  saveStatsState();
+  renderReadingInsights();
+});
+document.getElementById('deleteStatsBtn').addEventListener('click', () => {
+  const shouldDelete = window.confirm('Delete all saved reading stats from this device? This cannot be undone.');
+  if (!shouldDelete) return;
+  deleteAllStats();
+});
 document.getElementById('chunkRecoverBtn').addEventListener('click', async () => {
   const { previous } = getChunkMemoryForCurrentDoc();
   if (!previous) return;
@@ -7743,6 +8067,7 @@ document.addEventListener('keydown', e => {
 /* ── Profile system init ── */
 const persistedSettings = loadSettings();
 loadSessionSupportState();
+loadStatsState();
 syncRecentDocListFromStorage();
 renderRecentDocList();
 updateChunkRecoverButton();
@@ -7754,8 +8079,12 @@ document.getElementById('saveProfileBtn').addEventListener('click', handleSavePr
 document.getElementById('deleteProfileBtn').addEventListener('click', handleDeleteProfile);
 useProfile(lastUsedProfileId);
 document.getElementById('lowInterruptT').checked = Boolean(sessionSupportState.lowInterruption);
+document.getElementById('statsCollectT').checked = Boolean(statsState.enabled);
+renderReadingInsights();
 if (sessionSupportState.sessionEndTs > Date.now() && sessionSupportState.durationMin) {
-  startSessionTimer(Number(sessionSupportState.durationMin));
+  const resumeMinutes = getRemainingSessionMs() / 60000;
+  const inferredStartTs = Number(sessionSupportState.sessionEndTs) - (Number(sessionSupportState.durationMin) * 60000);
+  startSessionTimer(resumeMinutes, { startTs: inferredStartTs });
 } else {
   stopSessionTimer();
 }
