@@ -108,6 +108,10 @@
   --control-bg: #252015;
   --control-border: #38301f;
   --slider-track: #38301f;
+  --empty-title-color: var(--text-primary);
+  --empty-desc-color: #e5d1b6;
+  --empty-icon-shadow: rgba(9, 6, 2, 0.26);
+  --empty-icon-glow: rgba(255, 236, 201, 0.18);
   --sidebar-width: 404px;
   --sidebar-offset: var(--sidebar-width);
 }
@@ -462,6 +466,78 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .session-btn { padding: 7px 0; font-size: 12px; }
 .session-btn.on { background: var(--accent); color: #1a1200; border-color: var(--accent); }
 .session-meta { padding: 0 20px 8px; font-size: 11.5px; color: var(--text-muted); line-height: 1.45; }
+.insights-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 2px 20px 10px;
+}
+.insight-card {
+  border: 1px solid var(--control-border);
+  background: linear-gradient(160deg, rgba(41, 33, 24, 0.92), rgba(30, 24, 17, 0.92));
+  border-radius: 8px;
+  padding: 8px 9px;
+  min-height: 62px;
+}
+.insight-label {
+  font-family: 'DM Mono', monospace;
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.insight-value {
+  margin-top: 4px;
+  color: var(--text-primary);
+  font-size: 16px;
+}
+.insight-sub {
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+.trend-wrap {
+  padding: 0 20px 10px;
+}
+.trend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.trend-title {
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.trend-total {
+  color: var(--accent);
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+}
+.trend-bars {
+  height: 46px;
+  border: 1px solid var(--control-border);
+  border-radius: 7px;
+  padding: 6px;
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  background: rgba(23, 18, 12, 0.7);
+}
+.trend-bar {
+  flex: 1;
+  border-radius: 3px 3px 1px 1px;
+  background: linear-gradient(180deg, rgba(216, 153, 94, 0.92), rgba(137, 85, 41, 0.92));
+  min-height: 4px;
+  opacity: 0.42;
+}
+.trend-bar.active {
+  opacity: 1;
+}
+.privacy-row {
+  padding: 0 20px 8px;
+}
 .resume-card {
   margin: 0 20px 10px;
   border: 1px solid var(--control-border);
@@ -790,9 +866,15 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 
 /* Empty state */
 .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 70vh; gap: 16px; text-align: center; }
-.empty-icon { font-size: 60px; opacity: 0.74; filter: saturate(1.15) brightness(1.08); }
-.empty-title { font-family: 'Playfair Display', serif; font-size: 27px; color: var(--text-primary); }
-.empty-desc { font-size: 14px; max-width: 420px; line-height: 1.7; color: #e5d1b6; }
+.empty-icon {
+  font-size: 60px;
+  opacity: 0.96;
+  filter: saturate(1.22) brightness(1.08) drop-shadow(0 2px 3px var(--empty-icon-shadow));
+  text-shadow: 0 0 14px var(--empty-icon-glow);
+  transition: filter 0.2s ease, text-shadow 0.2s ease;
+}
+.empty-title { font-family: 'Playfair Display', serif; font-size: 27px; color: var(--empty-title-color); transition: color 0.2s ease; }
+.empty-desc { font-size: 14px; max-width: 420px; line-height: 1.7; color: var(--empty-desc-color); transition: color 0.2s ease; }
 .empty-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1758,6 +1840,12 @@ body.low-interruption-active .flow-speed-hud {
           <button class="pbtn" id="saveProfileBtn" type="button">Save current</button>
           <button class="pbtn" id="deleteProfileBtn" type="button">Delete</button>
         </div>
+        <div class="sec-hint" style="padding-top: 8px;">Take your setup with you across devices, with optional passphrase protection for shared machines.</div>
+        <div class="presets" style="padding-top: 4px;">
+          <button class="pbtn" id="exportDataBtn" type="button">Export data</button>
+          <button class="pbtn" id="importDataBtn" type="button">Import data</button>
+        </div>
+        <input type="file" id="importDataFileIn" accept="application/json,.json" hidden>
       </div>
 
 
@@ -1815,6 +1903,60 @@ body.low-interruption-active .flow-speed-hud {
             <button class="pbtn" id="resumeRestoreBtn" type="button">Restore</button>
             <button class="pbtn" id="resumeDismissBtn" type="button">Dismiss</button>
           </div>
+        </div>
+      </div>
+
+      <!-- Reading Insights -->
+      <div class="sec is-collapsed">
+        <div class="sec-label">Reading Insights</div>
+        <div class="sec-hint">Private on-device summaries of your reading rhythm. Trend lines update from saved sessions.</div>
+        <div class="insights-grid">
+          <div class="insight-card">
+            <div class="insight-label">Current streak</div>
+            <div class="insight-value" id="insightStreakValue">0 days</div>
+            <div class="insight-sub" id="insightBestStreak">Best: 0 days</div>
+          </div>
+          <div class="insight-card">
+            <div class="insight-label">Average session</div>
+            <div class="insight-value" id="insightAvgSession">0 min</div>
+            <div class="insight-sub" id="insightSessionCount">0 sessions</div>
+          </div>
+        </div>
+        <div class="trend-wrap">
+          <div class="trend-head">
+            <div class="trend-title">Last 7 days</div>
+            <div class="trend-total" id="insight7Total">0 min</div>
+          </div>
+          <div class="trend-bars" id="insightTrend7" aria-label="Last 7 days reading minutes trend"></div>
+        </div>
+        <div class="trend-wrap" style="padding-top:0;">
+          <div class="trend-head">
+            <div class="trend-title">Last 30 days</div>
+            <div class="trend-total" id="insight30Total">0 min</div>
+          </div>
+          <div class="trend-bars" id="insightTrend30" aria-label="Last 30 days reading minutes trend"></div>
+        </div>
+        <div class="insights-grid" style="padding-top:0;">
+          <div class="insight-card">
+            <div class="insight-label">Personal best day</div>
+            <div class="insight-value" id="insightBestDayValue">0 min</div>
+            <div class="insight-sub" id="insightBestDayDate">—</div>
+          </div>
+          <div class="insight-card">
+            <div class="insight-label">Longest session</div>
+            <div class="insight-value" id="insightBestSessionValue">0 min</div>
+            <div class="insight-sub" id="insightBestSessionMeta">No sessions yet</div>
+          </div>
+        </div>
+        <div class="trow">
+          <div class="trow-info">
+            <div class="trow-lbl">Collect reading stats</div>
+            <div class="trow-sub">Store session history on this device only</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="statsCollectT"><span class="tog-tk"></span></label>
+        </div>
+        <div class="privacy-row">
+          <button class="pbtn" id="deleteStatsBtn" type="button">Delete all stats</button>
         </div>
       </div>
 
@@ -2252,8 +2394,12 @@ let flowChunkIndex = 0;
 const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
 const SETTINGS_STORAGE_KEY = 'lumen.settings.v1';
 const SESSION_SUPPORT_STORAGE_KEY = 'lumen.session-support.v1';
+const STATS_STORAGE_KEY = 'lumen.stats.v1';
 const DOC_PROGRESS_STORAGE_KEY = 'lumen.doc-progress.v1';
 const DOC_STATE_STORAGE_KEY = 'lumen.doc-state.v1';
+const PORTABLE_SCHEMA_NAME = 'lumen-portable-state';
+const PORTABLE_SCHEMA_VERSION = 1;
+const PORTABLE_KDF_ITERATIONS = 250000;
 const DOC_STATE_DB_NAME = 'lumen-documents';
 const DOC_STATE_STORE = 'documents';
 const DOC_STATE_LEGACY_ACTIVE_RECORD_ID = 'active';
@@ -2349,6 +2495,11 @@ let sessionSupportState = {
 };
 let sessionTick = null;
 let sessionsCompletedThisSession = 0;
+let activeSessionRecord = null;
+let statsState = {
+  enabled: true,
+  sessions: []
+};
 let currentDocMeta = null;
 let pendingResumeState = null;
 let recentDocEntries = [];
@@ -3307,6 +3458,51 @@ function normalizeFontKey(fontValue) {
   if (typeof fontValue !== 'string' || !fontValue.trim()) return 'native';
   if (Object.hasOwn(FONT_STACKS, fontValue)) return fontValue;
   return LEGACY_FONT_KEYS[fontValue] || 'native';
+}
+
+function hexToRgb(hex) {
+  const safe = String(hex || '').trim().replace('#', '');
+  if (!/^[0-9a-f]{3}([0-9a-f]{3})?$/i.test(safe)) return { r: 14, g: 10, b: 6 };
+  const expanded = safe.length === 3
+    ? safe.split('').map((char) => char + char).join('')
+    : safe;
+  return {
+    r: parseInt(expanded.slice(0, 2), 16),
+    g: parseInt(expanded.slice(2, 4), 16),
+    b: parseInt(expanded.slice(4, 6), 16),
+  };
+}
+
+function relativeLuminance({ r, g, b }) {
+  const normalizeChannel = (value) => {
+    const s = value / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  const R = normalizeChannel(r);
+  const G = normalizeChannel(g);
+  const B = normalizeChannel(b);
+  return (0.2126 * R) + (0.7152 * G) + (0.0722 * B);
+}
+
+function pickContrastTextColor(backgroundHex, lightText = '#f6ebd9', darkText = '#2d2418') {
+  const bgLum = relativeLuminance(hexToRgb(backgroundHex));
+  const lightLum = relativeLuminance(hexToRgb(lightText));
+  const darkLum = relativeLuminance(hexToRgb(darkText));
+  const lightContrast = (Math.max(bgLum, lightLum) + 0.05) / (Math.min(bgLum, lightLum) + 0.05);
+  const darkContrast = (Math.max(bgLum, darkLum) + 0.05) / (Math.min(bgLum, darkLum) + 0.05);
+  return lightContrast >= darkContrast ? lightText : darkText;
+}
+
+function applyEmptyStateContrast(backgroundHex) {
+  const rootStyle = document.documentElement.style;
+  const titleColor = pickContrastTextColor(backgroundHex, '#f6ebd9', '#2b2217');
+  const descColor = pickContrastTextColor(backgroundHex, '#e7d3b7', '#5a4732');
+  const bgLum = relativeLuminance(hexToRgb(backgroundHex));
+  const isLightBg = bgLum >= 0.38;
+  rootStyle.setProperty('--empty-title-color', titleColor);
+  rootStyle.setProperty('--empty-desc-color', descColor);
+  rootStyle.setProperty('--empty-icon-shadow', isLightBg ? 'rgba(64, 42, 22, 0.36)' : 'rgba(7, 5, 3, 0.5)');
+  rootStyle.setProperty('--empty-icon-glow', isLightBg ? 'rgba(255, 246, 227, 0.08)' : 'rgba(255, 224, 175, 0.28)');
 }
 
 const FONT_LOAD_PROMISES = new Map();
@@ -4274,6 +4470,161 @@ function setCurrentDocumentMeta(meta) {
   maybeOfferResumeForCurrentDoc();
 }
 
+function getIsoDay(ts) {
+  const date = new Date(ts);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function rollupWindowDays(dayMap, days) {
+  const series = [];
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  for (let i = days - 1; i >= 0; i -= 1) {
+    const ts = now.getTime() - (i * 86400000);
+    const day = getIsoDay(ts);
+    const min = Number(dayMap.get(day) || 0);
+    series.push({ day, minutes: min });
+  }
+  return series;
+}
+
+function renderTrendBars(targetId, series) {
+  const el = document.getElementById(targetId);
+  if (!el) return;
+  el.innerHTML = '';
+  const max = Math.max(1, ...series.map(item => Number(item.minutes) || 0));
+  series.forEach(item => {
+    const bar = document.createElement('div');
+    const pct = Math.max(0.1, (Number(item.minutes) || 0) / max);
+    bar.className = `trend-bar${item.minutes > 0 ? ' active' : ''}`;
+    bar.style.height = `${Math.max(8, Math.round(pct * 100))}%`;
+    bar.title = `${item.day}: ${Math.round(item.minutes)} min`;
+    el.appendChild(bar);
+  });
+}
+
+function computeLongestStreak(dayMap) {
+  const days = Array.from(dayMap.keys()).sort();
+  let longest = 0;
+  let run = 0;
+  let prevTs = null;
+  days.forEach(day => {
+    if ((dayMap.get(day) || 0) <= 0) return;
+    const ts = new Date(`${day}T00:00:00`).getTime();
+    if (prevTs !== null && (ts - prevTs) === 86400000) run += 1;
+    else run = 1;
+    prevTs = ts;
+    if (run > longest) longest = run;
+  });
+  return longest;
+}
+
+function computeCurrentStreak(dayMap) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayKey = getIsoDay(today.getTime());
+  const hasToday = (dayMap.get(todayKey) || 0) > 0;
+  const startOffset = hasToday ? 0 : 1;
+  let streak = 0;
+  for (let i = 0; i < 3650; i += 1) {
+    const day = getIsoDay(today.getTime() - ((i + startOffset) * 86400000));
+    if ((dayMap.get(day) || 0) > 0) {
+      streak += 1;
+      continue;
+    }
+    break;
+  }
+  return streak;
+}
+
+function renderReadingInsights() {
+  const sessions = Array.isArray(statsState.sessions) ? statsState.sessions : [];
+  const dayMap = new Map();
+  sessions.forEach(session => {
+    const day = getIsoDay(Number(session.endedAt || session.startedAt || Date.now()));
+    const prev = Number(dayMap.get(day) || 0);
+    dayMap.set(day, prev + Math.max(0, Number(session.durationMin) || 0));
+  });
+  const series7 = rollupWindowDays(dayMap, 7);
+  const series30 = rollupWindowDays(dayMap, 30);
+  const total7 = series7.reduce((sum, item) => sum + item.minutes, 0);
+  const total30 = series30.reduce((sum, item) => sum + item.minutes, 0);
+  const sessionCount = sessions.length;
+  const avgSession = sessionCount ? sessions.reduce((sum, item) => sum + Math.max(0, Number(item.durationMin) || 0), 0) / sessionCount : 0;
+  const currentStreak = computeCurrentStreak(dayMap);
+  const bestStreak = computeLongestStreak(dayMap);
+  const bestSession = sessions.reduce((best, item) => ((Number(item.durationMin) || 0) > (Number(best?.durationMin) || 0) ? item : best), null);
+
+  let bestDay = { day: null, minutes: 0 };
+  dayMap.forEach((minutes, day) => {
+    if (minutes > bestDay.minutes) bestDay = { day, minutes };
+  });
+
+  document.getElementById('insight7Total').textContent = `${Math.round(total7)} min`;
+  document.getElementById('insight30Total').textContent = `${Math.round(total30)} min`;
+  document.getElementById('insightStreakValue').textContent = `${currentStreak} day${currentStreak === 1 ? '' : 's'}`;
+  document.getElementById('insightBestStreak').textContent = `Best: ${bestStreak} day${bestStreak === 1 ? '' : 's'}`;
+  document.getElementById('insightAvgSession').textContent = `${Math.round(avgSession)} min`;
+  document.getElementById('insightSessionCount').textContent = `${sessionCount} session${sessionCount === 1 ? '' : 's'}`;
+  document.getElementById('insightBestDayValue').textContent = `${Math.round(bestDay.minutes)} min`;
+  document.getElementById('insightBestDayDate').textContent = bestDay.day ? new Date(`${bestDay.day}T00:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
+  document.getElementById('insightBestSessionValue').textContent = `${Math.round(Number(bestSession?.durationMin) || 0)} min`;
+  document.getElementById('insightBestSessionMeta').textContent = bestSession
+    ? `${new Date(Number(bestSession.endedAt || bestSession.startedAt)).toLocaleDateString([], { month: 'short', day: 'numeric' })} • ${bestSession.mode || 'unknown mode'}`
+    : 'No sessions yet';
+
+  renderTrendBars('insightTrend7', series7);
+  renderTrendBars('insightTrend30', series30);
+}
+
+function loadStatsState() {
+  try {
+    const raw = localStorage.getItem(STATS_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return;
+    statsState.enabled = parsed.enabled !== false;
+    statsState.sessions = Array.isArray(parsed.sessions) ? parsed.sessions.slice(-400) : [];
+  } catch (err) {
+    console.warn('Unable to load stats state:', err);
+  }
+}
+
+function saveStatsState() {
+  localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify({
+    enabled: statsState.enabled !== false,
+    sessions: Array.isArray(statsState.sessions) ? statsState.sessions.slice(-400) : []
+  }));
+}
+
+function persistSessionStat(record) {
+  if (!statsState.enabled || !record) return;
+  const next = {
+    startedAt: Number(record.startedAt) || Date.now(),
+    endedAt: Number(record.endedAt) || Date.now(),
+    durationMin: Math.max(0, Number(record.durationMin) || 0),
+    docId: record.docId || null,
+    mode: record.mode || readingMode || 'pdf'
+  };
+  if (Number.isFinite(record.wordsReadEstimate) && record.wordsReadEstimate > 0) {
+    next.wordsReadEstimate = Math.round(record.wordsReadEstimate);
+  }
+  statsState.sessions.push(next);
+  statsState.sessions = statsState.sessions.slice(-400);
+  saveStatsState();
+  renderReadingInsights();
+}
+
+function deleteAllStats() {
+  statsState.sessions = [];
+  activeSessionRecord = null;
+  saveStatsState();
+  renderReadingInsights();
+}
+
 function loadSessionSupportState() {
   try {
     const raw = localStorage.getItem(SESSION_SUPPORT_STORAGE_KEY);
@@ -4294,6 +4645,273 @@ function loadSessionSupportState() {
 
 function saveSessionSupportState() {
   localStorage.setItem(SESSION_SUPPORT_STORAGE_KEY, JSON.stringify(sessionSupportState));
+}
+
+function stableStringify(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(item => stableStringify(item)).join(',')}]`;
+  const keys = Object.keys(value).sort();
+  return `{${keys.map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+}
+
+async function sha256Hex(input) {
+  const bytes = new TextEncoder().encode(String(input || ''));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function base64ToUint8Array(base64) {
+  const binary = atob(base64);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+async function derivePortableEncryptionKey(passphrase, salt, iterations = PORTABLE_KDF_ITERATIONS) {
+  const material = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(passphrase),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt,
+      iterations,
+      hash: 'SHA-256'
+    },
+    material,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+function getPortableDataPayload() {
+  return {
+    settings: loadSettings(),
+    profiles: {
+      customProfiles,
+      lastUsedProfileId
+    },
+    sessionSupport: sessionSupportState,
+    progress: loadDocProgressMap()
+  };
+}
+
+async function buildPortableEnvelope({ passphrase = '' } = {}) {
+  const payload = getPortableDataPayload();
+  const base = {
+    schema: PORTABLE_SCHEMA_NAME,
+    version: PORTABLE_SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    data: payload
+  };
+  const checksum = await sha256Hex(stableStringify(base));
+  if (!passphrase) {
+    return {
+      ...base,
+      checksum,
+      encryption: { enabled: false }
+    };
+  }
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await derivePortableEncryptionKey(passphrase, salt, PORTABLE_KDF_ITERATIONS);
+  const plaintext = new TextEncoder().encode(stableStringify(base.data));
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
+  return {
+    schema: PORTABLE_SCHEMA_NAME,
+    version: PORTABLE_SCHEMA_VERSION,
+    exportedAt: base.exportedAt,
+    checksum,
+    encryption: {
+      enabled: true,
+      algorithm: 'AES-GCM',
+      kdf: 'PBKDF2-SHA256',
+      iterations: PORTABLE_KDF_ITERATIONS,
+      salt: arrayBufferToBase64(salt),
+      iv: arrayBufferToBase64(iv)
+    },
+    data: arrayBufferToBase64(ciphertext)
+  };
+}
+
+function mergeDocProgressMaps(currentMap = {}, incomingMap = {}) {
+  const next = { ...currentMap };
+  Object.entries(incomingMap || {}).forEach(([docId, incoming]) => {
+    if (!incoming || typeof incoming !== 'object') return;
+    const existing = next[docId];
+    const existingTs = Number(existing?.savedAt || 0);
+    const incomingTs = Number(incoming?.savedAt || 0);
+    if (!existing || incomingTs >= existingTs) next[docId] = incoming;
+  });
+  return next;
+}
+
+function applyPortableImportData(payload = {}, conflictStrategy = 'merge') {
+  const replace = conflictStrategy === 'replace';
+  const incomingSettings = payload.settings && typeof payload.settings === 'object' ? payload.settings : {};
+  const incomingProfiles = payload.profiles && typeof payload.profiles === 'object' ? payload.profiles : {};
+  const incomingSession = payload.sessionSupport && typeof payload.sessionSupport === 'object' ? payload.sessionSupport : {};
+  const incomingProgress = payload.progress && typeof payload.progress === 'object' ? payload.progress : {};
+
+  if (replace) {
+    if (incomingSettings && Object.keys(incomingSettings).length) {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(incomingSettings));
+    }
+    const nextProfiles = {
+      customProfiles: incomingProfiles.customProfiles && typeof incomingProfiles.customProfiles === 'object' ? incomingProfiles.customProfiles : {},
+      lastUsedProfileId: typeof incomingProfiles.lastUsedProfileId === 'string' ? incomingProfiles.lastUsedProfileId : DEFAULT_PROFILE_ID
+    };
+    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(nextProfiles));
+    const nextSession = {
+      ...sessionSupportState,
+      ...incomingSession
+    };
+    localStorage.setItem(SESSION_SUPPORT_STORAGE_KEY, JSON.stringify(nextSession));
+    saveDocProgressMap(incomingProgress);
+    return;
+  }
+
+  if (incomingSettings && Object.keys(incomingSettings).length) {
+    const currentSettings = loadSettings();
+    const mergedSettings = {
+      ...currentSettings,
+      ...incomingSettings,
+      settings: {
+        ...(currentSettings.settings || {}),
+        ...(incomingSettings.settings || {})
+      }
+    };
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(mergedSettings));
+  }
+
+  const currentProfiles = (() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(PROFILE_STORAGE_KEY) || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  })();
+  const mergedProfiles = {
+    customProfiles: {
+      ...(currentProfiles.customProfiles || {}),
+      ...(incomingProfiles.customProfiles || {})
+    },
+    lastUsedProfileId: typeof incomingProfiles.lastUsedProfileId === 'string'
+      ? incomingProfiles.lastUsedProfileId
+      : (currentProfiles.lastUsedProfileId || DEFAULT_PROFILE_ID)
+  };
+  localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(mergedProfiles));
+
+  const mergedSessionSupport = {
+    ...sessionSupportState,
+    ...incomingSession,
+    chunkMemory: {
+      ...(sessionSupportState.chunkMemory || {}),
+      ...((incomingSession && incomingSession.chunkMemory) || {})
+    }
+  };
+  localStorage.setItem(SESSION_SUPPORT_STORAGE_KEY, JSON.stringify(mergedSessionSupport));
+  saveDocProgressMap(mergeDocProgressMaps(loadDocProgressMap(), incomingProgress));
+}
+
+async function parsePortableImportEnvelope(rawText) {
+  const parsed = JSON.parse(rawText);
+  if (!parsed || typeof parsed !== 'object') throw new Error('Invalid import file format.');
+  if (parsed.schema !== PORTABLE_SCHEMA_NAME) throw new Error('Unsupported schema.');
+  if (Number(parsed.version) !== PORTABLE_SCHEMA_VERSION) throw new Error(`Unsupported schema version: ${parsed.version}`);
+
+  const encryptionEnabled = Boolean(parsed.encryption?.enabled);
+  let payload = parsed.data;
+  if (encryptionEnabled) {
+    const passphrase = window.prompt('This export is encrypted. Enter passphrase to import:');
+    if (!passphrase) throw new Error('Import cancelled: passphrase required.');
+    const salt = base64ToUint8Array(parsed.encryption?.salt || '');
+    const iv = base64ToUint8Array(parsed.encryption?.iv || '');
+    const iterations = Number(parsed.encryption?.iterations) || PORTABLE_KDF_ITERATIONS;
+    const key = await derivePortableEncryptionKey(passphrase, salt, iterations);
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      base64ToUint8Array(String(parsed.data || ''))
+    );
+    payload = JSON.parse(new TextDecoder().decode(decrypted));
+  }
+
+  if (!payload || typeof payload !== 'object') throw new Error('Imported payload is empty.');
+  const checksumProbe = {
+    schema: parsed.schema,
+    version: parsed.version,
+    exportedAt: parsed.exportedAt,
+    data: payload
+  };
+  const computedChecksum = await sha256Hex(stableStringify(checksumProbe));
+  if (computedChecksum !== parsed.checksum) throw new Error('Checksum mismatch. Import aborted to protect data integrity.');
+  return payload;
+}
+
+async function handlePortableDataExport() {
+  try {
+    const wantsEncryption = window.confirm('Protect export with a passphrase?\n\nChoose "OK" for encrypted export, or "Cancel" for plain JSON.');
+    let passphrase = '';
+    if (wantsEncryption) {
+      passphrase = window.prompt('Enter export passphrase (remember this; it is required for import):', '') || '';
+      if (!passphrase.trim()) {
+        window.alert('Export cancelled: passphrase cannot be empty when encryption is enabled.');
+        return;
+      }
+    }
+    const envelope = await buildPortableEnvelope({ passphrase });
+    const blob = new Blob([`${JSON.stringify(envelope, null, 2)}\n`], { type: 'application/json' });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `lumen-export-v${PORTABLE_SCHEMA_VERSION}-${stamp}.json`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+    window.alert(`Export ready: ${filename}`);
+  } catch (err) {
+    console.warn('Data export failed:', err);
+    window.alert(`Export failed: ${err && err.message ? err.message : 'Unknown error'}`);
+  }
+}
+
+async function handlePortableDataImport(file) {
+  if (!file) return;
+  try {
+    const rawText = await file.text();
+    const payload = await parsePortableImportEnvelope(rawText);
+    const strategy = window.prompt('Import strategy: type "merge" to combine with local data, or "replace" to overwrite local data.', 'merge');
+    const normalized = String(strategy || '').trim().toLowerCase();
+    if (!normalized) return;
+    if (normalized !== 'merge' && normalized !== 'replace') {
+      window.alert('Import cancelled: strategy must be merge or replace.');
+      return;
+    }
+    applyPortableImportData(payload, normalized);
+    window.alert(`Import complete (${normalized}). Reloading to apply all restored state.`);
+    window.location.reload();
+  } catch (err) {
+    console.warn('Data import failed:', err);
+    window.alert(`Import failed: ${err && err.message ? err.message : 'Unknown error'}`);
+  }
 }
 
 function updateLowInterruptionMode() {
@@ -4346,6 +4964,7 @@ function hideSessionDonePopup() {
 
 function stopSessionTimer(clearSchedule = true, markCompleted = false) {
   const finishedMinutes = Number(sessionSupportState.durationMin || 0);
+  const finishedAt = Date.now();
   if (sessionTick) {
     clearInterval(sessionTick);
     sessionTick = null;
@@ -4353,6 +4972,20 @@ function stopSessionTimer(clearSchedule = true, markCompleted = false) {
   if (markCompleted && finishedMinutes > 0) {
     sessionsCompletedThisSession += 1;
     showSessionDonePopup(finishedMinutes);
+  }
+  if (activeSessionRecord && finishedMinutes > 0) {
+    const startedAt = Number(activeSessionRecord.startedAt) || (finishedAt - (finishedMinutes * 60000));
+    const durationMin = Math.max(0.1, (finishedAt - startedAt) / 60000);
+    const wordsReadEstimate = getAutoScrollWpmValue() * durationMin;
+    persistSessionStat({
+      startedAt,
+      endedAt: finishedAt,
+      durationMin,
+      docId: activeSessionRecord.docId || getCurrentDocId(),
+      mode: activeSessionRecord.mode || readingMode,
+      wordsReadEstimate
+    });
+    activeSessionRecord = null;
   }
   if (clearSchedule) {
     sessionSupportState.sessionEndTs = 0;
@@ -4363,16 +4996,27 @@ function stopSessionTimer(clearSchedule = true, markCompleted = false) {
   updateLowInterruptionMode();
 }
 
-function startSessionTimer(minutes) {
+function startSessionTimer(minutes, options = {}) {
   stopSessionTimer(false);
   hideSessionDonePopup();
-  sessionSupportState.durationMin = minutes;
-  sessionSupportState.sessionEndTs = Date.now() + (minutes * 60 * 1000);
+  const now = Date.now();
+  const resumedStartTs = Number(options?.startTs);
+  const startedAt = Number.isFinite(resumedStartTs) && resumedStartTs > 0 ? resumedStartTs : now;
+  const durationMinutes = Number(minutes) || 0;
+  sessionSupportState.durationMin = durationMinutes;
+  sessionSupportState.sessionEndTs = now + (durationMinutes * 60 * 1000);
   saveSessionSupportState();
+  activeSessionRecord = statsState.enabled
+    ? {
+      startedAt,
+      docId: getCurrentDocId(),
+      mode: readingMode
+    }
+    : null;
   updateSessionMeta();
   updateLowInterruptionMode();
   document.querySelectorAll('.session-btn').forEach(btn => {
-    btn.classList.toggle('on', Number(btn.dataset.minutes) === minutes);
+    btn.classList.toggle('on', Number(btn.dataset.minutes) === durationMinutes);
   });
   sessionTick = setInterval(() => {
     const remaining = getRemainingSessionMs();
@@ -5997,6 +6641,7 @@ function applyFilters() {
   const con = document.getElementById('conR').value;
   const f = `brightness(${bri}%) contrast(${con}%) ${m.filter}`;
   reader.style.background = m.bg;
+  applyEmptyStateContrast(m.bg);
   rInner.querySelectorAll('canvas').forEach(c => c.style.filter = f);
   rInner.querySelectorAll('.page-wrap').forEach(w => w.style.background = m.bg);
   applyReadingMode();
@@ -7560,6 +8205,17 @@ document.getElementById('lowInterruptT').addEventListener('change', e => {
   updateLowInterruptionMode();
 });
 document.getElementById('sessionDoneDismissBtn').addEventListener('click', () => hideSessionDonePopup());
+document.getElementById('statsCollectT').addEventListener('change', e => {
+  statsState.enabled = e.target.checked;
+  if (!statsState.enabled) activeSessionRecord = null;
+  saveStatsState();
+  renderReadingInsights();
+});
+document.getElementById('deleteStatsBtn').addEventListener('click', () => {
+  const shouldDelete = window.confirm('Delete all saved reading stats from this device? This cannot be undone.');
+  if (!shouldDelete) return;
+  deleteAllStats();
+});
 document.getElementById('chunkRecoverBtn').addEventListener('click', async () => {
   const { previous } = getChunkMemoryForCurrentDoc();
   if (!previous) return;
@@ -7569,6 +8225,18 @@ document.getElementById('resumeRestoreBtn').addEventListener('click', () => rest
 document.getElementById('resumeDismissBtn').addEventListener('click', () => {
   pendingResumeState = null;
   refreshResumeCard();
+});
+document.getElementById('exportDataBtn').addEventListener('click', () => {
+  handlePortableDataExport();
+});
+document.getElementById('importDataBtn').addEventListener('click', () => {
+  document.getElementById('importDataFileIn').click();
+});
+document.getElementById('importDataFileIn').addEventListener('change', async e => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  await handlePortableDataImport(file);
 });
 document.getElementById('resetDocBtn').addEventListener('click', async () => {
   await clearActivePersistedDocumentState();
@@ -7658,6 +8326,7 @@ document.addEventListener('keydown', e => {
 const persistedSettings = loadSettings();
 loadSessionSupportState();
 setRecentDocSortMode(getRecentDocSortMode());
+loadStatsState();
 syncRecentDocListFromStorage();
 renderRecentDocList();
 updateChunkRecoverButton();
@@ -7669,8 +8338,12 @@ document.getElementById('saveProfileBtn').addEventListener('click', handleSavePr
 document.getElementById('deleteProfileBtn').addEventListener('click', handleDeleteProfile);
 useProfile(lastUsedProfileId);
 document.getElementById('lowInterruptT').checked = Boolean(sessionSupportState.lowInterruption);
+document.getElementById('statsCollectT').checked = Boolean(statsState.enabled);
+renderReadingInsights();
 if (sessionSupportState.sessionEndTs > Date.now() && sessionSupportState.durationMin) {
-  startSessionTimer(Number(sessionSupportState.durationMin));
+  const resumeMinutes = getRemainingSessionMs() / 60000;
+  const inferredStartTs = Number(sessionSupportState.sessionEndTs) - (Number(sessionSupportState.durationMin) * 60000);
+  startSessionTimer(resumeMinutes, { startTs: inferredStartTs });
 } else {
   stopSessionTimer();
 }
