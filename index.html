@@ -759,11 +759,11 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   width: min(920px, calc(100% - 32px));
   margin: 0 auto;
   padding: 26px 28px 34px;
-  border: 1px solid rgba(200, 135, 74, 0.18);
+  border: 1px solid var(--flow-layer-border, rgba(200, 135, 74, 0.18));
   border-radius: 14px;
-  background: rgba(23, 17, 11, 0.78);
+  background: var(--flow-layer-bg, rgba(23, 17, 11, 0.78));
   box-shadow: 0 10px 34px rgba(0,0,0,0.4);
-  color: var(--text-primary);
+  color: var(--flow-layer-text, var(--text-primary));
 }
 .flow-layer.on { display: block; }
 .flow-page-chip {
@@ -866,8 +866,8 @@ body.flow-speed-read-mode .flow-speed-word.active .flow-speed-word-orp {
   font-weight: 700;
 }
 body.flow-speed-read-mode .flow-layer {
-  background: rgba(11, 8, 6, 0.94);
-  border-color: rgba(200, 135, 74, 0.32);
+  background: var(--flow-layer-bg, rgba(11, 8, 6, 0.94));
+  border-color: var(--flow-layer-border, rgba(200, 135, 74, 0.32));
   box-shadow: 0 14px 40px rgba(0, 0, 0, 0.52);
 }
 body.flow-speed-read-mode .flow-page-chip,
@@ -1614,10 +1614,10 @@ body.low-interruption-active .flow-speed-hud {
           <button class="pbtn"    data-mode="night"  onclick="setMode('night')">Night</button>
         </div>
         <div class="presets" style="padding-top: 2px;">
-          <button class="pbtn" data-mode="pastel-mint" onclick="setMode('pastel-mint')">Pastel Mint</button>
-          <button class="pbtn" data-mode="pastel-sky" onclick="setMode('pastel-sky')">Pastel Sky</button>
-          <button class="pbtn" data-mode="pastel-lavender" onclick="setMode('pastel-lavender')">Pastel Lavender</button>
-          <button class="pbtn" data-mode="pastel-peach" onclick="setMode('pastel-peach')">Pastel Peach</button>
+          <button class="pbtn" data-mode="pastel-mint" onclick="setMode('pastel-mint')">Mint</button>
+          <button class="pbtn" data-mode="pastel-sky" onclick="setMode('pastel-sky')">Sky</button>
+          <button class="pbtn" data-mode="pastel-lavender" onclick="setMode('pastel-lavender')">Lavender</button>
+          <button class="pbtn" data-mode="pastel-peach" onclick="setMode('pastel-peach')">Peach</button>
         </div>
         <div class="sec-hint">May reduce evening glare for some readers, but comfort changes by time of day, age, and screen type. See <code>BG1</code> in Evidence notes.</div>
         <div class="sec-hint">Tint can feel soothing for night reading; it is mostly a comfort preference rather than a guaranteed reading-speed boost. See <code>BG2</code>.</div>
@@ -3033,14 +3033,14 @@ function getTotalPages() {
 
 /* ── Modes ── */
 const MODES = {
-  day:   { bg: '#f9f6f0', filter: '' },
-  sepia: { bg: '#f2ead8', filter: 'sepia(35%) brightness(97%)' },
-  dark:  { bg: '#202020', filter: 'invert(1) hue-rotate(180deg) brightness(88%)' },
-  night: { bg: '#180f04', filter: 'sepia(70%) brightness(62%) contrast(88%)' },
-  'pastel-mint': { bg: '#eaf5ee', filter: 'brightness(99%)' },
-  'pastel-sky': { bg: '#eaf2fa', filter: 'brightness(99%)' },
-  'pastel-lavender': { bg: '#f0ebfa', filter: 'brightness(99%)' },
-  'pastel-peach': { bg: '#f8eee3', filter: 'brightness(99%)' },
+  day:   { bg: '#f9f6f0', filter: '', flowBg: 'rgba(23, 17, 11, 0.78)', flowText: '#f2e6d4', flowBorder: 'rgba(200, 135, 74, 0.18)' },
+  sepia: { bg: '#f2ead8', filter: 'sepia(35%) brightness(97%)', flowBg: 'rgba(23, 17, 11, 0.78)', flowText: '#f2e6d4', flowBorder: 'rgba(200, 135, 74, 0.18)' },
+  dark:  { bg: '#202020', filter: 'invert(1) hue-rotate(180deg) brightness(88%)', flowBg: 'rgba(12, 12, 12, 0.9)', flowText: '#efe7da', flowBorder: 'rgba(200, 135, 74, 0.26)' },
+  night: { bg: '#180f04', filter: 'sepia(70%) brightness(62%) contrast(88%)', flowBg: 'rgba(11, 8, 6, 0.94)', flowText: '#f1e7d8', flowBorder: 'rgba(200, 135, 74, 0.32)' },
+  'pastel-mint': { bg: '#eaf5ee', filter: 'brightness(99%)', flowBg: 'rgba(21, 52, 40, 0.95)', flowText: '#e8f5ee', flowBorder: 'rgba(145, 208, 179, 0.38)' },
+  'pastel-sky': { bg: '#eaf2fa', filter: 'brightness(99%)', flowBg: 'rgba(23, 40, 62, 0.95)', flowText: '#e9f2ff', flowBorder: 'rgba(154, 190, 228, 0.4)' },
+  'pastel-lavender': { bg: '#f0ebfa', filter: 'brightness(99%)', flowBg: 'rgba(44, 34, 70, 0.95)', flowText: '#f0e9ff', flowBorder: 'rgba(182, 163, 226, 0.42)' },
+  'pastel-peach': { bg: '#f8eee3', filter: 'brightness(99%)', flowBg: 'rgba(72, 40, 27, 0.95)', flowText: '#fff0e3', flowBorder: 'rgba(233, 182, 142, 0.42)' },
 };
 const FONT_STACKS = {
   native: 'inherit',
@@ -3120,6 +3120,10 @@ function setMode(m) {
     b.classList.toggle('on', b.dataset.mode === m));
   const orpColor = (m === 'dark' || m === 'night') ? '#ff8f7f' : '#9e2a1f';
   document.documentElement.style.setProperty('--flow-orp-color', orpColor);
+  const flowTheme = MODES[m] || MODES.day;
+  document.documentElement.style.setProperty('--flow-layer-bg', flowTheme.flowBg || MODES.day.flowBg);
+  document.documentElement.style.setProperty('--flow-layer-text', flowTheme.flowText || '#f2e6d4');
+  document.documentElement.style.setProperty('--flow-layer-border', flowTheme.flowBorder || MODES.day.flowBorder);
   applyFilters();
 }
 
