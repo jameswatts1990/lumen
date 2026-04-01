@@ -2088,6 +2088,13 @@ body.low-interruption-active .prog {
           </div>
           <label class="tog"><input type="checkbox" id="lowInterruptT"><span class="tog-tk"></span></label>
         </div>
+        <div class="trow">
+          <div class="trow-info">
+            <div class="trow-lbl">Enter fullscreen during session</div>
+            <div class="trow-sub">When a session starts, switch this app to fullscreen</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="sessionFullscreenT"><span class="tog-tk"></span></label>
+        </div>
         <div class="session-meta" id="sessionMeta">No active session.</div>
         <hr class="session-divider" aria-hidden="true">
         <div class="resume-row" style="padding: 0 20px 8px;">
@@ -2652,6 +2659,7 @@ let sessionSupportState = {
   plannedDurationMin: 0,
   insightsCollapsed: true,
   lowInterruption: false,
+  fullscreenDuringSession: false,
   chunkMemory: {
     current: null,
     previous: null
@@ -2660,6 +2668,7 @@ let sessionSupportState = {
 let sessionTick = null;
 let sessionsCompletedThisSession = 0;
 let activeSessionRecord = null;
+let sessionManagedFullscreen = false;
 let statsState = {
   enabled: true,
   sessions: []
@@ -5110,6 +5119,37 @@ function getRemainingSessionMs() {
   return Math.max(0, Number(sessionSupportState.sessionEndTs || 0) - Date.now());
 }
 
+async function enterFullscreenForSession() {
+  if (!sessionSupportState.fullscreenDuringSession) return;
+  if (!document.documentElement?.requestFullscreen) return;
+  if (document.fullscreenElement) return;
+  try {
+    await document.documentElement.requestFullscreen();
+    sessionManagedFullscreen = true;
+  } catch (err) {
+    console.warn('Unable to enter fullscreen for session:', err);
+  }
+}
+
+async function exitFullscreenForSession() {
+  if (!sessionManagedFullscreen) return;
+  if (!document.exitFullscreen) {
+    sessionManagedFullscreen = false;
+    return;
+  }
+  if (!document.fullscreenElement) {
+    sessionManagedFullscreen = false;
+    return;
+  }
+  try {
+    await document.exitFullscreen();
+  } catch (err) {
+    console.warn('Unable to exit session fullscreen:', err);
+  } finally {
+    sessionManagedFullscreen = false;
+  }
+}
+
 function updateSessionMeta() {
   const meta = document.getElementById('sessionMeta');
   const remainingMs = getRemainingSessionMs();
@@ -5175,6 +5215,7 @@ function stopSessionTimer(clearSchedule = true, markCompleted = false) {
     sessionSupportState.durationMin = 0;
     sessionSupportState.plannedDurationMin = 0;
     saveSessionSupportState();
+    void exitFullscreenForSession();
   }
   updateSessionMeta();
   updateLowInterruptionMode();
@@ -5201,6 +5242,7 @@ function startSessionTimer(minutes, options = {}) {
     : null;
   updateSessionMeta();
   updateLowInterruptionMode();
+  void enterFullscreenForSession();
   document.querySelectorAll('.session-btn').forEach(btn => {
     btn.classList.toggle('on', Number(btn.dataset.minutes) === plannedDurationMinutes);
   });
@@ -8435,6 +8477,22 @@ document.getElementById('lowInterruptT').addEventListener('change', e => {
   updateSessionMeta();
   updateLowInterruptionMode();
 });
+document.getElementById('sessionFullscreenT').addEventListener('change', e => {
+  sessionSupportState.fullscreenDuringSession = e.target.checked;
+  saveSessionSupportState();
+  if (!sessionSupportState.fullscreenDuringSession) {
+    void exitFullscreenForSession();
+    return;
+  }
+  if (getRemainingSessionMs() > 0) {
+    void enterFullscreenForSession();
+  }
+});
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) {
+    sessionManagedFullscreen = false;
+  }
+});
 document.getElementById('sessionInsightsToggle').addEventListener('click', () => {
   sessionSupportState.insightsCollapsed = !sessionSupportState.insightsCollapsed;
   saveSessionSupportState();
@@ -8574,6 +8632,7 @@ document.getElementById('saveProfileBtn').addEventListener('click', handleSavePr
 document.getElementById('deleteProfileBtn').addEventListener('click', handleDeleteProfile);
 useProfile(lastUsedProfileId);
 document.getElementById('lowInterruptT').checked = Boolean(sessionSupportState.lowInterruption);
+document.getElementById('sessionFullscreenT').checked = Boolean(sessionSupportState.fullscreenDuringSession);
 document.getElementById('statsCollectT').checked = Boolean(statsState.enabled);
 applySessionInsightsCollapsedState();
 renderReadingInsights();
