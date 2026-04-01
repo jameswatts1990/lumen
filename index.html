@@ -1617,14 +1617,9 @@ body.flow-speed-read-mode .flow-speed-backdrop {
 .shortcuts-overlay.on { display: flex; }
 body.low-interruption-active .shortcuts-overlay,
 body.low-interruption-active .nav-pop,
-body.low-interruption-active .chunk-indicator,
-body.low-interruption-active .session-timer-overlay,
 body.low-interruption-active .session-done-popup,
-body.low-interruption-active .flow-gesture-timer,
-body.low-interruption-active .flow-hold-timer,
 body.low-interruption-active .flow-speed-hud,
 body.low-interruption-active .flow-word-renderer,
-body.low-interruption-active .reading-mode-dock,
 body.low-interruption-active .flow-definition-popout,
 body.low-interruption-active .ruler,
 body.low-interruption-active .ruler-line,
@@ -2057,6 +2052,13 @@ body.low-interruption-active .prog {
           </div>
           <label class="tog"><input type="checkbox" id="lowInterruptT"><span class="tog-tk"></span></label>
         </div>
+        <div class="trow">
+          <div class="trow-info">
+            <div class="trow-lbl">Enter fullscreen during session</div>
+            <div class="trow-sub">When a session starts, switch this app to fullscreen</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="sessionFullscreenT"><span class="tog-tk"></span></label>
+        </div>
         <div class="session-insights-block is-collapsed" id="sessionInsightsSection">
           <button class="session-insights-toggle" id="sessionInsightsToggle" type="button" aria-expanded="false" aria-controls="sessionInsightsContent">
             <span class="session-insights-title">Reading Insights</span>
@@ -2116,21 +2118,6 @@ body.low-interruption-active .prog {
             </div>
           </div>
         </div>
-        <div class="trow">
-          <div class="trow-info">
-            <div class="trow-lbl">Low interruption mode</div>
-            <div class="trow-sub">Hide non-essential overlays while timer is active</div>
-          </div>
-          <label class="tog"><input type="checkbox" id="lowInterruptT"><span class="tog-tk"></span></label>
-        </div>
-        <div class="trow">
-          <div class="trow-info">
-            <div class="trow-lbl">Enter fullscreen during session</div>
-            <div class="trow-sub">When a session starts, switch this app to fullscreen</div>
-          </div>
-          <label class="tog"><input type="checkbox" id="sessionFullscreenT"><span class="tog-tk"></span></label>
-        </div>
-        <div class="session-meta" id="sessionMeta">No active session.</div>
       </div>
 
       <!-- Background Mode -->
