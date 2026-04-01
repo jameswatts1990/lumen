@@ -115,6 +115,7 @@
   --empty-icon-glow: rgba(255, 236, 201, 0.18);
   --sidebar-width: 404px;
   --sidebar-offset: var(--sidebar-width);
+  --sidebar-toggle-gap: 8px;
 }
 
 html, body { height: 100%; overflow: hidden; background: var(--app-bg); font-family: 'Lora', Georgia, serif; color: var(--text-primary); font-size: 15px; }
@@ -177,7 +178,7 @@ body.sidebar-collapsed .sidebar > * {
 .sidebar-toggle {
   position: fixed;
   top: 50%;
-  left: calc(var(--sidebar-offset) - 16px);
+  left: calc(var(--sidebar-offset) + var(--sidebar-toggle-gap));
   transform: translateY(-50%);
   width: 32px;
   height: 84px;
@@ -205,7 +206,7 @@ body.sidebar-collapsed .sidebar > * {
 .sidebar-toggle .glyph-open { display: none; }
 body.sidebar-collapsed .sidebar-toggle .glyph-close { display: none; }
 body.sidebar-collapsed .sidebar-toggle .glyph-open { display: inline; }
-body.sidebar-collapsed .sidebar-toggle { left: 8px; }
+body.sidebar-collapsed .sidebar-toggle { left: var(--sidebar-toggle-gap); }
 .sidebar-head {
   padding: 22px 18px 16px;
   border-bottom: 1px solid var(--sidebar-border);
