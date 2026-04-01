@@ -386,6 +386,21 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   background-repeat: no-repeat; background-position: right 10px center;
 }
 .fsel:focus { border-color: var(--accent); }
+.profile-select-row {
+  display: flex;
+  gap: 6px;
+  margin: 2px 20px 8px;
+}
+.profile-select-row .fsel {
+  flex: 1;
+  width: auto;
+  margin: 0;
+}
+.profile-select-row .pbtn {
+  flex: 0 0 auto;
+  min-width: 78px;
+  padding-inline: 10px;
+}
 
 /* Toggles */
 .trow { padding: 6px 20px; display: flex; align-items: center; gap: 12px; }
@@ -1986,7 +2001,10 @@ body.low-interruption-active .prog {
       <div class="sec is-collapsed">
         <div class="sec-label">Reading Profiles</div>
         <div class="sec-hint">Save your current setup, or switch between curated profiles for different reading needs.</div>
-        <select class="fsel" id="profileSel" aria-label="Reading profile"></select>
+        <div class="profile-select-row">
+          <select class="fsel" id="profileSel" aria-label="Reading profile"></select>
+          <button class="pbtn" id="resetProfileBtn" type="button" title="Revert all reading settings to default">Reset</button>
+        </div>
         <div class="sec-hint" id="profileDesc" style="padding-top: 2px;">Balanced defaults for everyday reading.</div>
         <div class="presets" style="padding-top: 4px;">
           <button class="pbtn" id="compareProfileBtn" type="button">Compare with previous profile</button>
@@ -4173,6 +4191,10 @@ function handleDeleteProfile() {
   delete customProfiles[id];
   lastUsedProfileId = DEFAULT_PROFILE_ID;
   refreshProfileSelect();
+  useProfile(DEFAULT_PROFILE_ID);
+}
+
+function handleResetProfileDefaults() {
   useProfile(DEFAULT_PROFILE_ID);
 }
 
@@ -8787,6 +8809,7 @@ updateChunkRecoverButton();
 loadProfilesState();
 refreshProfileSelect();
 document.getElementById('profileSel').addEventListener('change', e => useProfile(e.target.value));
+document.getElementById('resetProfileBtn').addEventListener('click', handleResetProfileDefaults);
 document.getElementById('compareProfileBtn').addEventListener('click', toggleCompareProfile);
 document.getElementById('saveProfileBtn').addEventListener('click', handleSaveProfile);
 document.getElementById('deleteProfileBtn').addEventListener('click', handleDeleteProfile);
