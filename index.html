@@ -199,9 +199,31 @@ body.sidebar-collapsed .sidebar-toggle { left: 8px; }
   border-radius: 10px; padding: 18px 14px; text-align: center;
   cursor: pointer; transition: all 0.2s; color: var(--text-secondary); font-size: 13.5px; position: relative;
 }
-.upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+.upload-zone:hover, .upload-zone.drag, .upload-zone.is-paste-ready { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
 .upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.upload-zone:focus-visible {
+  outline: 1px solid var(--accent-mid);
+  outline-offset: 2px;
+}
 .upload-icon { font-size: 22px; margin-bottom: 6px; }
+.upload-paste-hint {
+  margin-top: 6px;
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+  font-family: 'DM Mono', monospace;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity 0.16s ease, transform 0.16s ease, color 0.16s ease;
+  pointer-events: none;
+}
+.upload-zone:hover .upload-paste-hint,
+.upload-zone:focus-within .upload-paste-hint,
+.upload-zone.is-paste-ready .upload-paste-hint {
+  opacity: 1;
+  transform: translateY(0);
+  color: var(--accent);
+}
 .upload-fname { margin-top: 6px; font-size: 10px; font-family: 'DM Mono', monospace; color: var(--accent); word-break: break-all; display: none; }
 
 /* Sections */
@@ -1469,10 +1491,11 @@ body.low-interruption-active .flow-speed-hud {
         <div class="sec-label">Import</div>
         <button class="import-reset-btn" id="resetDocBtn" type="button" title="Clear loaded document">Reset</button>
       </div>
-      <div class="upload-zone" id="upZone">
+      <div class="upload-zone" id="upZone" tabindex="0" title="Drop files, click to browse, or paste from clipboard">
         <input type="file" accept=".pdf,.txt,.md,.markdown,.html,.htm,.json,.eml,.msg,application/pdf,text/plain,text/markdown,text/html,application/json,message/rfc822,application/vnd.ms-outlook" id="fileIn">
         <div class="upload-icon">📄</div>
         <div>Drop a file here or click to open</div>
+        <div class="upload-paste-hint" id="upPasteHint">Tip: hover this area, then press Ctrl/Cmd + V</div>
         <div class="upload-fname" id="upName"></div>
       </div>
       <div class="nav-jump" style="padding-bottom: 12px;">
@@ -3530,6 +3553,40 @@ function startSessionTimer(minutes) {
 const fileIn = document.getElementById('fileIn');
 const upZone = document.getElementById('upZone');
 
+function looksLikeHttpUrl(value = '') {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return false;
+  if (/^https?:\/\//i.test(trimmed)) return true;
+  return /^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(trimmed);
+}
+
+async function handleClipboardImport(clipboardData) {
+  if (!clipboardData) return false;
+  const clipboardFile = clipboardData.files?.[0];
+  if (clipboardFile && (isSupportedFile(clipboardFile) || isAmbiguousDropEmailCandidate(clipboardFile))) {
+    await loadSourceFile(clipboardFile);
+    return true;
+  }
+
+  const textPayload = (clipboardData.getData('text/plain') || '').trim();
+  if (!textPayload) return false;
+
+  if (looksLikeHttpUrl(textPayload)) {
+    const urlInput = document.getElementById('urlIn');
+    urlInput.value = textPayload;
+    await loadFromUrl();
+    return true;
+  }
+
+  setCurrentDocumentMeta({
+    id: `clipboard:text:${Date.now()}`,
+    label: 'Clipboard paste',
+    type: 'clipboard-text'
+  });
+  await loadTextDocument(textPayload, 'Clipboard paste', 'Clipboard · Pasted text');
+  return true;
+}
+
 fileIn.addEventListener('change', e => { if(e.target.files[0]) loadSourceFile(e.target.files[0]); });
 upZone.addEventListener('dragover', e => { e.preventDefault(); upZone.classList.add('drag'); });
 upZone.addEventListener('dragleave', () => upZone.classList.remove('drag'));
@@ -3537,6 +3594,45 @@ upZone.addEventListener('drop', e => {
   e.preventDefault(); upZone.classList.remove('drag');
   const f = e.dataTransfer.files[0];
   if (isSupportedFile(f) || isAmbiguousDropEmailCandidate(f)) loadSourceFile(f);
+});
+
+upZone.addEventListener('mouseenter', () => upZone.classList.add('is-paste-ready'));
+upZone.addEventListener('mouseleave', () => upZone.classList.remove('is-paste-ready'));
+upZone.addEventListener('focusin', () => upZone.classList.add('is-paste-ready'));
+upZone.addEventListener('focusout', () => upZone.classList.remove('is-paste-ready'));
+
+upZone.addEventListener('keydown', async e => {
+  if ((e.key === 'v' || e.key === 'V') && (e.ctrlKey || e.metaKey)) {
+    upZone.classList.add('is-paste-ready');
+    setTimeout(() => upZone.classList.remove('is-paste-ready'), 700);
+  }
+});
+
+upZone.addEventListener('paste', async e => {
+  const handled = await handleClipboardImport(e.clipboardData);
+  if (handled) {
+    e.preventDefault();
+    upZone.classList.add('is-paste-ready');
+    setTimeout(() => upZone.classList.remove('is-paste-ready'), 700);
+  }
+});
+
+fileIn.addEventListener('paste', async e => {
+  const handled = await handleClipboardImport(e.clipboardData);
+  if (handled) e.preventDefault();
+});
+
+document.addEventListener('paste', async e => {
+  const activeTag = document.activeElement?.tagName;
+  const isTypingField = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || document.activeElement?.isContentEditable;
+  if (isTypingField && document.activeElement !== fileIn) return;
+  if (!upZone.classList.contains('is-paste-ready')) return;
+  const handled = await handleClipboardImport(e.clipboardData);
+  if (handled) {
+    e.preventDefault();
+    upZone.classList.add('is-paste-ready');
+    setTimeout(() => upZone.classList.remove('is-paste-ready'), 700);
+  }
 });
 
 ['dragenter', 'dragover'].forEach(evt => {
