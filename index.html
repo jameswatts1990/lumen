@@ -1714,6 +1714,12 @@ body.low-interruption-active .flow-speed-hud {
           <button class="pbtn" id="saveProfileBtn" type="button">Save current</button>
           <button class="pbtn" id="deleteProfileBtn" type="button">Delete</button>
         </div>
+        <div class="sec-hint" style="padding-top: 8px;">Take your setup with you across devices, with optional passphrase protection for shared machines.</div>
+        <div class="presets" style="padding-top: 4px;">
+          <button class="pbtn" id="exportDataBtn" type="button">Export data</button>
+          <button class="pbtn" id="importDataBtn" type="button">Import data</button>
+        </div>
+        <input type="file" id="importDataFileIn" accept="application/json,.json" hidden>
       </div>
 
 
@@ -2203,6 +2209,9 @@ const SETTINGS_STORAGE_KEY = 'lumen.settings.v1';
 const SESSION_SUPPORT_STORAGE_KEY = 'lumen.session-support.v1';
 const DOC_PROGRESS_STORAGE_KEY = 'lumen.doc-progress.v1';
 const DOC_STATE_STORAGE_KEY = 'lumen.doc-state.v1';
+const PORTABLE_SCHEMA_NAME = 'lumen-portable-state';
+const PORTABLE_SCHEMA_VERSION = 1;
+const PORTABLE_KDF_ITERATIONS = 250000;
 const DOC_STATE_DB_NAME = 'lumen-documents';
 const DOC_STATE_STORE = 'documents';
 const DOC_STATE_RECORD_ID = 'active';
@@ -4123,6 +4132,273 @@ function loadSessionSupportState() {
 
 function saveSessionSupportState() {
   localStorage.setItem(SESSION_SUPPORT_STORAGE_KEY, JSON.stringify(sessionSupportState));
+}
+
+function stableStringify(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(item => stableStringify(item)).join(',')}]`;
+  const keys = Object.keys(value).sort();
+  return `{${keys.map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+}
+
+async function sha256Hex(input) {
+  const bytes = new TextEncoder().encode(String(input || ''));
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function arrayBufferToBase64(buffer) {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function base64ToUint8Array(base64) {
+  const binary = atob(base64);
+  const out = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
+async function derivePortableEncryptionKey(passphrase, salt, iterations = PORTABLE_KDF_ITERATIONS) {
+  const material = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(passphrase),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  );
+  return crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt,
+      iterations,
+      hash: 'SHA-256'
+    },
+    material,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+function getPortableDataPayload() {
+  return {
+    settings: loadSettings(),
+    profiles: {
+      customProfiles,
+      lastUsedProfileId
+    },
+    sessionSupport: sessionSupportState,
+    progress: loadDocProgressMap()
+  };
+}
+
+async function buildPortableEnvelope({ passphrase = '' } = {}) {
+  const payload = getPortableDataPayload();
+  const base = {
+    schema: PORTABLE_SCHEMA_NAME,
+    version: PORTABLE_SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    data: payload
+  };
+  const checksum = await sha256Hex(stableStringify(base));
+  if (!passphrase) {
+    return {
+      ...base,
+      checksum,
+      encryption: { enabled: false }
+    };
+  }
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await derivePortableEncryptionKey(passphrase, salt, PORTABLE_KDF_ITERATIONS);
+  const plaintext = new TextEncoder().encode(stableStringify(base.data));
+  const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plaintext);
+  return {
+    schema: PORTABLE_SCHEMA_NAME,
+    version: PORTABLE_SCHEMA_VERSION,
+    exportedAt: base.exportedAt,
+    checksum,
+    encryption: {
+      enabled: true,
+      algorithm: 'AES-GCM',
+      kdf: 'PBKDF2-SHA256',
+      iterations: PORTABLE_KDF_ITERATIONS,
+      salt: arrayBufferToBase64(salt),
+      iv: arrayBufferToBase64(iv)
+    },
+    data: arrayBufferToBase64(ciphertext)
+  };
+}
+
+function mergeDocProgressMaps(currentMap = {}, incomingMap = {}) {
+  const next = { ...currentMap };
+  Object.entries(incomingMap || {}).forEach(([docId, incoming]) => {
+    if (!incoming || typeof incoming !== 'object') return;
+    const existing = next[docId];
+    const existingTs = Number(existing?.savedAt || 0);
+    const incomingTs = Number(incoming?.savedAt || 0);
+    if (!existing || incomingTs >= existingTs) next[docId] = incoming;
+  });
+  return next;
+}
+
+function applyPortableImportData(payload = {}, conflictStrategy = 'merge') {
+  const replace = conflictStrategy === 'replace';
+  const incomingSettings = payload.settings && typeof payload.settings === 'object' ? payload.settings : {};
+  const incomingProfiles = payload.profiles && typeof payload.profiles === 'object' ? payload.profiles : {};
+  const incomingSession = payload.sessionSupport && typeof payload.sessionSupport === 'object' ? payload.sessionSupport : {};
+  const incomingProgress = payload.progress && typeof payload.progress === 'object' ? payload.progress : {};
+
+  if (replace) {
+    if (incomingSettings && Object.keys(incomingSettings).length) {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(incomingSettings));
+    }
+    const nextProfiles = {
+      customProfiles: incomingProfiles.customProfiles && typeof incomingProfiles.customProfiles === 'object' ? incomingProfiles.customProfiles : {},
+      lastUsedProfileId: typeof incomingProfiles.lastUsedProfileId === 'string' ? incomingProfiles.lastUsedProfileId : DEFAULT_PROFILE_ID
+    };
+    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(nextProfiles));
+    const nextSession = {
+      ...sessionSupportState,
+      ...incomingSession
+    };
+    localStorage.setItem(SESSION_SUPPORT_STORAGE_KEY, JSON.stringify(nextSession));
+    saveDocProgressMap(incomingProgress);
+    return;
+  }
+
+  if (incomingSettings && Object.keys(incomingSettings).length) {
+    const currentSettings = loadSettings();
+    const mergedSettings = {
+      ...currentSettings,
+      ...incomingSettings,
+      settings: {
+        ...(currentSettings.settings || {}),
+        ...(incomingSettings.settings || {})
+      }
+    };
+    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(mergedSettings));
+  }
+
+  const currentProfiles = (() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(PROFILE_STORAGE_KEY) || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (_) {
+      return {};
+    }
+  })();
+  const mergedProfiles = {
+    customProfiles: {
+      ...(currentProfiles.customProfiles || {}),
+      ...(incomingProfiles.customProfiles || {})
+    },
+    lastUsedProfileId: typeof incomingProfiles.lastUsedProfileId === 'string'
+      ? incomingProfiles.lastUsedProfileId
+      : (currentProfiles.lastUsedProfileId || DEFAULT_PROFILE_ID)
+  };
+  localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(mergedProfiles));
+
+  const mergedSessionSupport = {
+    ...sessionSupportState,
+    ...incomingSession,
+    chunkMemory: {
+      ...(sessionSupportState.chunkMemory || {}),
+      ...((incomingSession && incomingSession.chunkMemory) || {})
+    }
+  };
+  localStorage.setItem(SESSION_SUPPORT_STORAGE_KEY, JSON.stringify(mergedSessionSupport));
+  saveDocProgressMap(mergeDocProgressMaps(loadDocProgressMap(), incomingProgress));
+}
+
+async function parsePortableImportEnvelope(rawText) {
+  const parsed = JSON.parse(rawText);
+  if (!parsed || typeof parsed !== 'object') throw new Error('Invalid import file format.');
+  if (parsed.schema !== PORTABLE_SCHEMA_NAME) throw new Error('Unsupported schema.');
+  if (Number(parsed.version) !== PORTABLE_SCHEMA_VERSION) throw new Error(`Unsupported schema version: ${parsed.version}`);
+
+  const encryptionEnabled = Boolean(parsed.encryption?.enabled);
+  let payload = parsed.data;
+  if (encryptionEnabled) {
+    const passphrase = window.prompt('This export is encrypted. Enter passphrase to import:');
+    if (!passphrase) throw new Error('Import cancelled: passphrase required.');
+    const salt = base64ToUint8Array(parsed.encryption?.salt || '');
+    const iv = base64ToUint8Array(parsed.encryption?.iv || '');
+    const iterations = Number(parsed.encryption?.iterations) || PORTABLE_KDF_ITERATIONS;
+    const key = await derivePortableEncryptionKey(passphrase, salt, iterations);
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      key,
+      base64ToUint8Array(String(parsed.data || ''))
+    );
+    payload = JSON.parse(new TextDecoder().decode(decrypted));
+  }
+
+  if (!payload || typeof payload !== 'object') throw new Error('Imported payload is empty.');
+  const checksumProbe = {
+    schema: parsed.schema,
+    version: parsed.version,
+    exportedAt: parsed.exportedAt,
+    data: payload
+  };
+  const computedChecksum = await sha256Hex(stableStringify(checksumProbe));
+  if (computedChecksum !== parsed.checksum) throw new Error('Checksum mismatch. Import aborted to protect data integrity.');
+  return payload;
+}
+
+async function handlePortableDataExport() {
+  try {
+    const wantsEncryption = window.confirm('Protect export with a passphrase?\n\nChoose "OK" for encrypted export, or "Cancel" for plain JSON.');
+    let passphrase = '';
+    if (wantsEncryption) {
+      passphrase = window.prompt('Enter export passphrase (remember this; it is required for import):', '') || '';
+      if (!passphrase.trim()) {
+        window.alert('Export cancelled: passphrase cannot be empty when encryption is enabled.');
+        return;
+      }
+    }
+    const envelope = await buildPortableEnvelope({ passphrase });
+    const blob = new Blob([`${JSON.stringify(envelope, null, 2)}\n`], { type: 'application/json' });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = `lumen-export-v${PORTABLE_SCHEMA_VERSION}-${stamp}.json`;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+    window.alert(`Export ready: ${filename}`);
+  } catch (err) {
+    console.warn('Data export failed:', err);
+    window.alert(`Export failed: ${err && err.message ? err.message : 'Unknown error'}`);
+  }
+}
+
+async function handlePortableDataImport(file) {
+  if (!file) return;
+  try {
+    const rawText = await file.text();
+    const payload = await parsePortableImportEnvelope(rawText);
+    const strategy = window.prompt('Import strategy: type "merge" to combine with local data, or "replace" to overwrite local data.', 'merge');
+    const normalized = String(strategy || '').trim().toLowerCase();
+    if (!normalized) return;
+    if (normalized !== 'merge' && normalized !== 'replace') {
+      window.alert('Import cancelled: strategy must be merge or replace.');
+      return;
+    }
+    applyPortableImportData(payload, normalized);
+    window.alert(`Import complete (${normalized}). Reloading to apply all restored state.`);
+    window.location.reload();
+  } catch (err) {
+    console.warn('Data import failed:', err);
+    window.alert(`Import failed: ${err && err.message ? err.message : 'Unknown error'}`);
+  }
 }
 
 function updateLowInterruptionMode() {
@@ -7311,6 +7587,18 @@ document.getElementById('resumeRestoreBtn').addEventListener('click', () => rest
 document.getElementById('resumeDismissBtn').addEventListener('click', () => {
   pendingResumeState = null;
   refreshResumeCard();
+});
+document.getElementById('exportDataBtn').addEventListener('click', () => {
+  handlePortableDataExport();
+});
+document.getElementById('importDataBtn').addEventListener('click', () => {
+  document.getElementById('importDataFileIn').click();
+});
+document.getElementById('importDataFileIn').addEventListener('change', async e => {
+  const file = e.target.files?.[0];
+  e.target.value = '';
+  if (!file) return;
+  await handlePortableDataImport(file);
 });
 document.getElementById('resetDocBtn').addEventListener('click', async () => {
   await clearActivePersistedDocumentState();
