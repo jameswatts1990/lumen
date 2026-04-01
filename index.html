@@ -8616,8 +8616,7 @@ document.querySelectorAll('input[name="readingMode"]').forEach(input => {
 document.addEventListener('keydown', e => {
   if (!chunkModeOn()) return;
   if (e.altKey || e.ctrlKey || e.metaKey) return;
-  const tag = (e.target?.tagName || '').toLowerCase();
-  if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return;
+  if (isTypingTarget(e.target) || isTypingTarget(document.activeElement)) return;
   if (e.key === 'j' || e.key === 'J') {
     e.preventDefault();
     stepChunk(1);
