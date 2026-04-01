@@ -108,6 +108,10 @@
   --control-bg: #252015;
   --control-border: #38301f;
   --slider-track: #38301f;
+  --empty-title-color: var(--text-primary);
+  --empty-desc-color: #e5d1b6;
+  --empty-icon-shadow: rgba(9, 6, 2, 0.26);
+  --empty-icon-glow: rgba(255, 236, 201, 0.18);
   --sidebar-width: 404px;
   --sidebar-offset: var(--sidebar-width);
 }
@@ -746,9 +750,15 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 
 /* Empty state */
 .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 70vh; gap: 16px; text-align: center; }
-.empty-icon { font-size: 60px; opacity: 0.74; filter: saturate(1.15) brightness(1.08); }
-.empty-title { font-family: 'Playfair Display', serif; font-size: 27px; color: var(--text-primary); }
-.empty-desc { font-size: 14px; max-width: 420px; line-height: 1.7; color: #e5d1b6; }
+.empty-icon {
+  font-size: 60px;
+  opacity: 0.96;
+  filter: saturate(1.22) brightness(1.08) drop-shadow(0 2px 3px var(--empty-icon-shadow));
+  text-shadow: 0 0 14px var(--empty-icon-glow);
+  transition: filter 0.2s ease, text-shadow 0.2s ease;
+}
+.empty-title { font-family: 'Playfair Display', serif; font-size: 27px; color: var(--empty-title-color); transition: color 0.2s ease; }
+.empty-desc { font-size: 14px; max-width: 420px; line-height: 1.7; color: var(--empty-desc-color); transition: color 0.2s ease; }
 .empty-actions {
   display: flex;
   flex-wrap: wrap;
@@ -3256,6 +3266,51 @@ function normalizeFontKey(fontValue) {
   return LEGACY_FONT_KEYS[fontValue] || 'native';
 }
 
+function hexToRgb(hex) {
+  const safe = String(hex || '').trim().replace('#', '');
+  if (!/^[0-9a-f]{3}([0-9a-f]{3})?$/i.test(safe)) return { r: 14, g: 10, b: 6 };
+  const expanded = safe.length === 3
+    ? safe.split('').map((char) => char + char).join('')
+    : safe;
+  return {
+    r: parseInt(expanded.slice(0, 2), 16),
+    g: parseInt(expanded.slice(2, 4), 16),
+    b: parseInt(expanded.slice(4, 6), 16),
+  };
+}
+
+function relativeLuminance({ r, g, b }) {
+  const normalizeChannel = (value) => {
+    const s = value / 255;
+    return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+  };
+  const R = normalizeChannel(r);
+  const G = normalizeChannel(g);
+  const B = normalizeChannel(b);
+  return (0.2126 * R) + (0.7152 * G) + (0.0722 * B);
+}
+
+function pickContrastTextColor(backgroundHex, lightText = '#f6ebd9', darkText = '#2d2418') {
+  const bgLum = relativeLuminance(hexToRgb(backgroundHex));
+  const lightLum = relativeLuminance(hexToRgb(lightText));
+  const darkLum = relativeLuminance(hexToRgb(darkText));
+  const lightContrast = (Math.max(bgLum, lightLum) + 0.05) / (Math.min(bgLum, lightLum) + 0.05);
+  const darkContrast = (Math.max(bgLum, darkLum) + 0.05) / (Math.min(bgLum, darkLum) + 0.05);
+  return lightContrast >= darkContrast ? lightText : darkText;
+}
+
+function applyEmptyStateContrast(backgroundHex) {
+  const rootStyle = document.documentElement.style;
+  const titleColor = pickContrastTextColor(backgroundHex, '#f6ebd9', '#2b2217');
+  const descColor = pickContrastTextColor(backgroundHex, '#e7d3b7', '#5a4732');
+  const bgLum = relativeLuminance(hexToRgb(backgroundHex));
+  const isLightBg = bgLum >= 0.38;
+  rootStyle.setProperty('--empty-title-color', titleColor);
+  rootStyle.setProperty('--empty-desc-color', descColor);
+  rootStyle.setProperty('--empty-icon-shadow', isLightBg ? 'rgba(64, 42, 22, 0.36)' : 'rgba(7, 5, 3, 0.5)');
+  rootStyle.setProperty('--empty-icon-glow', isLightBg ? 'rgba(255, 246, 227, 0.08)' : 'rgba(255, 224, 175, 0.28)');
+}
+
 const FONT_LOAD_PROMISES = new Map();
 
 function appendStylesheetOnce(id, href) {
@@ -5739,6 +5794,7 @@ function applyFilters() {
   const con = document.getElementById('conR').value;
   const f = `brightness(${bri}%) contrast(${con}%) ${m.filter}`;
   reader.style.background = m.bg;
+  applyEmptyStateContrast(m.bg);
   rInner.querySelectorAll('canvas').forEach(c => c.style.filter = f);
   rInner.querySelectorAll('.page-wrap').forEach(w => w.style.background = m.bg);
   applyReadingMode();
