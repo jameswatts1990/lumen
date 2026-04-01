@@ -2145,6 +2145,7 @@ const FLOW_GESTURE_STATES = Object.freeze({
 const FLOW_GESTURE_TIMER_VISIBLE_MS = 1000;
 const FLOW_GESTURE_ACTIVATE_MS = 2000;
 const FLOW_SPEED_READ_INTERVAL_DEBOUNCE_MS = 120;
+const FLOW_SPEED_READ_INITIAL_WORD_PAUSE_MS = 500;
 let flowGestureState = FLOW_GESTURE_STATES.IDLE;
 let flowGesturePressStartTs = 0;
 let flowGestureActivePointerId = null;
@@ -2755,7 +2756,8 @@ function startFlowSpeedReadPlayback({ preserveIndex = false, startIndex = null }
     : (hasExplicitStartIndex ? startIndex : resolveFlowSpeedReadStartIndex());
   flowSpeedReadWordIndex = Math.max(0, Math.min(baseIndex, flowSpeedReadWordNodes.length - 1));
   syncFlowSpeedReadHighlight();
-  flowSpeedReadNextWordAt = performance.now() + getFlowTokenDelayMs(flowSpeedReadWordIndex);
+  const firstWordPauseMs = preserveIndex ? 0 : FLOW_SPEED_READ_INITIAL_WORD_PAUSE_MS;
+  flowSpeedReadNextWordAt = performance.now() + firstWordPauseMs + getFlowTokenDelayMs(flowSpeedReadWordIndex);
   const tick = (ts) => {
     if (flowGestureState !== FLOW_GESTURE_STATES.SPEED_READ_ACTIVE) return;
     if (!flowSpeedReadNextWordAt) flowSpeedReadNextWordAt = ts + getFlowTokenDelayMs(flowSpeedReadWordIndex);
