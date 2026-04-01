@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lumen — Mindful Document Reader</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -506,11 +507,6 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .session-btn { padding: 7px 0; font-size: 12px; }
 .session-btn.on { background: var(--accent); color: #1a1200; border-color: var(--accent); }
 .session-meta { padding: 0 20px 8px; font-size: 11.5px; color: var(--text-muted); line-height: 1.45; }
-.session-divider {
-  margin: 4px 20px 10px;
-  border: 0;
-  border-top: 1px solid rgba(200, 135, 74, 0.22);
-}
 .session-insights-block {
   margin: 0 20px 10px;
   border: 1px solid var(--control-border);
@@ -525,7 +521,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   background: transparent;
   color: inherit;
   text-align: left;
-  padding: 9px 10px;
+  padding: 9px 10px 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1628,6 +1624,7 @@ body.low-interruption-active .flow-gesture-timer,
 body.low-interruption-active .flow-hold-timer,
 body.low-interruption-active .flow-speed-hud,
 body.low-interruption-active .flow-word-renderer,
+body.low-interruption-active .reading-mode-dock,
 body.low-interruption-active .flow-definition-popout,
 body.low-interruption-active .ruler,
 body.low-interruption-active .ruler-line,
@@ -1968,7 +1965,7 @@ body.low-interruption-active .prog {
         <button class="import-reset-btn" id="resetDocBtn" type="button" title="Clear loaded document">Reset</button>
       </div>
       <div class="upload-zone" id="upZone" tabindex="0" title="Drop files, click to browse, or paste from clipboard">
-        <input type="file" accept=".pdf,.txt,.md,.markdown,.html,.htm,.json,.eml,.msg,application/pdf,text/plain,text/markdown,text/html,application/json,message/rfc822,application/vnd.ms-outlook" id="fileIn">
+        <input type="file" accept=".pdf,.epub,.txt,.md,.markdown,.html,.htm,.json,.eml,.msg,application/pdf,application/epub+zip,text/plain,text/markdown,text/html,application/json,message/rfc822,application/vnd.ms-outlook" id="fileIn">
         <div class="upload-icon">📄</div>
         <div>Drop a file here or click to open</div>
         <div class="upload-paste-hint" id="upPasteHint">Tip: hover this area, then press Ctrl/Cmd + V</div>
@@ -1998,6 +1995,36 @@ body.low-interruption-active .prog {
         <input type="file" id="importDataFileIn" accept="application/json,.json" hidden>
       </div>
 
+      <!-- Recent Documents -->
+      <div class="sec is-collapsed">
+        <div class="sec-label">Recent Documents</div>
+        <div class="sec-hint">Jump back into recently opened files and restore your last saved reading position.</div>
+        <div class="resume-row" style="padding: 0 20px 8px;">
+          <button class="pbtn" id="chunkRecoverBtn" type="button" disabled>Return to previous chunk</button>
+        </div>
+        <div class="resume-title" style="padding: 0 20px 4px;">Recent documents</div>
+        <div class="recent-doc-toolbar">
+          <select class="recent-doc-sort" id="recentDocSortSel" aria-label="Sort recent documents">
+            <option value="last-opened">Sort: last opened</option>
+            <option value="saved">Sort: last saved</option>
+            <option value="title">Sort: title</option>
+          </select>
+        </div>
+        <ul class="recent-doc-list" id="recentDocList" aria-live="polite">
+          <li class="recent-doc-item">
+            <span class="recent-doc-meta">No recent documents yet.</span>
+          </li>
+        </ul>
+        <div class="resume-card" id="resumeCard" aria-live="polite">
+          <div class="resume-title">Resume previous spot</div>
+          <div class="resume-text" id="resumeText">No saved position yet.</div>
+          <div class="resume-row">
+            <button class="pbtn" id="resumeRestoreBtn" type="button">Restore</button>
+            <button class="pbtn" id="resumeDismissBtn" type="button">Dismiss</button>
+          </div>
+        </div>
+      </div>
+
 
       <!-- Email Thread Order -->
       <div class="sec is-collapsed" id="emailOrderSection">
@@ -2021,6 +2048,14 @@ body.low-interruption-active .prog {
           <button class="pbtn session-btn" id="session5Btn" type="button" data-minutes="5">5 min</button>
           <button class="pbtn session-btn" id="session10Btn" type="button" data-minutes="10">10 min</button>
           <button class="pbtn session-btn" id="session15Btn" type="button" data-minutes="15">15 min</button>
+        </div>
+        <div class="session-meta" id="sessionMeta">No active session.</div>
+        <div class="trow">
+          <div class="trow-info">
+            <div class="trow-lbl">Low interruption mode</div>
+            <div class="trow-sub">Hide non-essential overlays while timer is active</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="lowInterruptT"><span class="tog-tk"></span></label>
         </div>
         <div class="session-insights-block is-collapsed" id="sessionInsightsSection">
           <button class="session-insights-toggle" id="sessionInsightsToggle" type="button" aria-expanded="false" aria-controls="sessionInsightsContent">
@@ -2088,32 +2123,14 @@ body.low-interruption-active .prog {
           </div>
           <label class="tog"><input type="checkbox" id="lowInterruptT"><span class="tog-tk"></span></label>
         </div>
-        <div class="session-meta" id="sessionMeta">No active session.</div>
-        <hr class="session-divider" aria-hidden="true">
-        <div class="resume-row" style="padding: 0 20px 8px;">
-          <button class="pbtn" id="chunkRecoverBtn" type="button" disabled>Return to previous chunk</button>
-        </div>
-        <div class="resume-title" style="padding: 0 20px 4px;">Recent documents</div>
-        <div class="recent-doc-toolbar">
-          <select class="recent-doc-sort" id="recentDocSortSel" aria-label="Sort recent documents">
-            <option value="last-opened">Sort: last opened</option>
-            <option value="saved">Sort: last saved</option>
-            <option value="title">Sort: title</option>
-          </select>
-        </div>
-        <ul class="recent-doc-list" id="recentDocList" aria-live="polite">
-          <li class="recent-doc-item">
-            <span class="recent-doc-meta">No recent documents yet.</span>
-          </li>
-        </ul>
-        <div class="resume-card" id="resumeCard" aria-live="polite">
-          <div class="resume-title">Resume previous spot</div>
-          <div class="resume-text" id="resumeText">No saved position yet.</div>
-          <div class="resume-row">
-            <button class="pbtn" id="resumeRestoreBtn" type="button">Restore</button>
-            <button class="pbtn" id="resumeDismissBtn" type="button">Dismiss</button>
+        <div class="trow">
+          <div class="trow-info">
+            <div class="trow-lbl">Enter fullscreen during session</div>
+            <div class="trow-sub">When a session starts, switch this app to fullscreen</div>
           </div>
+          <label class="tog"><input type="checkbox" id="sessionFullscreenT"><span class="tog-tk"></span></label>
         </div>
+        <div class="session-meta" id="sessionMeta">No active session.</div>
       </div>
 
       <!-- Background Mode -->
@@ -2652,6 +2669,7 @@ let sessionSupportState = {
   plannedDurationMin: 0,
   insightsCollapsed: true,
   lowInterruption: false,
+  fullscreenDuringSession: false,
   chunkMemory: {
     current: null,
     previous: null
@@ -2660,6 +2678,7 @@ let sessionSupportState = {
 let sessionTick = null;
 let sessionsCompletedThisSession = 0;
 let activeSessionRecord = null;
+let sessionManagedFullscreen = false;
 let statsState = {
   enabled: true,
   sessions: []
@@ -5110,6 +5129,37 @@ function getRemainingSessionMs() {
   return Math.max(0, Number(sessionSupportState.sessionEndTs || 0) - Date.now());
 }
 
+async function enterFullscreenForSession() {
+  if (!sessionSupportState.fullscreenDuringSession) return;
+  if (!document.documentElement?.requestFullscreen) return;
+  if (document.fullscreenElement) return;
+  try {
+    await document.documentElement.requestFullscreen();
+    sessionManagedFullscreen = true;
+  } catch (err) {
+    console.warn('Unable to enter fullscreen for session:', err);
+  }
+}
+
+async function exitFullscreenForSession() {
+  if (!sessionManagedFullscreen) return;
+  if (!document.exitFullscreen) {
+    sessionManagedFullscreen = false;
+    return;
+  }
+  if (!document.fullscreenElement) {
+    sessionManagedFullscreen = false;
+    return;
+  }
+  try {
+    await document.exitFullscreen();
+  } catch (err) {
+    console.warn('Unable to exit session fullscreen:', err);
+  } finally {
+    sessionManagedFullscreen = false;
+  }
+}
+
 function updateSessionMeta() {
   const meta = document.getElementById('sessionMeta');
   const remainingMs = getRemainingSessionMs();
@@ -5175,6 +5225,7 @@ function stopSessionTimer(clearSchedule = true, markCompleted = false) {
     sessionSupportState.durationMin = 0;
     sessionSupportState.plannedDurationMin = 0;
     saveSessionSupportState();
+    void exitFullscreenForSession();
   }
   updateSessionMeta();
   updateLowInterruptionMode();
@@ -5201,6 +5252,10 @@ function startSessionTimer(minutes, options = {}) {
     : null;
   updateSessionMeta();
   updateLowInterruptionMode();
+  if (sessionSupportState.lowInterruption) {
+    setSidebarOpen(false);
+  }
+  void enterFullscreenForSession();
   document.querySelectorAll('.session-btn').forEach(btn => {
     btn.classList.toggle('on', Number(btn.dataset.minutes) === plannedDurationMinutes);
   });
@@ -5396,6 +5451,13 @@ function isPdfFile(file) {
   return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 }
 
+function isEpubFile(file) {
+  if (!file) return false;
+  const lowerName = (file.name || '').toLowerCase();
+  const mime = (file.type || '').toLowerCase();
+  return mime === 'application/epub+zip' || lowerName.endsWith('.epub');
+}
+
 function isTextLikeFile(file) {
   if (!file) return false;
   const name = (file.name || '').toLowerCase();
@@ -5409,7 +5471,7 @@ function isTextLikeFile(file) {
 }
 
 function isSupportedFile(file) {
-  return isPdfFile(file) || isTextLikeFile(file);
+  return isPdfFile(file) || isEpubFile(file) || isTextLikeFile(file);
 }
 
 function isAmbiguousDropEmailCandidate(file) {
@@ -5458,6 +5520,75 @@ function stripToPlainText(rawText, sourceName = '') {
     return (doc.body?.innerText || doc.documentElement?.innerText || '').trim();
   }
   return rawText;
+}
+
+function resolveEpubPath(basePath, relativePath) {
+  const base = String(basePath || '').replace(/\\/g, '/');
+  const rel = String(relativePath || '').replace(/\\/g, '/');
+  const baseDir = base.includes('/') ? base.slice(0, base.lastIndexOf('/') + 1) : '';
+  const resolved = new URL(rel, `https://epub.local/${baseDir}`).pathname.replace(/^\/+/, '');
+  return decodeURIComponent(resolved);
+}
+
+async function extractEpubText(file) {
+  const bytes = await file.arrayBuffer();
+  const zip = await JSZip.loadAsync(bytes);
+  const containerEntry = zip.file('META-INF/container.xml');
+  if (!containerEntry) {
+    throw new Error('Missing META-INF/container.xml');
+  }
+  const containerXml = await containerEntry.async('string');
+  const xmlParser = new DOMParser();
+  const containerDoc = xmlParser.parseFromString(containerXml, 'application/xml');
+  const parserError = containerDoc.querySelector('parsererror');
+  if (parserError) throw new Error('Unable to parse EPUB container metadata.');
+  const rootFileNode = containerDoc.querySelector('rootfile');
+  const opfPath = rootFileNode?.getAttribute('full-path');
+  if (!opfPath) throw new Error('Missing package document path in EPUB.');
+
+  const opfEntry = zip.file(opfPath);
+  if (!opfEntry) throw new Error('Unable to locate EPUB package document.');
+  const opfXml = await opfEntry.async('string');
+  const opfDoc = xmlParser.parseFromString(opfXml, 'application/xml');
+  const opfParseError = opfDoc.querySelector('parsererror');
+  if (opfParseError) throw new Error('Unable to parse EPUB package document.');
+
+  const manifestById = new Map();
+  opfDoc.querySelectorAll('manifest > item').forEach(item => {
+    const id = item.getAttribute('id');
+    const href = item.getAttribute('href');
+    if (!id || !href) return;
+    manifestById.set(id, {
+      href: resolveEpubPath(opfPath, href),
+      mediaType: (item.getAttribute('media-type') || '').toLowerCase()
+    });
+  });
+
+  const spinePaths = [];
+  opfDoc.querySelectorAll('spine > itemref').forEach(itemRef => {
+    const idRef = itemRef.getAttribute('idref');
+    const manifestItem = idRef ? manifestById.get(idRef) : null;
+    if (manifestItem?.href) spinePaths.push(manifestItem.href);
+  });
+
+  const fallbackPaths = Array.from(manifestById.values())
+    .map(item => item.href)
+    .filter(path => /\.(xhtml|html|htm)$/i.test(path));
+  const orderedPaths = (spinePaths.length ? spinePaths : fallbackPaths)
+    .filter((path, index, arr) => Boolean(path) && arr.indexOf(path) === index);
+
+  const sections = [];
+  for (const path of orderedPaths) {
+    const entry = zip.file(path);
+    if (!entry) continue;
+    const markup = await entry.async('string');
+    const plain = stripToPlainText(markup, '.html');
+    if (plain) sections.push(plain);
+  }
+
+  const joinedText = normalizeReadableText(sections.join('\n\n'));
+  if (!joinedText) throw new Error('No readable text was found in this EPUB.');
+  return joinedText;
 }
 
 function parseRfc822Headers(headerText) {
@@ -6360,12 +6491,27 @@ function setEmailThreadOrder(nextOrder, options = {}) {
 
 async function loadSourceFile(file) {
   if (isPdfFile(file)) return loadPDF(file);
+  if (isEpubFile(file)) {
+    try {
+      const plainText = await extractEpubText(file);
+      setCurrentDocumentMeta({
+        id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
+        label: file.name,
+        type: 'epub-file'
+      });
+      return loadTextDocument(plainText, file.name, `EPUB · ${file.name}`);
+    } catch (err) {
+      console.warn('Failed to parse EPUB:', err);
+      renderReaderNotice('Unable to parse this EPUB file. Try a different EPUB export or convert it to TXT/HTML and upload it.');
+      return;
+    }
+  }
   const lowerName = (file?.name || '').toLowerCase();
   if (lowerName.endsWith('.eml') || lowerName.endsWith('.msg')) {
     return loadEmailFile(file);
   }
   if (!isTextLikeFile(file)) {
-    renderReaderNotice('Unsupported file type. Try PDF, TXT, Markdown, HTML, JSON, or email files (.eml/.msg).');
+    renderReaderNotice('Unsupported file type. Try PDF, EPUB, TXT, Markdown, HTML, JSON, or email files (.eml/.msg).');
     return;
   }
 
@@ -8470,6 +8616,22 @@ document.getElementById('lowInterruptT').addEventListener('change', e => {
   updateSessionMeta();
   updateLowInterruptionMode();
 });
+document.getElementById('sessionFullscreenT').addEventListener('change', e => {
+  sessionSupportState.fullscreenDuringSession = e.target.checked;
+  saveSessionSupportState();
+  if (!sessionSupportState.fullscreenDuringSession) {
+    void exitFullscreenForSession();
+    return;
+  }
+  if (getRemainingSessionMs() > 0) {
+    void enterFullscreenForSession();
+  }
+});
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) {
+    sessionManagedFullscreen = false;
+  }
+});
 document.getElementById('sessionInsightsToggle').addEventListener('click', () => {
   sessionSupportState.insightsCollapsed = !sessionSupportState.insightsCollapsed;
   saveSessionSupportState();
@@ -8581,8 +8743,7 @@ document.querySelectorAll('input[name="readingMode"]').forEach(input => {
 document.addEventListener('keydown', e => {
   if (!chunkModeOn()) return;
   if (e.altKey || e.ctrlKey || e.metaKey) return;
-  const tag = (e.target?.tagName || '').toLowerCase();
-  if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target?.isContentEditable) return;
+  if (isTypingTarget(e.target) || isTypingTarget(document.activeElement)) return;
   if (e.key === 'j' || e.key === 'J') {
     e.preventDefault();
     stepChunk(1);
@@ -8609,6 +8770,7 @@ document.getElementById('saveProfileBtn').addEventListener('click', handleSavePr
 document.getElementById('deleteProfileBtn').addEventListener('click', handleDeleteProfile);
 useProfile(lastUsedProfileId);
 document.getElementById('lowInterruptT').checked = Boolean(sessionSupportState.lowInterruption);
+document.getElementById('sessionFullscreenT').checked = Boolean(sessionSupportState.fullscreenDuringSession);
 document.getElementById('statsCollectT').checked = Boolean(statsState.enabled);
 applySessionInsightsCollapsedState();
 renderReadingInsights();

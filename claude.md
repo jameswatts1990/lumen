@@ -39,3 +39,7 @@
 - Context: when changing chunk length or auto-split settings in Flow mode triggers re-rendering of flow blocks.
 - Guidance: snapshot the current chunk anchor (index + normalized text) before re-render and restore `flowChunkIndex` afterward; avoid resetting to the first chunk.
 - Reason: prevents J/K navigation from feeling stuck or jumping after chunk-size adjustments.
+### [Keyboard Shortcuts] Only block text-entry targets
+- Context: when handling global shortcuts (especially chunking J/K) after sidebar interactions.
+- Guidance: gate shortcuts with `isTypingTarget(...)` checks instead of blocking all focused `<input>` elements, so non-text controls (range, checkbox, button) do not disable global keys.
+- Reason: users often click sidebar controls before resuming keyboard navigation, and broad input blocking silently breaks expected shortcuts.
