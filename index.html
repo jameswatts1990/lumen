@@ -1435,6 +1435,40 @@ body.flow-speed-read-mode .flow-speed-backdrop {
   border-color: var(--accent);
   color: var(--accent);
 }
+.session-fullscreen-prompt {
+  position: fixed;
+  top: 74px;
+  right: 18px;
+  z-index: 360;
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--accent-mid);
+  background: rgba(23, 17, 11, 0.96);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.34);
+  color: #ebddcb;
+  font-size: 12px;
+}
+.session-fullscreen-prompt.on { display: inline-flex; }
+.session-fullscreen-prompt .prompt-text { color: #dfcfba; }
+.session-fullscreen-prompt button {
+  border: 1px solid var(--control-border);
+  background: rgba(27, 20, 12, 0.86);
+  color: var(--text-secondary);
+  border-radius: 7px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+}
+.session-fullscreen-prompt button:hover,
+.session-fullscreen-prompt button:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .flow-hold-timer,
 .flow-speed-hud {
   position: fixed;
@@ -1984,6 +2018,13 @@ body.low-interruption-active .prog {
           </div>
           <label class="tog"><input type="checkbox" id="lowInterruptT"><span class="tog-tk"></span></label>
         </div>
+        <div class="trow">
+          <div class="trow-info">
+            <div class="trow-lbl">Session fullscreen</div>
+            <div class="trow-sub">Enter fullscreen during a session (you can always exit manually with Esc)</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="sessionFullscreenT" aria-label="Enable fullscreen during timed sessions"><span class="tog-tk"></span></label>
+        </div>
         <div class="session-meta" id="sessionMeta">No active session.</div>
         <hr class="session-divider" aria-hidden="true">
         <div class="resume-row" style="padding: 0 20px 8px;">
@@ -2404,6 +2445,11 @@ body.low-interruption-active .prog {
   </div>
   <button class="session-done-dismiss" id="sessionDoneDismissBtn" type="button">Dismiss</button>
 </div>
+<div class="session-fullscreen-prompt" id="sessionFullscreenPrompt" role="status" aria-live="polite" aria-atomic="true">
+  <span class="prompt-text">Fullscreen exited. Return to fullscreen?</span>
+  <button id="sessionFullscreenReturnBtn" type="button">Return</button>
+  <button id="sessionFullscreenDismissBtn" type="button">Dismiss</button>
+</div>
 <div class="flow-hold-timer" id="flowHoldTimer" aria-live="polite">Hold · 1.0s</div>
 <div class="flow-speed-hud" id="flowSpeedHud" aria-live="polite">
   <div class="flow-speed-hud-grid">
@@ -2452,6 +2498,7 @@ body.low-interruption-active .prog {
       <li class="shortcuts-item"><span class="shortcut-key"><kbd>R</kbd></span><span>Toggle reading ruler</span></li>
       <li class="shortcuts-item"><span class="shortcut-key"><kbd>F</kbd></span><span>Toggle focus mode</span></li>
       <li class="shortcuts-item"><span class="shortcut-key"><kbd>P</kbd></span><span>Toggle progress bar</span></li>
+      <li class="shortcuts-item"><span class="shortcut-key"><kbd>M</kbd></span><span>Toggle session fullscreen</span></li>
       <li class="shortcuts-item"><span class="shortcut-key"><kbd>S</kbd></span><span>Start or pause speed-read in flow mode</span></li>
       <li class="shortcuts-item"><span class="shortcut-key"><kbd>-</kbd> / <kbd>=</kbd></span><span>Decrease or increase zoom</span></li>
       <li class="shortcuts-item"><span class="shortcut-key"><kbd>J</kbd> / <kbd>K</kbd></span><span>Step chunk down or up (when chunking is on)</span></li>
@@ -2602,6 +2649,7 @@ let sessionSupportState = {
   plannedDurationMin: 0,
   insightsView: 'summary',
   lowInterruption: false,
+  sessionFullscreen: false,
   chunkMemory: {
     current: null,
     previous: null
@@ -4761,6 +4809,7 @@ function loadSessionSupportState() {
     if (!['summary', 'detailed', 'hidden'].includes(sessionSupportState.insightsView)) {
       sessionSupportState.insightsView = 'summary';
     }
+    sessionSupportState.sessionFullscreen = Boolean(sessionSupportState.sessionFullscreen);
     sessionSupportState.plannedDurationMin = Math.max(0, Number(sessionSupportState.plannedDurationMin || sessionSupportState.durationMin || 0));
   } catch (err) {
     console.warn('Unable to load session support settings:', err);
@@ -5087,6 +5136,49 @@ function updateSessionMeta() {
   chunkStatus.classList.toggle('with-timer', !lowInterruptionOn);
 }
 
+function isSessionTimerActive() {
+  return Number(sessionSupportState.sessionEndTs || 0) > Date.now() && Number(sessionSupportState.durationMin || 0) > 0;
+}
+
+async function enterSessionFullscreen() {
+  if (document.fullscreenElement) return true;
+  try {
+    await document.documentElement.requestFullscreen();
+    return true;
+  } catch (err) {
+    console.warn('Unable to enter session fullscreen:', err);
+    return false;
+  }
+}
+
+async function exitSessionFullscreen() {
+  if (!document.fullscreenElement) return true;
+  try {
+    await document.exitFullscreen();
+    return true;
+  } catch (err) {
+    console.warn('Unable to exit session fullscreen:', err);
+    return false;
+  }
+}
+
+function hideSessionFullscreenPrompt() {
+  document.getElementById('sessionFullscreenPrompt')?.classList.remove('on');
+}
+
+function syncSessionFullscreenState() {
+  const toggle = document.getElementById('sessionFullscreenT');
+  const prompt = document.getElementById('sessionFullscreenPrompt');
+  if (!toggle) return;
+  toggle.setAttribute(
+    'aria-label',
+    toggle.checked ? 'Disable fullscreen during timed sessions' : 'Enable fullscreen during timed sessions'
+  );
+  if (!prompt) return;
+  const shouldPrompt = Boolean(toggle.checked && isSessionTimerActive() && !document.fullscreenElement);
+  prompt.classList.toggle('on', shouldPrompt);
+}
+
 function showSessionDonePopup(minutes) {
   const text = document.getElementById('sessionDoneText');
   const roundedMinutes = Math.max(1, Math.round(Number(minutes) || 0));
@@ -5129,6 +5221,8 @@ function stopSessionTimer(clearSchedule = true, markCompleted = false) {
     sessionSupportState.plannedDurationMin = 0;
     saveSessionSupportState();
   }
+  hideSessionFullscreenPrompt();
+  exitSessionFullscreen();
   updateSessionMeta();
   updateLowInterruptionMode();
 }
@@ -5167,6 +5261,9 @@ function startSessionTimer(minutes, options = {}) {
     updateSessionMeta();
     updateProgressAndStatus();
   }, 1000);
+  if (sessionSupportState.sessionFullscreen) {
+    enterSessionFullscreen();
+  }
 }
 
 /* ── File upload ── */
@@ -8348,6 +8445,22 @@ document.addEventListener('keydown', e => {
       e.preventDefault();
       setToggleAndRun('progT', toggleProg);
       break;
+    case 'm':
+    case 'M':
+      e.preventDefault();
+      setToggleAndRun('sessionFullscreenT', () => {
+        const toggle = document.getElementById('sessionFullscreenT');
+        sessionSupportState.sessionFullscreen = Boolean(toggle?.checked);
+        saveSessionSupportState();
+        syncSessionFullscreenState();
+        if (sessionSupportState.sessionFullscreen && isSessionTimerActive()) {
+          enterSessionFullscreen();
+        } else if (!sessionSupportState.sessionFullscreen) {
+          hideSessionFullscreenPrompt();
+          exitSessionFullscreen();
+        }
+      });
+      break;
     case 's':
     case 'S':
       if (!isFlowGestureEnabled()) break;
@@ -8387,6 +8500,29 @@ document.getElementById('lowInterruptT').addEventListener('change', e => {
   saveSessionSupportState();
   updateSessionMeta();
   updateLowInterruptionMode();
+});
+document.getElementById('sessionFullscreenT').addEventListener('change', e => {
+  sessionSupportState.sessionFullscreen = e.target.checked;
+  saveSessionSupportState();
+  syncSessionFullscreenState();
+  if (!sessionSupportState.sessionFullscreen) {
+    hideSessionFullscreenPrompt();
+    exitSessionFullscreen();
+    return;
+  }
+  if (isSessionTimerActive()) {
+    enterSessionFullscreen();
+  }
+});
+document.getElementById('sessionFullscreenReturnBtn').addEventListener('click', () => {
+  hideSessionFullscreenPrompt();
+  enterSessionFullscreen();
+});
+document.getElementById('sessionFullscreenDismissBtn').addEventListener('click', () => {
+  hideSessionFullscreenPrompt();
+});
+document.addEventListener('fullscreenchange', () => {
+  syncSessionFullscreenState();
 });
 document.getElementById('sessionInsightsViewSel').addEventListener('change', e => {
   sessionSupportState.insightsView = e.target.value;
@@ -8527,7 +8663,9 @@ document.getElementById('saveProfileBtn').addEventListener('click', handleSavePr
 document.getElementById('deleteProfileBtn').addEventListener('click', handleDeleteProfile);
 useProfile(lastUsedProfileId);
 document.getElementById('lowInterruptT').checked = Boolean(sessionSupportState.lowInterruption);
+document.getElementById('sessionFullscreenT').checked = Boolean(sessionSupportState.sessionFullscreen);
 document.getElementById('sessionInsightsViewSel').value = sessionSupportState.insightsView || 'summary';
+syncSessionFullscreenState();
 document.getElementById('statsCollectT').checked = Boolean(statsState.enabled);
 applySessionInsightsVisibility();
 renderReadingInsights();
