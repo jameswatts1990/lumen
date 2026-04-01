@@ -2391,6 +2391,7 @@ let emailThreadModel = null;
 let emailThreadOrder = 'newest-first';
 let chunkCenterY = 0;
 let flowChunkIndex = 0;
+let flowPointerIndex = 0;
 const PROFILE_STORAGE_KEY = 'lumen.profiles.v1';
 const SETTINGS_STORAGE_KEY = 'lumen.settings.v1';
 const SESSION_SUPPORT_STORAGE_KEY = 'lumen.session-support.v1';
@@ -6693,13 +6694,10 @@ function syncChunkFocusAidExclusivity() {
   const rulerToggle = document.getElementById('rulerT');
   const shadeToggle = document.getElementById('shadeT');
   if (!chunkToggle || !rulerToggle || !shadeToggle) return;
-  const chunkOn = chunkToggle.checked;
-  rulerToggle.disabled = chunkOn;
-  shadeToggle.disabled = chunkOn;
-  if (chunkOn) {
-    rulerToggle.checked = false;
-    shadeToggle.checked = false;
-  }
+  [rulerToggle, shadeToggle].forEach(toggle => {
+    toggle.disabled = false;
+    toggle.closest('.tog')?.classList.remove('is-disabled');
+  });
 }
 
 function handleFontSelectionChange() {
@@ -7404,20 +7402,35 @@ function getFlowSplitLineCount() {
 }
 
 function parseCssColor(value, alphaFallback = 0.14) {
+  const fallback = { r: 200, g: 135, b: 74, a: alphaFallback };
   const raw = (value || '').trim();
-  if (!raw) return `rgba(200,135,74,${alphaFallback})`;
-  if (raw.startsWith('rgba(') || raw.startsWith('rgb(')) return raw;
+  if (!raw) return fallback;
+  const rgbaMatch = raw.match(/^rgba?\(([^)]+)\)$/i);
+  if (rgbaMatch) {
+    const parts = rgbaMatch[1].split(',').map(part => Number.parseFloat(part.trim()));
+    if (parts.length >= 3 && parts.every((num, idx) => idx > 2 || Number.isFinite(num))) {
+      const [r, g, b, a = alphaFallback] = parts;
+      return {
+        r: Math.max(0, Math.min(255, r || 0)),
+        g: Math.max(0, Math.min(255, g || 0)),
+        b: Math.max(0, Math.min(255, b || 0)),
+        a: Number.isFinite(a) ? Math.max(0, Math.min(1, a)) : alphaFallback
+      };
+    }
+  }
   if (raw.startsWith('#')) {
     const hex = raw.slice(1);
     const full = hex.length === 3 ? hex.split('').map(c => c + c).join('') : hex;
     if (full.length === 6) {
-      const r = Number.parseInt(full.slice(0, 2), 16);
-      const g = Number.parseInt(full.slice(2, 4), 16);
-      const b = Number.parseInt(full.slice(4, 6), 16);
-      return `rgba(${r},${g},${b},${alphaFallback})`;
+      return {
+        r: Number.parseInt(full.slice(0, 2), 16),
+        g: Number.parseInt(full.slice(2, 4), 16),
+        b: Number.parseInt(full.slice(4, 6), 16),
+        a: alphaFallback
+      };
     }
   }
-  return raw;
+  return fallback;
 }
 
 function estimatedLineHeightPx() {
@@ -7530,20 +7543,9 @@ function updateFlowHighlight() {
   const list = getFlowHighlightables();
   const chunkSize = Math.max(1, Number(document.getElementById('chunkR').value) || 1);
   const rulerOn = document.getElementById('rulerT').checked;
-  if (!chunkModeOn() && rulerOn && list.length) {
-    const center = window.innerHeight * 0.42;
-    let nearestIdx = 0;
-    let nearestDelta = Number.POSITIVE_INFINITY;
-    list.forEach((el, idx) => {
-      const rect = el.getBoundingClientRect();
-      const mid = rect.top + (rect.height / 2);
-      const delta = Math.abs(mid - center);
-      if (delta < nearestDelta) {
-        nearestDelta = delta;
-        nearestIdx = idx;
-      }
-    });
-    flowChunkIndex = nearestIdx;
+  const shadingOn = document.getElementById('shadeT').checked;
+  if (!chunkModeOn() && (rulerOn || shadingOn) && list.length) {
+    flowChunkIndex = Math.max(0, Math.min(flowPointerIndex, list.length - 1));
   }
   clampFlowChunkIndex(list, chunkSize);
   if (chunkModeOn()) {
@@ -7558,28 +7560,13 @@ function updateFlowHighlight() {
     flowLayer.classList.toggle('flow-shaded', showShadingChunk);
     return;
   }
-  let consumedLines = 0;
-  let partialApplied = false;
   list.forEach((el, idx) => {
     el.classList.remove('flow-highlight-active', 'flow-highlight-partial');
     el.style.removeProperty('--flow-active-max-height');
-    if (!(rulerOn || chunkModeOn()) || idx < flowChunkIndex || partialApplied || consumedLines >= chunkSize) return;
-    const metrics = getFlowElementLineMetrics(el);
-    const remaining = chunkSize - consumedLines;
-    if (metrics.lines <= remaining) {
-      el.classList.add('flow-highlight-active');
-      consumedLines += metrics.lines;
-      return;
-    }
-    if (consumedLines === 0) {
-      el.classList.add('flow-highlight-partial');
-      el.style.setProperty('--flow-active-max-height', `${Math.round(remaining * metrics.lineHeightPx)}px`);
-      consumedLines = chunkSize;
-      partialApplied = true;
-    }
+    if (!(rulerOn || shadingOn) || idx !== flowChunkIndex) return;
+    el.classList.add('flow-highlight-active');
   });
-  const showShading = document.getElementById('shadeT').checked;
-  flowLayer.classList.toggle('flow-shaded', showShading);
+  flowLayer.classList.toggle('flow-shaded', shadingOn);
 }
 
 function updateChunkOverlay() {
@@ -7695,29 +7682,49 @@ reader.addEventListener('mousemove', e => {
   const sh = 80;
   document.getElementById('rShadeTop').style.height = Math.max(0, e.clientY - sh) + 'px';
   document.getElementById('rShadeBot').style.height = Math.max(0, window.innerHeight - e.clientY - sh) + 'px';
+
+  if (readingMode !== 'flow') return;
+  const list = getFlowHighlightables();
+  if (!list.length) return;
+  let nearestIdx = 0;
+  let nearestDelta = Number.POSITIVE_INFINITY;
+  list.forEach((el, idx) => {
+    const rect = el.getBoundingClientRect();
+    const mid = rect.top + (rect.height / 2);
+    const delta = Math.abs(mid - e.clientY);
+    if (delta < nearestDelta) {
+      nearestDelta = delta;
+      nearestIdx = idx;
+    }
+  });
+  if (nearestIdx !== flowPointerIndex) {
+    flowPointerIndex = nearestIdx;
+    updateFlowHighlight();
+  }
 });
 
 function toggleRuler() {
-  if (readingMode === 'flow') {
-    document.getElementById('rulerLine').classList.remove('on');
-    document.getElementById('rShadeTop').classList.remove('on');
-    document.getElementById('rShadeBot').classList.remove('on');
-    updateFlowHighlight();
-    return;
-  }
   const on  = document.getElementById('rulerT').checked;
   const shd = document.getElementById('shadeT').checked;
   const chunkOn = chunkModeOn();
+  if (chunkOn && (on || shd)) {
+    const chunkToggle = document.getElementById('chunkT');
+    chunkToggle.checked = false;
+    toggleChunkMode();
+    return;
+  }
   const paragraphShadeTop = document.getElementById('rShadeTop');
   const paragraphShadeBot = document.getElementById('rShadeBot');
-  document.getElementById('rulerLine').classList.toggle('on', on && !chunkOn);
-  paragraphShadeTop.classList.toggle('on', shd || chunkOn);
-  paragraphShadeBot.classList.toggle('on', shd || chunkOn);
-  if (!chunkOn) {
+  const rulerLine = document.getElementById('rulerLine');
+  rulerLine.classList.toggle('on', on && !chunkModeOn());
+  paragraphShadeTop.classList.toggle('on', shd || chunkModeOn());
+  paragraphShadeBot.classList.toggle('on', shd || chunkModeOn());
+  if (!chunkModeOn()) {
     paragraphShadeTop.style.background = 'rgba(0,0,0,0.70)';
     paragraphShadeBot.style.background = 'rgba(0,0,0,0.70)';
   }
-  if (chunkOn) updateChunkOverlay();
+  if (chunkModeOn()) updateChunkOverlay();
+  updateFlowHighlight();
 }
 
 /* ── Focus mode ── */

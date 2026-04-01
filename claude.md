@@ -24,3 +24,8 @@
 - Context: when backdrop pointer-blocking is active in flow speed-read.
 - Guidance: keep pause/resume hold handlers mirrored on both `#reader` and `#flowSpeedBackdrop` (`pointerdown`, `pointerup`, `pointercancel`).
 - Reason: backdrop interception otherwise prevents resume interactions.
+
+### [Chunk Overlay] Parse accent colors as channels
+- Context: when deriving dynamic chunk/ruler shading from CSS custom properties such as `--accent-dim`.
+- Guidance: parse theme colors into numeric RGBA channels before computing derived alpha blends; avoid treating CSS color strings as structured objects.
+- Reason: prevents invalid gradient strings that silently break shading visuals.
