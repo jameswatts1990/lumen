@@ -4418,8 +4418,40 @@ function buildFlowBlocks(textSegments, pageStats = {}) {
 function splitIntoSentences(text) {
   const normalized = normalizeFlowSentence(text);
   if (!normalized) return [];
-  const matches = normalized.match(/[^.!?]+(?:[.!?]+["'”’)]*)+|[^.!?]+$/g) || [];
-  return matches.map(sentence => normalizeFlowSentence(sentence)).filter(Boolean);
+  const protectedInitialisms = normalized.replace(
+    /\b(?:[A-Za-z]\.){2,}(?=\s|$|["'”’)\]])/g,
+    match => match.replace(/\./g, '__FLOW_DOT__')
+  );
+  const matches = protectedInitialisms.match(/[^.!?]+(?:[.!?]+["'”’)]*)+|[^.!?]+$/g) || [];
+  return matches
+    .map(sentence => sentence.replace(/__FLOW_DOT__/g, '.'))
+    .map(sentence => normalizeFlowSentence(sentence))
+    .filter(Boolean);
+}
+
+const FLOW_SENTENCE_SPLIT_FIXTURES = [
+  {
+    name: 'keeps_initialism_abbreviation_intact',
+    input: 'N.B. all of these had initially been underestimated for fragment length.',
+    expected: ['N.B. all of these had initially been underestimated for fragment length.']
+  },
+  {
+    name: 'splits_multiple_terminal_sentences',
+    input: 'This line should split cleanly. This one should also split.',
+    expected: ['This line should split cleanly.', 'This one should also split.']
+  }
+];
+
+function runFlowSentenceSplitFixtureChecks() {
+  return FLOW_SENTENCE_SPLIT_FIXTURES.map(fixture => {
+    const result = splitIntoSentences(fixture.input);
+    return {
+      name: fixture.name,
+      pass: JSON.stringify(result) === JSON.stringify(fixture.expected),
+      expected: fixture.expected,
+      got: result
+    };
+  });
 }
 
 function expandParagraphBlockForFlowSplit(block) {
@@ -5361,6 +5393,11 @@ async function extractFlowDocument() {
     const failed = fixtureResults.filter(result => !result.pass);
     if (failed.length) {
       console.warn('Flow paragraph reconstruction fixtures failed', failed);
+    }
+    const sentenceFixtureResults = runFlowSentenceSplitFixtureChecks();
+    const sentenceFailed = sentenceFixtureResults.filter(result => !result.pass);
+    if (sentenceFailed.length) {
+      console.warn('Flow sentence split fixtures failed', sentenceFailed);
     }
   }
   pageModels.forEach(pageModel => {
