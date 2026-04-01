@@ -1669,6 +1669,35 @@ body.low-interruption-active .flow-speed-hud {
       <div class="sec is-collapsed">
         <div class="sec-label">Focus Aids <span class="sci sci-mixed">Mixed evidence</span></div>
 
+        <div class="trow">
+          <div class="trow-info">
+            <div class="trow-lbl">Progress Bar</div>
+            <div class="trow-sub">Shows position in document</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="progT" checked onchange="toggleProg()"><span class="tog-tk"></span></label>
+        </div>
+
+        <div class="trow">
+          <div class="trow-info">
+            <div class="trow-lbl">Focus Mode <span class="sci sci-pref">User-preference</span></div>
+            <div class="trow-sub">Edge dimming may improve comfort and attention for some readers; others prefer full-page context. See <code>F4</code>.</div>
+          </div>
+          <label class="tog"><input type="checkbox" id="focusT" onchange="toggleFocus()"><span class="tog-tk"></span></label>
+        </div>
+
+        <div class="ctrl ctrl-group focus-group">
+          <span class="ctrl-lbl">Vignette</span>
+          <input type="range" id="focusR" min="20" max="90" value="72" step="1">
+          <span class="ctrl-val" id="focusV">72%</span>
+        </div>
+        <div class="ctrl ctrl-group focus-group">
+          <span class="ctrl-lbl">Depth</span>
+          <input type="range" id="focusDepthR" min="80" max="420" value="220" step="10">
+          <span class="ctrl-val" id="focusDepthV">220px</span>
+        </div>
+        <div class="sec-hint ctrl-group focus-group" style="padding-top:2px;">Lower for gentle focus, higher for stronger edge dimming</div>
+        <div class="mode-note ctrl-group flow-only-note" id="focusModeHint" hidden>In flow mode, ruler and chunking adapt into paragraph-band highlighting with the same J/K stepping rhythm.</div>
+
         <div class="trow ctrl-group">
           <div class="trow-info">
             <div class="trow-lbl">Reading Ruler <span class="sci sci-pref">User-preference</span></div>
@@ -1709,34 +1738,6 @@ body.low-interruption-active .flow-speed-hud {
           <span class="ctrl-lbl">Split Length</span>
           <input type="range" id="flowSplitLinesR" min="1" max="5" value="2" step="1">
           <span class="ctrl-val" id="flowSplitLinesV">2 lines</span>
-        </div>
-        <div class="trow">
-          <div class="trow-info">
-            <div class="trow-lbl">Focus Mode <span class="sci sci-pref">User-preference</span></div>
-            <div class="trow-sub">Edge dimming may improve comfort and attention for some readers; others prefer full-page context. See <code>F4</code>.</div>
-          </div>
-          <label class="tog"><input type="checkbox" id="focusT" onchange="toggleFocus()"><span class="tog-tk"></span></label>
-        </div>
-
-        <div class="ctrl ctrl-group focus-group">
-          <span class="ctrl-lbl">Vignette</span>
-          <input type="range" id="focusR" min="20" max="90" value="72" step="1">
-          <span class="ctrl-val" id="focusV">72%</span>
-        </div>
-        <div class="ctrl ctrl-group focus-group">
-          <span class="ctrl-lbl">Depth</span>
-          <input type="range" id="focusDepthR" min="80" max="420" value="220" step="10">
-          <span class="ctrl-val" id="focusDepthV">220px</span>
-        </div>
-        <div class="sec-hint ctrl-group focus-group" style="padding-top:2px;">Lower for gentle focus, higher for stronger edge dimming</div>
-        <div class="mode-note ctrl-group flow-only-note" id="focusModeHint" hidden>In flow mode, ruler and chunking adapt into paragraph-band highlighting with the same J/K stepping rhythm.</div>
-
-        <div class="trow">
-          <div class="trow-info">
-            <div class="trow-lbl">Progress Bar</div>
-            <div class="trow-sub">Shows position in document</div>
-          </div>
-          <label class="tog"><input type="checkbox" id="progT" checked onchange="toggleProg()"><span class="tog-tk"></span></label>
         </div>
       </div>
 
