@@ -34,3 +34,8 @@
 - Context: when wiring focus-aid toggles in Flow reading mode.
 - Guidance: enabling chunk mode should clear ruler and paragraph shading toggles, and flow chunking should avoid the fixed top/bottom shading bands.
 - Reason: preserves J/K chunk stepping behavior and keeps chunk focus visuals aligned with expected flow UX.
+
+### [Keyboard Shortcuts] Only block text-entry targets
+- Context: when handling global shortcuts (especially chunking J/K) after sidebar interactions.
+- Guidance: gate shortcuts with `isTypingTarget(...)` checks instead of blocking all focused `<input>` elements, so non-text controls (range, checkbox, button) do not disable global keys.
+- Reason: users often click sidebar controls before resuming keyboard navigation, and broad input blocking silently breaks expected shortcuts.
