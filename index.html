@@ -1609,8 +1609,15 @@ body.low-interruption-active .flow-speed-hud {
           <button class="pbtn"    data-mode="dark"   onclick="setMode('dark')">Dark</button>
           <button class="pbtn"    data-mode="night"  onclick="setMode('night')">Night</button>
         </div>
+        <div class="presets" style="padding-top: 2px;">
+          <button class="pbtn" data-mode="pastel-mint" onclick="setMode('pastel-mint')">Pastel Mint</button>
+          <button class="pbtn" data-mode="pastel-sky" onclick="setMode('pastel-sky')">Pastel Sky</button>
+          <button class="pbtn" data-mode="pastel-lavender" onclick="setMode('pastel-lavender')">Pastel Lavender</button>
+          <button class="pbtn" data-mode="pastel-peach" onclick="setMode('pastel-peach')">Pastel Peach</button>
+        </div>
         <div class="sec-hint">May reduce evening glare for some readers, but comfort changes by time of day, age, and screen type. See <code>BG1</code> in Evidence notes.</div>
         <div class="sec-hint">Tint can feel soothing for night reading; it is mostly a comfort preference rather than a guaranteed reading-speed boost. See <code>BG2</code>.</div>
+        <div class="sec-hint">Pastel backgrounds can help some readers by reducing visual discomfort, but gains are inconsistent and highly individual. See <code>BG3</code>.</div>
         <div class="ctrl">
           <span class="ctrl-lbl">Warm Tint</span>
           <input type="range" id="tintR" min="0" max="55" value="0" step="1" oninput="updateTint()">
@@ -1815,6 +1822,7 @@ body.low-interruption-active .flow-speed-hud {
         <ol class="evidence-list">
           <li><code>BG1</code> Background warmth/brightness is most relevant for evening use and light sensitivity; evidence emphasizes sleep-timing and comfort outcomes more than comprehension. Target: mainly adults, with limited child-specific data. (Cajochen et al., 2011; Chang et al., 2015; Hale & Guan, 2015)</li>
           <li><code>BG2</code> Amber tint can reduce short-wavelength light exposure. Reading benefit is not universal and often depends on preference, display brightness, and ambient light. Target: adults and adolescents; dyslexia-specific effects unclear. (Burkhart & Phelps, 2009; Ostrin et al., 2017; Ritchie et al., 2011)</li>
+          <li><code>BG3</code> Coloured or pastel overlays/backgrounds may improve comfort for a subset of readers (including some dyslexic readers), but controlled studies and reviews show inconsistent effects on objective reading outcomes; use as a user-selectable preference rather than a default intervention. Target: mixed ages; strongest rationale is individualized comfort testing. (Ritchie et al., 2011; Galuschka et al., 2014; Kurniawan et al., 2021)</li>
           <li><code>D1</code> Line length and zoom have moderate support for improving readability and reducing eye movement strain, but best ranges differ by acuity and task. Target: adults and older students; applies to dyslexia and non-dyslexia readers with individual tuning. (Dyson & Kipping, 1998; Bernard et al., 2002; Rayner, 1998)</li>
           <li><code>T1</code> Typeface changes show mixed objective effects; subjective ease and sustained use often improve when users choose their own font. Target: broad population, including dyslexia and non-dyslexia readers. (Rello & Baeza-Yates, 2013; Kuster et al., 2018; Wery & Diliberto, 2017)</li>
           <li><code>T2</code> Extra spacing can support decoding accuracy for some dyslexic readers and developing readers, but can disrupt word-shape recognition for others. Target: children with decoding challenges and some adults with dyslexia. (Zorzi et al., 2012; Perea et al., 2012; van den Boer & Hakvoort, 2015)</li>
@@ -3015,6 +3023,10 @@ const MODES = {
   sepia: { bg: '#f2ead8', filter: 'sepia(35%) brightness(97%)' },
   dark:  { bg: '#202020', filter: 'invert(1) hue-rotate(180deg) brightness(88%)' },
   night: { bg: '#180f04', filter: 'sepia(70%) brightness(62%) contrast(88%)' },
+  'pastel-mint': { bg: '#eaf5ee', filter: 'brightness(99%)' },
+  'pastel-sky': { bg: '#eaf2fa', filter: 'brightness(99%)' },
+  'pastel-lavender': { bg: '#f0ebfa', filter: 'brightness(99%)' },
+  'pastel-peach': { bg: '#f8eee3', filter: 'brightness(99%)' },
 };
 const FONT_STACKS = {
   native: 'inherit',
@@ -5590,7 +5602,11 @@ async function applyReadingMode() {
     day: 'rgba(32, 22, 12, 0.6)',
     sepia: 'rgba(50, 36, 19, 0.6)',
     dark: 'rgba(237, 230, 216, 0.72)',
-    night: 'rgba(237, 230, 216, 0.76)'
+    night: 'rgba(237, 230, 216, 0.76)',
+    'pastel-mint': 'rgba(28, 36, 28, 0.58)',
+    'pastel-sky': 'rgba(24, 32, 44, 0.58)',
+    'pastel-lavender': 'rgba(36, 28, 44, 0.58)',
+    'pastel-peach': 'rgba(44, 28, 20, 0.58)'
   };
 
   rInner.classList.toggle('flow-mode', usingFlow);
