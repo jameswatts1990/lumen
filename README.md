@@ -2,6 +2,14 @@
 
 Lumen is a single-page browser reading app focused on adaptable readability controls (display mode, typography, focus aids, and pacing tools) with in-product evidence labels.
 
+## Supported imports
+
+- PDF (`.pdf`)
+- EPUB (`.epub`) parsed in-browser into Flow mode text
+- Plain text and markup (`.txt`, `.md`, `.markdown`, `.html`, `.htm`, `.json`)
+- Email files (`.eml`, best-effort `.msg`)
+- Web URLs (fetched as readable text)
+
 ## Project layout
 
 - `index.html` — app shell, styles, and client logic.

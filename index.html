@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Lumen — Mindful Document Reader</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -1964,7 +1965,7 @@ body.low-interruption-active .prog {
         <button class="import-reset-btn" id="resetDocBtn" type="button" title="Clear loaded document">Reset</button>
       </div>
       <div class="upload-zone" id="upZone" tabindex="0" title="Drop files, click to browse, or paste from clipboard">
-        <input type="file" accept=".pdf,.txt,.md,.markdown,.html,.htm,.json,.eml,.msg,application/pdf,text/plain,text/markdown,text/html,application/json,message/rfc822,application/vnd.ms-outlook" id="fileIn">
+        <input type="file" accept=".pdf,.epub,.txt,.md,.markdown,.html,.htm,.json,.eml,.msg,application/pdf,application/epub+zip,text/plain,text/markdown,text/html,application/json,message/rfc822,application/vnd.ms-outlook" id="fileIn">
         <div class="upload-icon">📄</div>
         <div>Drop a file here or click to open</div>
         <div class="upload-paste-hint" id="upPasteHint">Tip: hover this area, then press Ctrl/Cmd + V</div>
@@ -5475,6 +5476,13 @@ function isPdfFile(file) {
   return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
 }
 
+function isEpubFile(file) {
+  if (!file) return false;
+  const lowerName = (file.name || '').toLowerCase();
+  const mime = (file.type || '').toLowerCase();
+  return mime === 'application/epub+zip' || lowerName.endsWith('.epub');
+}
+
 function isTextLikeFile(file) {
   if (!file) return false;
   const name = (file.name || '').toLowerCase();
@@ -5488,7 +5496,7 @@ function isTextLikeFile(file) {
 }
 
 function isSupportedFile(file) {
-  return isPdfFile(file) || isTextLikeFile(file);
+  return isPdfFile(file) || isEpubFile(file) || isTextLikeFile(file);
 }
 
 function isAmbiguousDropEmailCandidate(file) {
@@ -5537,6 +5545,75 @@ function stripToPlainText(rawText, sourceName = '') {
     return (doc.body?.innerText || doc.documentElement?.innerText || '').trim();
   }
   return rawText;
+}
+
+function resolveEpubPath(basePath, relativePath) {
+  const base = String(basePath || '').replace(/\\/g, '/');
+  const rel = String(relativePath || '').replace(/\\/g, '/');
+  const baseDir = base.includes('/') ? base.slice(0, base.lastIndexOf('/') + 1) : '';
+  const resolved = new URL(rel, `https://epub.local/${baseDir}`).pathname.replace(/^\/+/, '');
+  return decodeURIComponent(resolved);
+}
+
+async function extractEpubText(file) {
+  const bytes = await file.arrayBuffer();
+  const zip = await JSZip.loadAsync(bytes);
+  const containerEntry = zip.file('META-INF/container.xml');
+  if (!containerEntry) {
+    throw new Error('Missing META-INF/container.xml');
+  }
+  const containerXml = await containerEntry.async('string');
+  const xmlParser = new DOMParser();
+  const containerDoc = xmlParser.parseFromString(containerXml, 'application/xml');
+  const parserError = containerDoc.querySelector('parsererror');
+  if (parserError) throw new Error('Unable to parse EPUB container metadata.');
+  const rootFileNode = containerDoc.querySelector('rootfile');
+  const opfPath = rootFileNode?.getAttribute('full-path');
+  if (!opfPath) throw new Error('Missing package document path in EPUB.');
+
+  const opfEntry = zip.file(opfPath);
+  if (!opfEntry) throw new Error('Unable to locate EPUB package document.');
+  const opfXml = await opfEntry.async('string');
+  const opfDoc = xmlParser.parseFromString(opfXml, 'application/xml');
+  const opfParseError = opfDoc.querySelector('parsererror');
+  if (opfParseError) throw new Error('Unable to parse EPUB package document.');
+
+  const manifestById = new Map();
+  opfDoc.querySelectorAll('manifest > item').forEach(item => {
+    const id = item.getAttribute('id');
+    const href = item.getAttribute('href');
+    if (!id || !href) return;
+    manifestById.set(id, {
+      href: resolveEpubPath(opfPath, href),
+      mediaType: (item.getAttribute('media-type') || '').toLowerCase()
+    });
+  });
+
+  const spinePaths = [];
+  opfDoc.querySelectorAll('spine > itemref').forEach(itemRef => {
+    const idRef = itemRef.getAttribute('idref');
+    const manifestItem = idRef ? manifestById.get(idRef) : null;
+    if (manifestItem?.href) spinePaths.push(manifestItem.href);
+  });
+
+  const fallbackPaths = Array.from(manifestById.values())
+    .map(item => item.href)
+    .filter(path => /\.(xhtml|html|htm)$/i.test(path));
+  const orderedPaths = (spinePaths.length ? spinePaths : fallbackPaths)
+    .filter((path, index, arr) => Boolean(path) && arr.indexOf(path) === index);
+
+  const sections = [];
+  for (const path of orderedPaths) {
+    const entry = zip.file(path);
+    if (!entry) continue;
+    const markup = await entry.async('string');
+    const plain = stripToPlainText(markup, '.html');
+    if (plain) sections.push(plain);
+  }
+
+  const joinedText = normalizeReadableText(sections.join('\n\n'));
+  if (!joinedText) throw new Error('No readable text was found in this EPUB.');
+  return joinedText;
 }
 
 function parseRfc822Headers(headerText) {
@@ -6439,12 +6516,27 @@ function setEmailThreadOrder(nextOrder, options = {}) {
 
 async function loadSourceFile(file) {
   if (isPdfFile(file)) return loadPDF(file);
+  if (isEpubFile(file)) {
+    try {
+      const plainText = await extractEpubText(file);
+      setCurrentDocumentMeta({
+        id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
+        label: file.name,
+        type: 'epub-file'
+      });
+      return loadTextDocument(plainText, file.name, `EPUB · ${file.name}`);
+    } catch (err) {
+      console.warn('Failed to parse EPUB:', err);
+      renderReaderNotice('Unable to parse this EPUB file. Try a different EPUB export or convert it to TXT/HTML and upload it.');
+      return;
+    }
+  }
   const lowerName = (file?.name || '').toLowerCase();
   if (lowerName.endsWith('.eml') || lowerName.endsWith('.msg')) {
     return loadEmailFile(file);
   }
   if (!isTextLikeFile(file)) {
-    renderReaderNotice('Unsupported file type. Try PDF, TXT, Markdown, HTML, JSON, or email files (.eml/.msg).');
+    renderReaderNotice('Unsupported file type. Try PDF, EPUB, TXT, Markdown, HTML, JSON, or email files (.eml/.msg).');
     return;
   }
 
