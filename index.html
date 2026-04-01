@@ -506,6 +506,18 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .session-btn { padding: 7px 0; font-size: 12px; }
 .session-btn.on { background: var(--accent); color: #1a1200; border-color: var(--accent); }
 .session-meta { padding: 0 20px 8px; font-size: 11.5px; color: var(--text-muted); line-height: 1.45; }
+.session-divider {
+  margin: 4px 20px 10px;
+  border: 0;
+  border-top: 1px solid rgba(200, 135, 74, 0.22);
+}
+.session-insights-wrap {
+  padding: 0 20px 10px;
+}
+.session-insights-wrap .fsel {
+  width: 100%;
+  margin: 0;
+}
 .insights-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1369,7 +1381,7 @@ body.flow-speed-read-mode .flow-speed-backdrop {
 }
 .session-done-popup {
   position: fixed;
-  top: 14px;
+  top: 74px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 360;
@@ -1385,6 +1397,28 @@ body.flow-speed-read-mode .flow-speed-backdrop {
   font-size: 12.5px;
 }
 .session-done-popup.on { display: inline-flex; }
+.session-done-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.session-done-restart {
+  min-width: 46px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--control-border);
+  background: rgba(27, 20, 12, 0.86);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: 'DM Mono', monospace;
+}
+.session-done-restart:hover,
+.session-done-restart:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  color: var(--accent);
+}
 .session-done-dismiss {
   border: 1px solid var(--control-border);
   background: var(--control-bg);
@@ -1936,6 +1970,13 @@ body.low-interruption-active .prog {
           <button class="pbtn session-btn" id="session10Btn" type="button" data-minutes="10">10 min</button>
           <button class="pbtn session-btn" id="session15Btn" type="button" data-minutes="15">15 min</button>
         </div>
+        <div class="session-insights-wrap">
+          <select class="fsel" id="sessionInsightsViewSel" aria-label="Reading insights detail">
+            <option value="summary">Reading insights: Summary</option>
+            <option value="detailed">Reading insights: Detailed</option>
+            <option value="hidden">Reading insights: Hidden</option>
+          </select>
+        </div>
         <div class="trow">
           <div class="trow-info">
             <div class="trow-lbl">Low interruption mode</div>
@@ -1944,6 +1985,7 @@ body.low-interruption-active .prog {
           <label class="tog"><input type="checkbox" id="lowInterruptT"><span class="tog-tk"></span></label>
         </div>
         <div class="session-meta" id="sessionMeta">No active session.</div>
+        <hr class="session-divider" aria-hidden="true">
         <div class="resume-row" style="padding: 0 20px 8px;">
           <button class="pbtn" id="chunkRecoverBtn" type="button" disabled>Return to previous chunk</button>
         </div>
@@ -1971,7 +2013,7 @@ body.low-interruption-active .prog {
       </div>
 
       <!-- Reading Insights -->
-      <div class="sec is-collapsed">
+      <div class="sec is-collapsed" id="readingInsightsSection">
         <div class="sec-label">Reading Insights</div>
         <div class="sec-hint">Private on-device summaries of your reading rhythm. Trend lines update from saved sessions.</div>
         <div class="insights-grid">
@@ -2355,6 +2397,11 @@ body.low-interruption-active .prog {
 </div>
 <div class="session-done-popup" id="sessionDonePopup" role="status" aria-live="polite">
   <span id="sessionDoneText">Session complete.</span>
+  <div class="session-done-actions" aria-label="Start another timer">
+    <button class="session-done-restart" type="button" data-minutes="5">+5m</button>
+    <button class="session-done-restart" type="button" data-minutes="10">+10m</button>
+    <button class="session-done-restart" type="button" data-minutes="15">+15m</button>
+  </div>
   <button class="session-done-dismiss" id="sessionDoneDismissBtn" type="button">Dismiss</button>
 </div>
 <div class="flow-hold-timer" id="flowHoldTimer" aria-live="polite">Hold · 1.0s</div>
@@ -2552,6 +2599,8 @@ let compareView = 'current';
 let sessionSupportState = {
   durationMin: 0,
   sessionEndTs: 0,
+  plannedDurationMin: 0,
+  insightsView: 'summary',
   lowInterruption: false,
   chunkMemory: {
     current: null,
@@ -4709,6 +4758,10 @@ function loadSessionSupportState() {
     if (!sessionSupportState.chunkMemory || typeof sessionSupportState.chunkMemory !== 'object') {
       sessionSupportState.chunkMemory = { current: null, previous: null };
     }
+    if (!['summary', 'detailed', 'hidden'].includes(sessionSupportState.insightsView)) {
+      sessionSupportState.insightsView = 'summary';
+    }
+    sessionSupportState.plannedDurationMin = Math.max(0, Number(sessionSupportState.plannedDurationMin || sessionSupportState.durationMin || 0));
   } catch (err) {
     console.warn('Unable to load session support settings:', err);
   }
@@ -4716,6 +4769,17 @@ function loadSessionSupportState() {
 
 function saveSessionSupportState() {
   localStorage.setItem(SESSION_SUPPORT_STORAGE_KEY, JSON.stringify(sessionSupportState));
+}
+
+function applySessionInsightsVisibility() {
+  const view = ['summary', 'detailed', 'hidden'].includes(sessionSupportState.insightsView)
+    ? sessionSupportState.insightsView
+    : 'summary';
+  sessionSupportState.insightsView = view;
+  const insightsSection = document.getElementById('readingInsightsSection');
+  if (!insightsSection) return;
+  insightsSection.style.display = view === 'hidden' ? 'none' : '';
+  insightsSection.classList.toggle('is-collapsed', view !== 'detailed');
 }
 
 function stableStringify(value) {
@@ -5025,7 +5089,8 @@ function updateSessionMeta() {
 
 function showSessionDonePopup(minutes) {
   const text = document.getElementById('sessionDoneText');
-  text.textContent = `${minutes}-minute session complete. Continue when you're ready.`;
+  const roundedMinutes = Math.max(1, Math.round(Number(minutes) || 0));
+  text.textContent = `${roundedMinutes}-minute session complete. Continue when you're ready.`;
   document.getElementById('sessionDonePopup').classList.add('on');
 }
 
@@ -5034,7 +5099,7 @@ function hideSessionDonePopup() {
 }
 
 function stopSessionTimer(clearSchedule = true, markCompleted = false) {
-  const finishedMinutes = Number(sessionSupportState.durationMin || 0);
+  const finishedMinutes = Math.max(0, Number(sessionSupportState.plannedDurationMin || sessionSupportState.durationMin || 0));
   const finishedAt = Date.now();
   if (sessionTick) {
     clearInterval(sessionTick);
@@ -5061,6 +5126,7 @@ function stopSessionTimer(clearSchedule = true, markCompleted = false) {
   if (clearSchedule) {
     sessionSupportState.sessionEndTs = 0;
     sessionSupportState.durationMin = 0;
+    sessionSupportState.plannedDurationMin = 0;
     saveSessionSupportState();
   }
   updateSessionMeta();
@@ -5073,8 +5139,10 @@ function startSessionTimer(minutes, options = {}) {
   const now = Date.now();
   const resumedStartTs = Number(options?.startTs);
   const startedAt = Number.isFinite(resumedStartTs) && resumedStartTs > 0 ? resumedStartTs : now;
-  const durationMinutes = Number(minutes) || 0;
+  const durationMinutes = Math.max(0, Number(minutes) || 0);
+  const plannedDurationMinutes = Math.max(1, Math.round(Number(options?.plannedMinutes) || durationMinutes));
   sessionSupportState.durationMin = durationMinutes;
+  sessionSupportState.plannedDurationMin = plannedDurationMinutes;
   sessionSupportState.sessionEndTs = now + (durationMinutes * 60 * 1000);
   saveSessionSupportState();
   activeSessionRecord = statsState.enabled
@@ -5087,7 +5155,7 @@ function startSessionTimer(minutes, options = {}) {
   updateSessionMeta();
   updateLowInterruptionMode();
   document.querySelectorAll('.session-btn').forEach(btn => {
-    btn.classList.toggle('on', Number(btn.dataset.minutes) === durationMinutes);
+    btn.classList.toggle('on', Number(btn.dataset.minutes) === plannedDurationMinutes);
   });
   sessionTick = setInterval(() => {
     const remaining = getRemainingSessionMs();
@@ -8308,11 +8376,22 @@ document.addEventListener('keydown', e => {
 document.querySelectorAll('.session-btn').forEach(btn => {
   btn.addEventListener('click', () => startSessionTimer(Number(btn.dataset.minutes)));
 });
+document.querySelectorAll('.session-done-restart').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const minutes = Number(btn.dataset.minutes) || 5;
+    startSessionTimer(minutes, { plannedMinutes: minutes });
+  });
+});
 document.getElementById('lowInterruptT').addEventListener('change', e => {
   sessionSupportState.lowInterruption = e.target.checked;
   saveSessionSupportState();
   updateSessionMeta();
   updateLowInterruptionMode();
+});
+document.getElementById('sessionInsightsViewSel').addEventListener('change', e => {
+  sessionSupportState.insightsView = e.target.value;
+  saveSessionSupportState();
+  applySessionInsightsVisibility();
 });
 document.getElementById('sessionDoneDismissBtn').addEventListener('click', () => hideSessionDonePopup());
 document.getElementById('statsCollectT').addEventListener('change', e => {
@@ -8448,12 +8527,15 @@ document.getElementById('saveProfileBtn').addEventListener('click', handleSavePr
 document.getElementById('deleteProfileBtn').addEventListener('click', handleDeleteProfile);
 useProfile(lastUsedProfileId);
 document.getElementById('lowInterruptT').checked = Boolean(sessionSupportState.lowInterruption);
+document.getElementById('sessionInsightsViewSel').value = sessionSupportState.insightsView || 'summary';
 document.getElementById('statsCollectT').checked = Boolean(statsState.enabled);
+applySessionInsightsVisibility();
 renderReadingInsights();
 if (sessionSupportState.sessionEndTs > Date.now() && sessionSupportState.durationMin) {
   const resumeMinutes = getRemainingSessionMs() / 60000;
-  const inferredStartTs = Number(sessionSupportState.sessionEndTs) - (Number(sessionSupportState.durationMin) * 60000);
-  startSessionTimer(resumeMinutes, { startTs: inferredStartTs });
+  const plannedMinutes = Math.max(1, Math.round(Number(sessionSupportState.plannedDurationMin || sessionSupportState.durationMin) || resumeMinutes));
+  const inferredStartTs = Number(sessionSupportState.sessionEndTs) - (plannedMinutes * 60000);
+  startSessionTimer(resumeMinutes, { startTs: inferredStartTs, plannedMinutes });
 } else {
   stopSessionTimer();
 }
