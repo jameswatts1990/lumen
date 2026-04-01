@@ -476,6 +476,53 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .resume-text { white-space: pre-line; }
 .resume-row { display: flex; gap: 6px; }
 .resume-row .pbtn { flex: 1; }
+.recent-doc-list {
+  list-style: none;
+  margin: 0 20px 10px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.recent-doc-item {
+  border: 1px solid var(--control-border);
+  border-radius: 8px;
+  background: var(--control-bg);
+  padding: 8px 9px;
+}
+.recent-doc-item.active {
+  border-color: var(--accent-mid);
+}
+.recent-doc-btn {
+  width: 100%;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-primary);
+  border-radius: 6px;
+  padding: 4px 6px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.recent-doc-btn:hover,
+.recent-doc-btn:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  outline: none;
+}
+.recent-doc-title {
+  display: block;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+.recent-doc-meta {
+  display: block;
+  margin-top: 3px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-family: 'DM Mono', monospace;
+}
 
 /* Navigation */
 .nav-jump { padding: 4px 20px 10px; display: flex; align-items: center; gap: 8px; }
@@ -1669,6 +1716,12 @@ body.low-interruption-active .flow-speed-hud {
         <div class="resume-row" style="padding: 0 20px 8px;">
           <button class="pbtn" id="chunkRecoverBtn" type="button" disabled>Return to previous chunk</button>
         </div>
+        <div class="resume-title" style="padding: 0 20px 4px;">Recent documents</div>
+        <ul class="recent-doc-list" id="recentDocList" aria-live="polite">
+          <li class="recent-doc-item">
+            <span class="recent-doc-meta">No recent documents yet.</span>
+          </li>
+        </ul>
         <div class="resume-card" id="resumeCard" aria-live="polite">
           <div class="resume-title">Resume previous spot</div>
           <div class="resume-text" id="resumeText">No saved position yet.</div>
@@ -2118,6 +2171,8 @@ const DOC_STATE_STORAGE_KEY = 'lumen.doc-state.v1';
 const DOC_STATE_DB_NAME = 'lumen-documents';
 const DOC_STATE_STORE = 'documents';
 const DOC_STATE_RECORD_ID = 'active';
+const DOC_STATE_RECENT_MAX = 5;
+const DOC_STATE_RECENT_PREFIX = 'doc:';
 const DEFAULT_PROFILE_ID = 'default';
 const DEFAULT_SETTINGS = {
   mode: 'day',
@@ -2209,6 +2264,7 @@ let sessionTick = null;
 let sessionsCompletedThisSession = 0;
 let currentDocMeta = null;
 let pendingResumeState = null;
+let recentDocEntries = [];
 let persistSettingsTimer = null;
 let flowHoldState = {
   active: false,
@@ -3390,22 +3446,53 @@ function openDocStateDb() {
   });
 }
 
+function getDocRecordId(docId) {
+  return `${DOC_STATE_RECENT_PREFIX}${docId}`;
+}
+
+function updateRecentDocsCache(docMeta, payload = {}, savedAt = Date.now()) {
+  if (!docMeta?.id) return;
+  const payloadType = payload.type === 'pdf' ? 'pdf' : 'text';
+  const nextEntry = {
+    docId: docMeta.id,
+    label: (docMeta.label || payload.displayName || payload.sourceLabel || 'Recovered document').slice(0, 200),
+    type: docMeta.type || payloadType,
+    payloadType,
+    savedAt
+  };
+  const deduped = recentDocEntries.filter(entry => entry.docId !== nextEntry.docId);
+  recentDocEntries = [nextEntry, ...deduped].slice(0, DOC_STATE_RECENT_MAX);
+  saveRecentDocStoragePayload({
+    savedAt,
+    meta: docMeta,
+    recentDocs: recentDocEntries
+  });
+  renderRecentDocList();
+}
+
 async function savePersistedDocument(payload) {
   try {
-    localStorage.setItem(DOC_STATE_STORAGE_KEY, JSON.stringify({
-      savedAt: Date.now(),
-      meta: currentDocMeta || null
-    }));
+    const savedAt = Date.now();
+    const docMeta = currentDocMeta || payload.docMeta || null;
+    updateRecentDocsCache(docMeta, payload, savedAt);
     const db = await openDocStateDb();
     await new Promise((resolve, reject) => {
       const tx = db.transaction(DOC_STATE_STORE, 'readwrite');
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error || new Error('Failed to save persisted document'));
-      tx.objectStore(DOC_STATE_STORE).put({
+      const store = tx.objectStore(DOC_STATE_STORE);
+      store.put({
         id: DOC_STATE_RECORD_ID,
         payload,
-        savedAt: Date.now()
+        savedAt
       });
+      if (docMeta?.id) {
+        store.put({
+          id: getDocRecordId(docMeta.id),
+          payload,
+          savedAt
+        });
+      }
     });
     db.close();
   } catch (err) {
@@ -3415,8 +3502,8 @@ async function savePersistedDocument(payload) {
 
 async function loadPersistedDocumentRecord() {
   try {
-    const metaRaw = localStorage.getItem(DOC_STATE_STORAGE_KEY);
-    if (!metaRaw) return null;
+    const metaState = getRecentDocStoragePayload();
+    if (!metaState || (!metaState.meta && !metaState.savedAt)) return null;
     const db = await openDocStateDb();
     const record = await new Promise((resolve, reject) => {
       const tx = db.transaction(DOC_STATE_STORE, 'readonly');
@@ -3432,19 +3519,55 @@ async function loadPersistedDocumentRecord() {
   }
 }
 
+async function loadPersistedDocumentRecordByDocId(docId) {
+  if (!docId) return null;
+  try {
+    const db = await openDocStateDb();
+    const record = await new Promise((resolve, reject) => {
+      const tx = db.transaction(DOC_STATE_STORE, 'readonly');
+      const req = tx.objectStore(DOC_STATE_STORE).get(getDocRecordId(docId));
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error || new Error('Failed to read cached document'));
+    });
+    db.close();
+    return record;
+  } catch (err) {
+    console.warn('Unable to load cached document by id:', err);
+    return null;
+  }
+}
+
 async function clearPersistedDocumentState() {
+  recentDocEntries = [];
   localStorage.removeItem(DOC_STATE_STORAGE_KEY);
+  renderRecentDocList();
   try {
     const db = await openDocStateDb();
     await new Promise((resolve, reject) => {
       const tx = db.transaction(DOC_STATE_STORE, 'readwrite');
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error || new Error('Failed to clear persisted document'));
-      tx.objectStore(DOC_STATE_STORE).delete(DOC_STATE_RECORD_ID);
+      tx.objectStore(DOC_STATE_STORE).clear();
     });
     db.close();
   } catch (err) {
     console.warn('Unable to clear persisted document state:', err);
+  }
+}
+
+async function clearActivePersistedDocumentState() {
+  saveRecentDocStoragePayload({ meta: null, savedAt: 0 });
+  try {
+    const db = await openDocStateDb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(DOC_STATE_STORE, 'readwrite');
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('Failed to clear active persisted document'));
+      tx.objectStore(DOC_STATE_STORE).delete(DOC_STATE_RECORD_ID);
+    });
+    db.close();
+  } catch (err) {
+    console.warn('Unable to clear active persisted document state:', err);
   }
 }
 
@@ -3741,6 +3864,78 @@ function saveDocProgressMap(nextMap) {
   localStorage.setItem(DOC_PROGRESS_STORAGE_KEY, JSON.stringify(nextMap));
 }
 
+function getRecentDocStoragePayload() {
+  try {
+    const raw = localStorage.getItem(DOC_STATE_STORAGE_KEY);
+    if (!raw) return { recentDocs: [] };
+    const parsed = JSON.parse(raw);
+    const recentDocs = Array.isArray(parsed?.recentDocs) ? parsed.recentDocs : [];
+    return { ...parsed, recentDocs };
+  } catch (err) {
+    console.warn('Unable to parse recent document cache metadata:', err);
+    return { recentDocs: [] };
+  }
+}
+
+function saveRecentDocStoragePayload(updates = {}) {
+  const current = getRecentDocStoragePayload();
+  const nextPayload = { ...current, ...updates };
+  localStorage.setItem(DOC_STATE_STORAGE_KEY, JSON.stringify(nextPayload));
+}
+
+function syncRecentDocListFromStorage() {
+  const payload = getRecentDocStoragePayload();
+  recentDocEntries = Array.isArray(payload.recentDocs) ? payload.recentDocs : [];
+}
+
+function formatRecentDocPosition(info = {}) {
+  const page = Math.max(1, Number(info.page) || 1);
+  const savedAt = formatSessionDate(info.savedAt);
+  return `Page ${page} • Saved ${savedAt}`;
+}
+
+function escapeHtml(raw = '') {
+  return String(raw)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function renderRecentDocList() {
+  const list = document.getElementById('recentDocList');
+  if (!list) return;
+  const progressMap = loadDocProgressMap();
+  const currentDocId = getCurrentDocId();
+  if (!recentDocEntries.length) {
+    list.innerHTML = `
+      <li class="recent-doc-item">
+        <span class="recent-doc-meta">No recent documents yet.</span>
+      </li>
+    `;
+    return;
+  }
+  list.innerHTML = '';
+  recentDocEntries.forEach((entry) => {
+    const li = document.createElement('li');
+    li.className = 'recent-doc-item';
+    if (currentDocId && entry.docId === currentDocId) li.classList.add('active');
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'recent-doc-btn';
+    btn.dataset.docId = entry.docId;
+    btn.innerHTML = `
+      <span class="recent-doc-title">${escapeHtml(entry.label || 'Recovered document')}</span>
+      <span class="recent-doc-meta">${escapeHtml(formatRecentDocPosition(progressMap[entry.docId] || entry))}</span>
+    `;
+    btn.addEventListener('click', () => recallRecentDocument(entry.docId));
+    li.appendChild(btn);
+    list.appendChild(li);
+  });
+}
+
 function saveDocProgress() {
   const docId = getCurrentDocId();
   if (!docId || (!pdf && !textDoc)) return;
@@ -3762,6 +3957,7 @@ function saveDocProgress() {
     label: docTitle
   };
   saveDocProgressMap(map);
+  renderRecentDocList();
 }
 
 function normalizeResumeExcerpt(raw, maxLen = 180) {
@@ -3868,6 +4064,7 @@ function syncReadingModeAvailability() {
 function setCurrentDocumentMeta(meta) {
   currentDocMeta = meta;
   syncReadingModeAvailability();
+  renderRecentDocList();
   maybeOfferResumeForCurrentDoc();
 }
 
@@ -5314,7 +5511,7 @@ async function loadPDFBytes(bytes, name = 'Recovered PDF') {
     updateProgressAndStatus();
   } catch (err) {
     console.error('Failed to restore PDF:', err);
-    await clearPersistedDocumentState();
+    await clearActivePersistedDocumentState();
   }
 }
 
@@ -5382,6 +5579,37 @@ async function restorePersistedDocument() {
     }
     await loadTextDocument(payload.content || '', payload.displayName || 'Recovered document', payload.sourceLabel || 'Recovered source');
   }
+}
+
+async function recallRecentDocument(docId) {
+  if (!docId) return;
+  const record = await loadPersistedDocumentRecordByDocId(docId);
+  if (!record?.payload) return;
+  const entry = recentDocEntries.find(item => item.docId === docId);
+  const payload = record.payload;
+  const fallbackMeta = {
+    id: docId,
+    label: entry?.label || payload?.displayName || payload?.name || 'Recovered document',
+    type: entry?.type || payload?.type || 'text-file'
+  };
+
+  if (payload.type === 'pdf' && payload.bytes) {
+    setCurrentDocumentMeta(payload.docMeta || fallbackMeta);
+    await loadPDFBytes(payload.bytes, payload.name || fallbackMeta.label);
+  } else if (payload.type === 'text') {
+    setCurrentDocumentMeta(payload.docMeta || fallbackMeta);
+    await loadTextDocument(payload.content || '', payload.displayName || fallbackMeta.label, payload.sourceLabel || `Recovered source · ${fallbackMeta.label}`);
+  } else {
+    return;
+  }
+
+  const progress = loadDocProgressMap()[docId];
+  if (progress) {
+    pendingResumeState = progress;
+    refreshResumeCard();
+    await restoreSavedPosition();
+  }
+  renderRecentDocList();
 }
 
 async function renderPage(n) {
@@ -7050,7 +7278,7 @@ document.getElementById('resumeDismissBtn').addEventListener('click', () => {
   refreshResumeCard();
 });
 document.getElementById('resetDocBtn').addEventListener('click', async () => {
-  await clearPersistedDocumentState();
+  await clearActivePersistedDocumentState();
   const docId = getCurrentDocId();
   if (docId) {
     const map = loadDocProgressMap();
@@ -7136,6 +7364,8 @@ document.addEventListener('keydown', e => {
 /* ── Profile system init ── */
 const persistedSettings = loadSettings();
 loadSessionSupportState();
+syncRecentDocListFromStorage();
+renderRecentDocList();
 updateChunkRecoverButton();
 loadProfilesState();
 refreshProfileSelect();
