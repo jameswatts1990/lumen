@@ -5511,10 +5511,16 @@ function stripToPlainText(rawText, sourceName = '') {
 
 function resolveEpubPath(basePath, relativePath) {
   const base = String(basePath || '').replace(/\\/g, '/');
-  const rel = String(relativePath || '').replace(/\\/g, '/');
+  const rel = String(relativePath || '').replace(/\\/g, '/').split('#')[0].split('?')[0];
   const baseDir = base.includes('/') ? base.slice(0, base.lastIndexOf('/') + 1) : '';
   const resolved = new URL(rel, `https://epub.local/${baseDir}`).pathname.replace(/^\/+/, '');
   return decodeURIComponent(resolved);
+}
+
+function getXmlElementsByLocalName(root, localName) {
+  const expected = String(localName || '').toLowerCase();
+  if (!root || !expected) return [];
+  return Array.from(root.getElementsByTagName('*')).filter(node => (node.localName || node.nodeName || '').toLowerCase() === expected);
 }
 
 async function extractEpubText(file) {
@@ -5529,7 +5535,7 @@ async function extractEpubText(file) {
   const containerDoc = xmlParser.parseFromString(containerXml, 'application/xml');
   const parserError = containerDoc.querySelector('parsererror');
   if (parserError) throw new Error('Unable to parse EPUB container metadata.');
-  const rootFileNode = containerDoc.querySelector('rootfile');
+  const rootFileNode = getXmlElementsByLocalName(containerDoc, 'rootfile')[0];
   const opfPath = rootFileNode?.getAttribute('full-path');
   if (!opfPath) throw new Error('Missing package document path in EPUB.');
 
@@ -5541,7 +5547,7 @@ async function extractEpubText(file) {
   if (opfParseError) throw new Error('Unable to parse EPUB package document.');
 
   const manifestById = new Map();
-  opfDoc.querySelectorAll('manifest > item').forEach(item => {
+  getXmlElementsByLocalName(opfDoc, 'item').forEach(item => {
     const id = item.getAttribute('id');
     const href = item.getAttribute('href');
     if (!id || !href) return;
@@ -5552,15 +5558,19 @@ async function extractEpubText(file) {
   });
 
   const spinePaths = [];
-  opfDoc.querySelectorAll('spine > itemref').forEach(itemRef => {
+  getXmlElementsByLocalName(opfDoc, 'itemref').forEach(itemRef => {
     const idRef = itemRef.getAttribute('idref');
     const manifestItem = idRef ? manifestById.get(idRef) : null;
     if (manifestItem?.href) spinePaths.push(manifestItem.href);
   });
 
   const fallbackPaths = Array.from(manifestById.values())
-    .map(item => item.href)
-    .filter(path => /\.(xhtml|html|htm)$/i.test(path));
+    .filter(item => (
+      item.mediaType === 'application/xhtml+xml' ||
+      item.mediaType === 'text/html' ||
+      /\.(xhtml|html|htm)$/i.test(item.href)
+    ))
+    .map(item => item.href);
   const orderedPaths = (spinePaths.length ? spinePaths : fallbackPaths)
     .filter((path, index, arr) => Boolean(path) && arr.indexOf(path) === index);
 
