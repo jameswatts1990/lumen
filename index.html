@@ -880,6 +880,10 @@ body.flow-speed-read-mode .flow-speed-word {
 body.flow-speed-read-mode .flow-speed-word.active {
   opacity: 1;
 }
+body.flow-gesture-hold-mode .flow-layer {
+  user-select: none;
+  -webkit-user-select: none;
+}
 .flow-word-renderer {
   position: fixed;
   left: 50%;
@@ -2114,6 +2118,7 @@ let flowGestureActivePointerId = null;
 let flowGestureTimerUiRAF = null;
 let flowGestureTimerTimeoutId = null;
 let flowGestureActivateTimeoutId = null;
+let flowGestureStartContextLabel = '';
 let flowSpeedReadWordNodes = [];
 let flowSpeedReadTokens = [];
 let flowSpeedReadWordIndex = 0;
@@ -2140,6 +2145,7 @@ const flowHudWpm = document.getElementById('flowHudWpm');
 const flowHudState = document.getElementById('flowHudState');
 const flowHudProgress = document.getElementById('flowHudProgress');
 const flowGestureTimer = document.getElementById('flowGestureTimer');
+const flowGestureTimerLabel = document.getElementById('flowGestureTimerLabel');
 const flowGestureTimerValue = document.getElementById('flowGestureTimerValue');
 const flowWordRenderer = document.getElementById('flowWordRenderer');
 const flowWordRendererToken = document.getElementById('flowWordRendererToken');
@@ -2201,7 +2207,13 @@ function setFlowGestureState(nextState, reason = '') {
     nextState === FLOW_GESTURE_STATES.SPEED_READ_ACTIVE ||
     nextState === FLOW_GESTURE_STATES.PAUSED_ON_RELEASE
   );
+  const holdIntentActive = (
+    nextState === FLOW_GESTURE_STATES.PRESSING ||
+    nextState === FLOW_GESTURE_STATES.TIMER_VISIBLE ||
+    nextState === FLOW_GESTURE_STATES.SPEED_READ_ACTIVE
+  );
   document.body.classList.toggle('flow-speed-read-mode', speedReadVisualOn);
+  document.body.classList.toggle('flow-gesture-hold-mode', holdIntentActive);
 }
 
 function clearFlowGestureThresholdTimers() {
@@ -2217,7 +2229,57 @@ function updateFlowGestureTimerUI(elapsedMs = 0) {
   flowGestureTimerValue.textContent = `${(remaining / 1000).toFixed(1)}s`;
 }
 
+function formatFlowSpeedReadPreviewText(index) {
+  if (!Number.isInteger(index) || index < 0 || index >= flowSpeedReadTokens.length) return '';
+  const parts = [];
+  for (let i = index; i < Math.min(flowSpeedReadTokens.length, index + 4); i += 1) {
+    const token = flowSpeedReadTokens[i];
+    if (!token?.raw) continue;
+    parts.push(token.raw);
+  }
+  return parts.join(' ').trim();
+}
+
+function resolveTopOfVisiblePageStart() {
+  const visibleBlocks = [...flowLayer.querySelectorAll('.flow-para, .flow-heading, .flow-list-item')];
+  const readerRect = reader.getBoundingClientRect();
+  const firstVisibleBlock = visibleBlocks.find(block => {
+    const rect = block.getBoundingClientRect();
+    return rect.bottom >= readerRect.top + 18 && rect.top <= readerRect.bottom - 18;
+  });
+  const fallbackBlock = firstVisibleBlock || visibleBlocks[0];
+  const pageNum = Number(fallbackBlock?.dataset.page || 1) || 1;
+  const firstWordOnPage = flowLayer.querySelector(`.flow-para[data-page="${pageNum}"] .flow-speed-word, .flow-heading[data-page="${pageNum}"] .flow-speed-word, .flow-list-item[data-page="${pageNum}"] .flow-speed-word`);
+  const fallbackWord = fallbackBlock?.querySelector('.flow-speed-word') || flowLayer.querySelector('.flow-speed-word');
+  return {
+    pageNum,
+    wordNode: firstWordOnPage || fallbackWord || null
+  };
+}
+
+function resolveFlowSpeedReadStartContext() {
+  ensureFlowSpeedReadWordNodes();
+  const selectedWord = flowLayer.querySelector('.flow-highlight-active .flow-speed-word, .flow-highlight-partial .flow-speed-word');
+  const selectedIndex = getFlowWordStartIndex(selectedWord);
+  if (selectedIndex >= 0) {
+    const preview = formatFlowSpeedReadPreviewText(selectedIndex);
+    return {
+      index: selectedIndex,
+      label: preview ? `Hold to speed read from '${preview}…'` : 'Hold to speed read from selected word'
+    };
+  }
+  const topOfPage = resolveTopOfVisiblePageStart();
+  const fallbackIndex = getFlowWordStartIndex(topOfPage.wordNode);
+  return {
+    index: fallbackIndex >= 0 ? fallbackIndex : flowSpeedReadWordIndex,
+    label: `Hold to speed read from the top of page ${topOfPage.pageNum}`
+  };
+}
+
 function showFlowGestureTimer() {
+  if (flowGestureTimerLabel && flowGestureStartContextLabel) {
+    flowGestureTimerLabel.textContent = flowGestureStartContextLabel;
+  }
   flowGestureTimer.classList.add('on');
   flowGestureTimer.setAttribute('aria-hidden', 'false');
 }
@@ -2676,21 +2738,7 @@ function pauseFlowSpeedRead(reason = 'released') {
 }
 
 function resolveFlowSpeedReadStartIndex() {
-  const selectedIndex = getFlowWordStartIndex(flowHoveredWordNode);
-  if (selectedIndex >= 0) return selectedIndex;
-  const highlightedWord = flowLayer.querySelector('.flow-highlight-active .flow-speed-word, .flow-highlight-partial .flow-speed-word');
-  const highlightedIndex = getFlowWordStartIndex(highlightedWord);
-  if (highlightedIndex >= 0) return highlightedIndex;
-  const visibleBlocks = [...flowLayer.querySelectorAll('.flow-para, .flow-heading, .flow-list-item')];
-  const readerRect = reader.getBoundingClientRect();
-  const firstVisibleBlock = visibleBlocks.find(block => {
-    const rect = block.getBoundingClientRect();
-    return rect.bottom >= readerRect.top + 18 && rect.top <= readerRect.bottom - 18;
-  });
-  const fallbackWord = firstVisibleBlock?.querySelector('.flow-speed-word');
-  const fallbackIndex = getFlowWordStartIndex(fallbackWord);
-  if (fallbackIndex >= 0) return fallbackIndex;
-  return flowSpeedReadWordIndex;
+  return resolveFlowSpeedReadStartContext().index;
 }
 
 function activateFlowSpeedRead(reason = 'hold_threshold', options = {}) {
@@ -2704,6 +2752,7 @@ function activateFlowSpeedRead(reason = 'hold_threshold', options = {}) {
 function resetFlowGestureInteraction() {
   flowGesturePressStartTs = 0;
   flowGestureActivePointerId = null;
+  flowGestureStartContextLabel = '';
   clearFlowGestureThresholdTimers();
   stopFlowGestureTimerUI();
   hideFlowGestureTimer();
@@ -2735,6 +2784,8 @@ function exitFlowSpeedReadMode(reason = 'keyboard_escape') {
 
 function startFlowGestureHold(pointerId) {
   resetFlowGestureInteraction();
+  const startContext = resolveFlowSpeedReadStartContext();
+  flowGestureStartContextLabel = startContext.label;
   flowGesturePressStartTs = performance.now();
   flowGestureActivePointerId = pointerId;
   setFlowGestureState(FLOW_GESTURE_STATES.PRESSING, 'press_start');
@@ -6242,11 +6293,13 @@ reader.addEventListener('pointerdown', e => {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   if (shouldIgnoreFlowGestureTarget(e.target)) return;
   if (flowGestureState === FLOW_GESTURE_STATES.PAUSED_ON_RELEASE) {
+    e.preventDefault();
     flowGestureActivePointerId = e.pointerId;
     activateFlowSpeedRead('instant_resume_from_paused', { preserveIndex: true });
     return;
   }
   if (flowGestureState !== FLOW_GESTURE_STATES.IDLE) return;
+  e.preventDefault();
   startFlowGestureHold(e.pointerId);
 });
 reader.addEventListener('pointerup', e => {
@@ -6264,6 +6317,7 @@ reader.addEventListener('pointerleave', e => {
 });
 flowLayer.addEventListener('pointerdown', e => {
   if (readingMode !== 'flow') return;
+  if (flowGestureState !== FLOW_GESTURE_STATES.IDLE && flowGestureState !== FLOW_GESTURE_STATES.PAUSED_ON_RELEASE) return;
   ensureFlowSpeedReadWordNodes();
   const wordNode = e.target instanceof Element ? e.target.closest('.flow-speed-word') : null;
   if (!wordNode) return;
@@ -6271,6 +6325,7 @@ flowLayer.addEventListener('pointerdown', e => {
 });
 flowLayer.addEventListener('pointermove', e => {
   if (readingMode !== 'flow') return;
+  if (flowGestureState !== FLOW_GESTURE_STATES.IDLE && flowGestureState !== FLOW_GESTURE_STATES.PAUSED_ON_RELEASE) return;
   ensureFlowSpeedReadWordNodes();
   const wordNode = e.target instanceof Element ? e.target.closest('.flow-speed-word') : null;
   if (!wordNode) return;
