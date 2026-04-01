@@ -2260,13 +2260,25 @@ function resolveTopOfVisiblePageStart() {
 
 function resolveFlowSpeedReadStartContext() {
   ensureFlowSpeedReadWordNodes();
-  const selectedWord = flowLayer.querySelector('.flow-highlight-active .flow-speed-word, .flow-highlight-partial .flow-speed-word');
+  const selectedWord = (
+    (flowHoveredWordNode && flowLayer.contains(flowHoveredWordNode) ? flowHoveredWordNode : null) ||
+    flowLayer.querySelector('.flow-word-selected')
+  );
   const selectedIndex = getFlowWordStartIndex(selectedWord);
   if (selectedIndex >= 0) {
     const preview = formatFlowSpeedReadPreviewText(selectedIndex);
     return {
       index: selectedIndex,
       label: preview ? `Hold to speed read from '${preview}…'` : 'Hold to speed read from selected word'
+    };
+  }
+  const highlightedWord = flowLayer.querySelector('.flow-highlight-active .flow-speed-word, .flow-highlight-partial .flow-speed-word');
+  const highlightedIndex = getFlowWordStartIndex(highlightedWord);
+  if (highlightedIndex >= 0) {
+    const preview = formatFlowSpeedReadPreviewText(highlightedIndex);
+    return {
+      index: highlightedIndex,
+      label: preview ? `Hold to speed read from '${preview}…'` : 'Hold to speed read from highlighted section'
     };
   }
   const topOfPage = resolveTopOfVisiblePageStart();
