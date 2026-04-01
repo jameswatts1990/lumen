@@ -659,8 +659,8 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   pointer-events: auto;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px;
+  gap: 10px;
+  padding: 7px 10px;
   border-radius: 999px;
   border: 1px solid rgba(200, 135, 74, 0.38);
   background: rgba(22, 16, 10, 0.82);
@@ -680,28 +680,28 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .reading-mode-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 0 8px;
-  color: var(--text-muted);
-  font-size: 10px;
-  letter-spacing: 0.7px;
-  text-transform: uppercase;
+  gap: 6px;
+  padding: 0 2px 0 4px;
+  color: #d4b894;
+  font-size: 11px;
+  letter-spacing: 0.2px;
+  text-transform: none;
   font-family: 'DM Mono', monospace;
   white-space: nowrap;
 }
 .reading-mode-chip strong {
-  color: #d9bea0;
-  font-size: 10.5px;
-  letter-spacing: 0.3px;
+  color: #f2debf;
+  font-size: 11px;
+  letter-spacing: 0.2px;
   text-transform: none;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 /* Empty state */
 .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 70vh; gap: 16px; text-align: center; }
-.empty-icon { font-size: 60px; opacity: 0.42; }
+.empty-icon { font-size: 60px; opacity: 0.74; filter: saturate(1.15) brightness(1.08); }
 .empty-title { font-family: 'Playfair Display', serif; font-size: 27px; color: var(--text-primary); }
-.empty-desc { font-size: 14px; max-width: 420px; line-height: 1.7; color: var(--text-secondary); }
+.empty-desc { font-size: 14px; max-width: 420px; line-height: 1.7; color: #e5d1b6; }
 .empty-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1451,6 +1451,11 @@ body.low-interruption-active .flow-speed-hud {
   width: auto;
   grid-template-columns: repeat(3, minmax(0, auto));
   gap: 4px;
+  overflow: hidden;
+  opacity: 0;
+  max-width: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, max-width 0.2s ease;
 }
 .reading-mode-dock .mode-opt {
   min-height: 28px;
@@ -1485,6 +1490,15 @@ body.low-interruption-active .flow-speed-hud {
 .reading-mode-shell:focus-within .mode-opt-text {
   opacity: 1;
   max-width: 60px;
+}
+.reading-mode-shell:hover .mode-seg,
+.reading-mode-shell:focus-within .mode-seg {
+  opacity: 1;
+  max-width: 260px;
+  pointer-events: auto;
+}
+.reading-mode-dock.is-single-mode {
+  display: none;
 }
 
 @media (max-width: 900px) {
@@ -1562,7 +1576,14 @@ body.low-interruption-active .flow-speed-hud {
     padding-inline: 72px 18px;
   }
   .reading-mode-chip {
-    display: none;
+    font-size: 10px;
+  }
+}
+@media (hover: none) {
+  .reading-mode-dock .mode-seg {
+    opacity: 1;
+    max-width: 260px;
+    pointer-events: auto;
   }
 }
 </style>
@@ -1907,7 +1928,7 @@ body.low-interruption-active .flow-speed-hud {
     <div class="prog" id="progBar"><div class="prog-fill" id="progFill"></div></div>
     <div class="reading-mode-dock">
       <div class="reading-mode-shell">
-        <div class="reading-mode-chip">Mode <strong id="readingModeCurrent">Original</strong></div>
+        <div class="reading-mode-chip">Current Mode: <strong id="readingModeCurrent">Original</strong></div>
         <div class="mode-seg" id="readingModeSeg" role="radiogroup" aria-label="Reading mode">
           <label>
             <input type="radio" name="readingMode" value="pdf" checked>
@@ -3827,6 +3848,7 @@ function getAvailableReadingModesForCurrentContent() {
 
 function syncReadingModeAvailability() {
   const availableModes = getAvailableReadingModesForCurrentContent();
+  const readingModeDock = document.querySelector('.reading-mode-dock');
   const modeInputs = Array.from(document.querySelectorAll('input[name="readingMode"]'));
   modeInputs.forEach((input) => {
     const modeAvailable = availableModes.includes(input.value);
@@ -3835,6 +3857,9 @@ function syncReadingModeAvailability() {
     input.disabled = !modeAvailable;
     if (!modeAvailable) input.checked = false;
   });
+  if (readingModeDock) {
+    readingModeDock.classList.toggle('is-single-mode', availableModes.length <= 1);
+  }
   if (!availableModes.includes(readingMode)) {
     setReadingMode(availableModes[0] || 'flow');
   }
@@ -3975,24 +4000,17 @@ function looksLikeHttpUrl(value = '') {
   return /^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(trimmed);
 }
 
-function triggerImportPanelFocus() {
+function triggerFilePicker(event = null) {
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
   setMobileAddMenuOpen(false);
-  if (mobileViewport) setSidebarOpen(true);
-  requestAnimationFrame(() => {
-    upZone.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    upZone.focus({ preventScroll: true });
-    upZone.classList.add('is-paste-ready');
-    setTimeout(() => upZone.classList.remove('is-paste-ready'), 1200);
-  });
-}
-
-function triggerFilePicker() {
-  triggerImportPanelFocus();
   fileIn.click();
 }
 
-async function promptForSourcePaste() {
-  triggerImportPanelFocus();
+async function promptForSourcePaste(event = null) {
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
+  setMobileAddMenuOpen(false);
   const pasted = window.prompt('Paste text to read, or paste a URL to load:');
   if (!pasted || !pasted.trim()) return;
   const trimmed = pasted.trim();
