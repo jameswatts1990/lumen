@@ -473,6 +473,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .resume-card.on { display: block; }
 .resume-title { font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: #b4a388; font-family: 'DM Mono', monospace; margin-bottom: 4px; }
 .resume-text { font-size: 12px; color: var(--text-secondary); line-height: 1.4; margin-bottom: 6px; }
+.resume-text { white-space: pre-line; }
 .resume-row { display: flex; gap: 6px; }
 .resume-row .pbtn { flex: 1; }
 
@@ -3636,18 +3637,43 @@ function saveDocProgress() {
   if (!docId || (!pdf && !textDoc)) return;
   const map = loadDocProgressMap();
   rememberChunkSnapshot({ promotePrevious: false });
+  const page = currentPage || 1;
+  const docTitle = (currentDocMeta?.label || currentDocMeta?.name || 'Document').trim();
   map[docId] = {
     scrollTop: Math.round(reader.scrollTop),
-    page: currentPage || 1,
+    page,
     profileId: lastUsedProfileId,
     readingMode,
+    docTitle,
+    excerpt: buildResumeExcerpt({ page }),
     chunkSnapshot: (sessionSupportState.chunkMemory && sessionSupportState.chunkMemory.current && sessionSupportState.chunkMemory.current.docId === docId)
       ? sessionSupportState.chunkMemory.current
       : null,
     savedAt: Date.now(),
-    label: currentDocMeta?.label || currentDocMeta?.name || 'Document'
+    label: docTitle
   };
   saveDocProgressMap(map);
+}
+
+function normalizeResumeExcerpt(raw, maxLen = 180) {
+  const compact = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!compact) return '';
+  if (compact.length <= maxLen) return compact;
+  return `${compact.slice(0, maxLen - 1).trim()}…`;
+}
+
+function buildResumeExcerpt({ page = 1 } = {}) {
+  const pageNumber = Math.max(1, Number(page) || 1);
+  const flowBlocks = [...flowLayer.querySelectorAll(`.flow-heading[data-page="${pageNumber}"], .flow-para[data-page="${pageNumber}"], .flow-list-item[data-page="${pageNumber}"]`)];
+  const flowText = normalizeResumeExcerpt(flowBlocks.map(node => node.textContent || '').join(' '));
+  if (flowText) return flowText;
+
+  const pageWrap = rInner.querySelector(`.page-wrap[data-p="${pageNumber}"]`);
+  if (!pageWrap) return '';
+  const spanText = [...pageWrap.querySelectorAll('.textLayer span')]
+    .map(node => node.textContent || '')
+    .join(' ');
+  return normalizeResumeExcerpt(spanText);
 }
 
 function refreshResumeCard() {
@@ -3659,7 +3685,14 @@ function refreshResumeCard() {
     return;
   }
   const info = pendingResumeState;
-  text.textContent = `Last page ${info.page || 1} • ${info.profileId || DEFAULT_PROFILE_ID} profile • ${formatSessionDate(info.savedAt)}`;
+  const title = (info.docTitle || info.label || currentDocMeta?.label || 'Document').trim();
+  const page = Math.max(1, Number(info.page) || 1);
+  const excerpt = normalizeResumeExcerpt(info.excerpt || buildResumeExcerpt({ page }));
+  const excerptLine = excerpt ? `Section excerpt: "${excerpt}"` : 'Section excerpt: unavailable';
+  text.textContent = `Document: ${title}
+Page: ${page}
+${excerptLine}
+Saved: ${formatSessionDate(info.savedAt)} • Profile: ${info.profileId || DEFAULT_PROFILE_ID}`;
   card.classList.add('on');
 }
 
