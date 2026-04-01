@@ -34,8 +34,3 @@
 - Context: when wiring focus-aid toggles in Flow reading mode.
 - Guidance: enabling chunk mode should clear ruler and paragraph shading toggles, and flow chunking should avoid the fixed top/bottom shading bands.
 - Reason: preserves J/K chunk stepping behavior and keeps chunk focus visuals aligned with expected flow UX.
-
-### [Inline CSS] Validate brace balance after style edits
-- Context: when editing the large inline `<style>` block in `index.html`.
-- Guidance: run a quick brace-balance sanity check before shipping (for example, script count of `{`/`}`).
-- Reason: one missing brace can silently cascade into widespread UI regressions (collapsed sections, hidden states, and control styling).
