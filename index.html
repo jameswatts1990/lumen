@@ -4443,6 +4443,7 @@ function getAvailableReadingModesForCurrentContent() {
 
 function syncReadingModeAvailability() {
   const availableModes = getAvailableReadingModesForCurrentContent();
+  const hasLoadedContent = Boolean(currentDocMeta);
   const readingModeDock = document.querySelector('.reading-mode-dock');
   const modeInputs = Array.from(document.querySelectorAll('input[name="readingMode"]'));
   modeInputs.forEach((input) => {
@@ -4453,6 +4454,7 @@ function syncReadingModeAvailability() {
     if (!modeAvailable) input.checked = false;
   });
   if (readingModeDock) {
+    readingModeDock.hidden = !hasLoadedContent;
     readingModeDock.classList.toggle('is-single-mode', availableModes.length <= 1);
   }
   if (!availableModes.includes(readingMode)) {
@@ -6405,6 +6407,7 @@ function resetLoadedDocumentUI() {
   setPageJumpAvailability(false);
   renderOutlineFallback('Load a PDF to view navigation links.');
   refreshEmailThreadOrderControls();
+  syncReadingModeAvailability();
   refreshResumeCard();
 }
 
