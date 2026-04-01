@@ -2401,13 +2401,8 @@ body.low-interruption-active .prog {
     <div class="reader-inner" id="rInner">
       <article id="flowLayer" class="flow-layer" aria-live="polite"></article>
       <div class="empty">
-        <div class="empty-icon">📖</div>
         <div class="empty-title">Open a source to begin</div>
-        <div class="empty-desc">Upload a document, add a web link, or paste text to start reading. On mobile, tap the + button to quickly add a file or copy in content.</div>
-        <div class="empty-actions">
-          <button class="pbtn empty-action" id="emptyUploadBtn" type="button">+ Add document</button>
-          <button class="pbtn empty-action" id="emptyPasteBtn" type="button">Paste text or URL</button>
-        </div>
+        <div class="empty-desc">Use the add button to upload a document or paste text.</div>
       </div>
     </div>
   </main>
@@ -6738,17 +6733,10 @@ function resetLoadedDocumentUI() {
   const empty = document.createElement('div');
   empty.className = 'empty';
   empty.innerHTML = `
-    <div class="empty-icon">📖</div>
     <div class="empty-title">Open a source to begin</div>
-    <div class="empty-desc">Upload a document, add a web link, or paste text to start reading. On mobile, tap the + button to quickly add a file or copy in content.</div>
-    <div class="empty-actions">
-      <button class="pbtn empty-action" id="emptyUploadBtn" type="button">+ Add document</button>
-      <button class="pbtn empty-action" id="emptyPasteBtn" type="button">Paste text or URL</button>
-    </div>
+    <div class="empty-desc">Use the add button to upload a document or paste text.</div>
   `;
   rInner.appendChild(empty);
-  document.getElementById('emptyUploadBtn')?.addEventListener('click', triggerFilePicker);
-  document.getElementById('emptyPasteBtn')?.addEventListener('click', promptForSourcePaste);
   updateProgressAndStatus();
   setPageJumpAvailability(false);
   renderOutlineFallback('Load a PDF to view navigation links.');
