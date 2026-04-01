@@ -1430,13 +1430,17 @@ body.flow-speed-read-mode .flow-speed-backdrop {
 .session-done-popup {
   position: fixed;
   top: 74px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: var(--sidebar-offset);
+  right: 0;
+  margin-inline: auto;
   z-index: 360;
   display: none;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 10px;
   padding: 10px 12px;
+  max-width: min(720px, calc(100vw - var(--sidebar-offset) - 24px));
   border-radius: 10px;
   border: 1px solid var(--accent-mid);
   background: rgba(23, 17, 11, 0.96);
@@ -1449,6 +1453,7 @@ body.flow-speed-read-mode .flow-speed-backdrop {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
 .session-done-restart {
   min-width: 46px;
@@ -1482,6 +1487,13 @@ body.flow-speed-read-mode .flow-speed-backdrop {
   outline: none;
   border-color: var(--accent);
   color: var(--accent);
+}
+@media (max-width: 780px) {
+  .session-done-popup {
+    top: 66px;
+    max-width: calc(100vw - var(--sidebar-offset) - 20px);
+    row-gap: 8px;
+  }
 }
 .flow-hold-timer,
 .flow-speed-hud {
