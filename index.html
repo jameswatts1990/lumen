@@ -511,12 +511,53 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   border: 0;
   border-top: 1px solid rgba(200, 135, 74, 0.22);
 }
-.session-insights-wrap {
-  padding: 0 20px 10px;
+.session-insights-shell {
+  padding: 2px 20px 10px;
 }
-.session-insights-wrap .fsel {
+.session-insights-toggle {
   width: 100%;
-  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--control-border);
+  border-radius: 7px;
+  background: var(--control-bg);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  font-family: 'DM Mono', monospace;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.session-insights-toggle:hover,
+.session-insights-toggle:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(71, 56, 40, 0.45);
+  outline: none;
+}
+.session-insights-toggle .caret {
+  font-size: 12px;
+  transition: transform 0.18s ease;
+}
+.session-insights-shell:not(.is-collapsed) .session-insights-toggle .caret {
+  transform: rotate(180deg);
+}
+.session-insights-panel {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.2s ease, opacity 0.2s ease;
+}
+.session-insights-panel > .session-insights-inner {
+  min-height: 0;
+  padding-top: 8px;
+}
+.session-insights-shell.is-collapsed .session-insights-panel {
+  grid-template-rows: 0fr;
+  opacity: 0.9;
 }
 .insights-grid {
   display: grid;
@@ -589,6 +630,10 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 }
 .privacy-row {
   padding: 0 20px 8px;
+}
+.privacy-row .pbtn {
+  padding-left: 12px;
+  padding-right: 12px;
 }
 .resume-card {
   margin: 0 20px 10px;
@@ -1970,12 +2015,63 @@ body.low-interruption-active .prog {
           <button class="pbtn session-btn" id="session10Btn" type="button" data-minutes="10">10 min</button>
           <button class="pbtn session-btn" id="session15Btn" type="button" data-minutes="15">15 min</button>
         </div>
-        <div class="session-insights-wrap">
-          <select class="fsel" id="sessionInsightsViewSel" aria-label="Reading insights detail">
-            <option value="summary">Reading insights: Summary</option>
-            <option value="detailed">Reading insights: Detailed</option>
-            <option value="hidden">Reading insights: Hidden</option>
-          </select>
+        <div class="session-insights-shell is-collapsed" id="sessionInsightsShell">
+          <button class="session-insights-toggle" id="sessionInsightsToggle" type="button" aria-expanded="false" aria-controls="sessionInsightsPanel">
+            <span>Reading Insights</span>
+            <span class="caret" aria-hidden="true">▾</span>
+          </button>
+          <div class="session-insights-panel" id="sessionInsightsPanel">
+            <div class="session-insights-inner">
+              <div class="insights-grid">
+                <div class="insight-card">
+                  <div class="insight-label">Current streak</div>
+                  <div class="insight-value" id="insightStreakValue">0 days</div>
+                  <div class="insight-sub" id="insightBestStreak">Best: 0 days</div>
+                </div>
+                <div class="insight-card">
+                  <div class="insight-label">Average session</div>
+                  <div class="insight-value" id="insightAvgSession">0 min</div>
+                  <div class="insight-sub" id="insightSessionCount">0 sessions</div>
+                </div>
+              </div>
+              <div class="trend-wrap">
+                <div class="trend-head">
+                  <div class="trend-title">Last 7 days</div>
+                  <div class="trend-total" id="insight7Total">0 min</div>
+                </div>
+                <div class="trend-bars" id="insightTrend7" aria-label="Last 7 days reading minutes trend"></div>
+              </div>
+              <div class="trend-wrap" style="padding-top:0;">
+                <div class="trend-head">
+                  <div class="trend-title">Last 30 days</div>
+                  <div class="trend-total" id="insight30Total">0 min</div>
+                </div>
+                <div class="trend-bars" id="insightTrend30" aria-label="Last 30 days reading minutes trend"></div>
+              </div>
+              <div class="insights-grid" style="padding-top:0;">
+                <div class="insight-card">
+                  <div class="insight-label">Personal best day</div>
+                  <div class="insight-value" id="insightBestDayValue">0 min</div>
+                  <div class="insight-sub" id="insightBestDayDate">—</div>
+                </div>
+                <div class="insight-card">
+                  <div class="insight-label">Longest session</div>
+                  <div class="insight-value" id="insightBestSessionValue">0 min</div>
+                  <div class="insight-sub" id="insightBestSessionMeta">No sessions yet</div>
+                </div>
+              </div>
+              <div class="trow">
+                <div class="trow-info">
+                  <div class="trow-lbl">Collect reading stats</div>
+                  <div class="trow-sub">Store session history on this device only</div>
+                </div>
+                <label class="tog"><input type="checkbox" id="statsCollectT"><span class="tog-tk"></span></label>
+              </div>
+              <div class="privacy-row">
+                <button class="pbtn" id="deleteStatsBtn" type="button">Delete all stats</button>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="trow">
           <div class="trow-info">
@@ -2005,64 +2101,10 @@ body.low-interruption-active .prog {
         <div class="resume-card" id="resumeCard" aria-live="polite">
           <div class="resume-title">Resume previous spot</div>
           <div class="resume-text" id="resumeText">No saved position yet.</div>
-          <div class="resume-row">
+        <div class="resume-row">
             <button class="pbtn" id="resumeRestoreBtn" type="button">Restore</button>
             <button class="pbtn" id="resumeDismissBtn" type="button">Dismiss</button>
           </div>
-        </div>
-      </div>
-
-      <!-- Reading Insights -->
-      <div class="sec is-collapsed" id="readingInsightsSection">
-        <div class="sec-label">Reading Insights</div>
-        <div class="sec-hint">Private on-device summaries of your reading rhythm. Trend lines update from saved sessions.</div>
-        <div class="insights-grid">
-          <div class="insight-card">
-            <div class="insight-label">Current streak</div>
-            <div class="insight-value" id="insightStreakValue">0 days</div>
-            <div class="insight-sub" id="insightBestStreak">Best: 0 days</div>
-          </div>
-          <div class="insight-card">
-            <div class="insight-label">Average session</div>
-            <div class="insight-value" id="insightAvgSession">0 min</div>
-            <div class="insight-sub" id="insightSessionCount">0 sessions</div>
-          </div>
-        </div>
-        <div class="trend-wrap">
-          <div class="trend-head">
-            <div class="trend-title">Last 7 days</div>
-            <div class="trend-total" id="insight7Total">0 min</div>
-          </div>
-          <div class="trend-bars" id="insightTrend7" aria-label="Last 7 days reading minutes trend"></div>
-        </div>
-        <div class="trend-wrap" style="padding-top:0;">
-          <div class="trend-head">
-            <div class="trend-title">Last 30 days</div>
-            <div class="trend-total" id="insight30Total">0 min</div>
-          </div>
-          <div class="trend-bars" id="insightTrend30" aria-label="Last 30 days reading minutes trend"></div>
-        </div>
-        <div class="insights-grid" style="padding-top:0;">
-          <div class="insight-card">
-            <div class="insight-label">Personal best day</div>
-            <div class="insight-value" id="insightBestDayValue">0 min</div>
-            <div class="insight-sub" id="insightBestDayDate">—</div>
-          </div>
-          <div class="insight-card">
-            <div class="insight-label">Longest session</div>
-            <div class="insight-value" id="insightBestSessionValue">0 min</div>
-            <div class="insight-sub" id="insightBestSessionMeta">No sessions yet</div>
-          </div>
-        </div>
-        <div class="trow">
-          <div class="trow-info">
-            <div class="trow-lbl">Collect reading stats</div>
-            <div class="trow-sub">Store session history on this device only</div>
-          </div>
-          <label class="tog"><input type="checkbox" id="statsCollectT"><span class="tog-tk"></span></label>
-        </div>
-        <div class="privacy-row">
-          <button class="pbtn" id="deleteStatsBtn" type="button">Delete all stats</button>
         </div>
       </div>
 
@@ -2600,7 +2642,6 @@ let sessionSupportState = {
   durationMin: 0,
   sessionEndTs: 0,
   plannedDurationMin: 0,
-  insightsView: 'summary',
   lowInterruption: false,
   chunkMemory: {
     current: null,
@@ -4758,9 +4799,6 @@ function loadSessionSupportState() {
     if (!sessionSupportState.chunkMemory || typeof sessionSupportState.chunkMemory !== 'object') {
       sessionSupportState.chunkMemory = { current: null, previous: null };
     }
-    if (!['summary', 'detailed', 'hidden'].includes(sessionSupportState.insightsView)) {
-      sessionSupportState.insightsView = 'summary';
-    }
     sessionSupportState.plannedDurationMin = Math.max(0, Number(sessionSupportState.plannedDurationMin || sessionSupportState.durationMin || 0));
   } catch (err) {
     console.warn('Unable to load session support settings:', err);
@@ -4771,15 +4809,12 @@ function saveSessionSupportState() {
   localStorage.setItem(SESSION_SUPPORT_STORAGE_KEY, JSON.stringify(sessionSupportState));
 }
 
-function applySessionInsightsVisibility() {
-  const view = ['summary', 'detailed', 'hidden'].includes(sessionSupportState.insightsView)
-    ? sessionSupportState.insightsView
-    : 'summary';
-  sessionSupportState.insightsView = view;
-  const insightsSection = document.getElementById('readingInsightsSection');
-  if (!insightsSection) return;
-  insightsSection.style.display = view === 'hidden' ? 'none' : '';
-  insightsSection.classList.toggle('is-collapsed', view !== 'detailed');
+function setSessionInsightsCollapsed(collapsed) {
+  const shell = document.getElementById('sessionInsightsShell');
+  const toggle = document.getElementById('sessionInsightsToggle');
+  if (!shell || !toggle) return;
+  shell.classList.toggle('is-collapsed', collapsed);
+  toggle.setAttribute('aria-expanded', String(!collapsed));
 }
 
 function stableStringify(value) {
@@ -8388,10 +8423,10 @@ document.getElementById('lowInterruptT').addEventListener('change', e => {
   updateSessionMeta();
   updateLowInterruptionMode();
 });
-document.getElementById('sessionInsightsViewSel').addEventListener('change', e => {
-  sessionSupportState.insightsView = e.target.value;
-  saveSessionSupportState();
-  applySessionInsightsVisibility();
+document.getElementById('sessionInsightsToggle').addEventListener('click', () => {
+  const shell = document.getElementById('sessionInsightsShell');
+  if (!shell) return;
+  setSessionInsightsCollapsed(!shell.classList.contains('is-collapsed'));
 });
 document.getElementById('sessionDoneDismissBtn').addEventListener('click', () => hideSessionDonePopup());
 document.getElementById('statsCollectT').addEventListener('change', e => {
@@ -8527,9 +8562,8 @@ document.getElementById('saveProfileBtn').addEventListener('click', handleSavePr
 document.getElementById('deleteProfileBtn').addEventListener('click', handleDeleteProfile);
 useProfile(lastUsedProfileId);
 document.getElementById('lowInterruptT').checked = Boolean(sessionSupportState.lowInterruption);
-document.getElementById('sessionInsightsViewSel').value = sessionSupportState.insightsView || 'summary';
 document.getElementById('statsCollectT').checked = Boolean(statsState.enabled);
-applySessionInsightsVisibility();
+setSessionInsightsCollapsed(true);
 renderReadingInsights();
 if (sessionSupportState.sessionEndTs > Date.now() && sessionSupportState.durationMin) {
   const resumeMinutes = getRemainingSessionMs() / 60000;
