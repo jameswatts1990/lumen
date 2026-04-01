@@ -134,8 +134,28 @@ body {
   background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-border);
   display: flex; flex-direction: column; overflow: hidden; z-index: 10;
+  position: relative;
+  --sidebar-glow-x: 50%;
+  --sidebar-glow-y: 24%;
   transition: width 0.28s ease, border-color 0.2s ease;
 }
+.sidebar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 180ms ease;
+  background: radial-gradient(
+    180px circle at var(--sidebar-glow-x) var(--sidebar-glow-y),
+    rgba(255, 208, 126, 0.24) 0%,
+    rgba(255, 184, 92, 0.14) 36%,
+    rgba(255, 153, 65, 0.05) 58%,
+    rgba(255, 126, 46, 0) 76%
+  );
+}
+.sidebar.is-cursor-glow::after { opacity: 1; }
 .sidebar-backdrop {
   position: fixed;
   inset: 0;
@@ -190,11 +210,31 @@ body.sidebar-collapsed .sidebar-toggle { left: 8px; }
   border-bottom: 1px solid var(--sidebar-border);
   background: linear-gradient(160deg, #231e15 0%, var(--sidebar-bg) 100%);
 }
-.logo { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 700; color: var(--accent); letter-spacing: -0.3px; display: flex; align-items: center; gap: 8px; }
-.logo-mark { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 12px; color: #1a1200; font-weight: 700; }
+.logo { font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 700; color: var(--accent); letter-spacing: -0.3px; display: flex; align-items: center; gap: 8px; position: relative; z-index: 2; }
+.logo-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 26%, #ffdd9f 0%, #f6bc5e 56%, #df962f 100%);
+  border: 1px solid rgba(40, 25, 4, 0.34);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 0 rgba(255, 238, 205, 0.38), 0 3px 8px rgba(16, 9, 2, 0.38);
+}
+.logo-mark svg {
+  width: 13px;
+  height: 13px;
+  stroke: #2f1c05;
+  fill: none;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
 .logo-sub { font-size: 9px; color: var(--text-muted); letter-spacing: 2.5px; text-transform: uppercase; margin-top: 3px; font-family: 'DM Mono', monospace; }
 
 .sidebar-scroll { flex: 1; overflow-y: auto; overflow-x: hidden; padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: var(--slider-track) transparent; }
+.sidebar > * { position: relative; z-index: 2; }
 
 /* Upload */
 .upload-zone {
@@ -1727,6 +1767,9 @@ body.low-interruption-active .flow-speed-hud {
     transform: translateX(-100%);
     transition: transform 0.24s ease;
   }
+  .sidebar::after {
+    display: none;
+  }
   body.sidebar-open .sidebar {
     transform: translateX(0);
   }
@@ -1787,7 +1830,10 @@ body.low-interruption-active .flow-speed-hud {
     padding-inline: 72px 18px;
   }
 }
-@media (hover: none) {
+@media (hover: none), (pointer: coarse) {
+  .sidebar::after {
+    display: none;
+  }
   .reading-mode-dock .mode-seg {
     opacity: 1;
     max-width: 260px;
@@ -1804,7 +1850,13 @@ body.low-interruption-active .flow-speed-hud {
   <aside class="sidebar" id="sidebarPanel">
     <div class="sidebar-head">
       <div class="logo">
-        <span class="logo-mark">L</span>
+        <span class="logo-mark" aria-hidden="true">
+          <svg viewBox="0 0 16 16" role="presentation" focusable="false">
+            <path d="M8 2.2c-2.4 0-4.3 1.9-4.3 4.2 0 1.5.7 2.8 1.9 3.6.7.5 1.1 1.1 1.2 1.8h2.4m0 0h-2.4m2.4 0c.1-.7.5-1.3 1.2-1.8 1.2-.8 1.9-2.1 1.9-3.6 0-2.3-1.9-4.2-4.3-4.2"></path>
+            <path d="M6.4 12.1h3.2"></path>
+            <path d="M6.8 13.5h2.4"></path>
+          </svg>
+        </span>
         Lumen
       </div>
       <div class="logo-sub">Mindful Document Reader</div>
@@ -2569,6 +2621,7 @@ const flowDefinitionPopout = document.getElementById('flowDefinitionPopout');
 const flowDefinitionTerm = document.getElementById('flowDefinitionTerm');
 const flowDefinitionText = document.getElementById('flowDefinitionText');
 const flowGestureAnnouncer = document.getElementById('flowGestureAnnouncer');
+const sidebarPanel = document.getElementById('sidebarPanel');
 const scrollWpmInput = document.getElementById('scrollWpmIn');
 const MOBILE_BREAKPOINT = 900;
 let sidebarOpen = true;
@@ -2576,6 +2629,9 @@ let mobileViewport = false;
 const prefersReducedMotionQuery = typeof window.matchMedia === 'function'
   ? window.matchMedia('(prefers-reduced-motion: reduce)')
   : null;
+const supportsFinePointer = typeof window.matchMedia === 'function'
+  ? window.matchMedia('(hover: hover) and (pointer: fine)').matches
+  : true;
 
 function onFlowGestureEvent(eventName, listener) {
   if (!flowGestureEventListeners.has(eventName)) flowGestureEventListeners.set(eventName, new Set());
@@ -8081,6 +8137,27 @@ function setNavigationMenuOpen(open, trigger = null) {
 function toggleNavigationMenu(trigger = null) {
   const pop = document.getElementById('navPopout');
   setNavigationMenuOpen(!pop.classList.contains('on'), trigger);
+}
+
+function updateSidebarCursorGlow(event) {
+  if (!sidebarPanel || !supportsFinePointer) return;
+  const rect = sidebarPanel.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+  const x = ((event.clientX - rect.left) / rect.width) * 100;
+  const y = ((event.clientY - rect.top) / rect.height) * 100;
+  sidebarPanel.style.setProperty('--sidebar-glow-x', `${Math.max(0, Math.min(100, x)).toFixed(2)}%`);
+  sidebarPanel.style.setProperty('--sidebar-glow-y', `${Math.max(0, Math.min(100, y)).toFixed(2)}%`);
+}
+
+if (sidebarPanel && supportsFinePointer) {
+  sidebarPanel.addEventListener('pointerenter', event => {
+    sidebarPanel.classList.add('is-cursor-glow');
+    updateSidebarCursorGlow(event);
+  });
+  sidebarPanel.addEventListener('pointermove', updateSidebarCursorGlow);
+  sidebarPanel.addEventListener('pointerleave', () => {
+    sidebarPanel.classList.remove('is-cursor-glow');
+  });
 }
 
 document.getElementById('shortcutHintBtn').addEventListener('click', e => setShortcutsOpen(true, e.currentTarget));
