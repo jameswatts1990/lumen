@@ -2189,6 +2189,7 @@ const flowHudProgress = document.getElementById('flowHudProgress');
 const flowGestureTimer = document.getElementById('flowGestureTimer');
 const flowGestureTimerLabel = document.getElementById('flowGestureTimerLabel');
 const flowGestureTimerValue = document.getElementById('flowGestureTimerValue');
+const flowSpeedBackdrop = document.getElementById('flowSpeedBackdrop');
 const flowWordRenderer = document.getElementById('flowWordRenderer');
 const flowWordRendererToken = document.getElementById('flowWordRendererToken');
 const flowDefinitionPopout = document.getElementById('flowDefinitionPopout');
@@ -2897,6 +2898,21 @@ function shouldIgnoreFlowGestureTarget(target) {
 
 function prefersReducedMotion() {
   return Boolean(prefersReducedMotionQuery?.matches);
+}
+
+function handleFlowGesturePointerDown(e) {
+  if (!isFlowGestureEnabled()) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  if (shouldIgnoreFlowGestureTarget(e.target)) return;
+  if (flowGestureState === FLOW_GESTURE_STATES.PAUSED_ON_RELEASE) {
+    e.preventDefault();
+    flowGestureActivePointerId = e.pointerId;
+    activateFlowSpeedRead('instant_resume_from_paused', { preserveIndex: true });
+    return;
+  }
+  if (flowGestureState !== FLOW_GESTURE_STATES.IDLE) return;
+  e.preventDefault();
+  startFlowGestureHold(e.pointerId);
 }
 
 window.flowGestureController = {
@@ -6561,20 +6577,7 @@ function stopScroll() {
 
 reader.addEventListener('mouseenter', () => { if (scrolling) stopScroll(); });
 reader.addEventListener('mouseleave', () => { if (scrolling) startScroll(); });
-reader.addEventListener('pointerdown', e => {
-  if (!isFlowGestureEnabled()) return;
-  if (e.pointerType === 'mouse' && e.button !== 0) return;
-  if (shouldIgnoreFlowGestureTarget(e.target)) return;
-  if (flowGestureState === FLOW_GESTURE_STATES.PAUSED_ON_RELEASE) {
-    e.preventDefault();
-    flowGestureActivePointerId = e.pointerId;
-    activateFlowSpeedRead('instant_resume_from_paused', { preserveIndex: true });
-    return;
-  }
-  if (flowGestureState !== FLOW_GESTURE_STATES.IDLE) return;
-  e.preventDefault();
-  startFlowGestureHold(e.pointerId);
-});
+reader.addEventListener('pointerdown', handleFlowGesturePointerDown);
 reader.addEventListener('pointerup', e => {
   if (!isFlowGestureEnabled()) return;
   releaseFlowGestureHold(e.pointerId, 'pointer_up');
@@ -6587,6 +6590,15 @@ reader.addEventListener('pointerleave', e => {
   if (!isFlowGestureEnabled()) return;
   if (flowGestureState === FLOW_GESTURE_STATES.SPEED_READ_ACTIVE) return;
   releaseFlowGestureHold(e.pointerId, 'pointer_leave');
+});
+flowSpeedBackdrop?.addEventListener('pointerdown', handleFlowGesturePointerDown);
+flowSpeedBackdrop?.addEventListener('pointerup', e => {
+  if (!isFlowGestureEnabled()) return;
+  releaseFlowGestureHold(e.pointerId, 'pointer_up_backdrop');
+});
+flowSpeedBackdrop?.addEventListener('pointercancel', e => {
+  if (!isFlowGestureEnabled()) return;
+  releaseFlowGestureHold(e.pointerId, 'pointer_cancel_backdrop');
 });
 flowLayer.addEventListener('pointerdown', e => {
   if (readingMode !== 'flow') return;
