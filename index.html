@@ -2737,12 +2737,15 @@ function stopFlowSpeedReadPlayback() {
   flowSpeedReadNextWordAt = 0;
 }
 
-function startFlowSpeedReadPlayback({ preserveIndex = false } = {}) {
+function startFlowSpeedReadPlayback({ preserveIndex = false, startIndex = null } = {}) {
   stopFlowSpeedReadPlayback();
   applyFlowSpeedReadTiming();
   ensureFlowSpeedReadWordNodes();
   if (!flowSpeedReadWordNodes.length) return;
-  const baseIndex = preserveIndex ? flowSpeedReadWordIndex : resolveFlowSpeedReadStartIndex();
+  const hasExplicitStartIndex = Number.isInteger(startIndex) && startIndex >= 0;
+  const baseIndex = preserveIndex
+    ? flowSpeedReadWordIndex
+    : (hasExplicitStartIndex ? startIndex : resolveFlowSpeedReadStartIndex());
   flowSpeedReadWordIndex = Math.max(0, Math.min(baseIndex, flowSpeedReadWordNodes.length - 1));
   syncFlowSpeedReadHighlight();
   flowSpeedReadNextWordAt = performance.now() + getFlowTokenDelayMs(flowSpeedReadWordIndex);
@@ -2780,11 +2783,12 @@ function resolveFlowSpeedReadStartIndex() {
 }
 
 function activateFlowSpeedRead(reason = 'hold_threshold', options = {}) {
+  const explicitStartIndex = options.preserveIndex ? null : resolveFlowSpeedReadStartIndex();
   hideFlowGestureTimer();
   stopFlowGestureTimerUI();
   dismissFlowDefinitionPreview();
   setFlowGestureState(FLOW_GESTURE_STATES.SPEED_READ_ACTIVE, reason);
-  startFlowSpeedReadPlayback(options);
+  startFlowSpeedReadPlayback({ ...options, startIndex: explicitStartIndex });
 }
 
 function resetFlowGestureInteraction() {
