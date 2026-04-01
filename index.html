@@ -6753,6 +6753,10 @@ function syncChunkFocusAidExclusivity() {
   const rulerToggle = document.getElementById('rulerT');
   const shadeToggle = document.getElementById('shadeT');
   if (!chunkToggle || !rulerToggle || !shadeToggle) return;
+  if (chunkToggle.checked) {
+    if (rulerToggle.checked) rulerToggle.checked = false;
+    if (shadeToggle.checked) shadeToggle.checked = false;
+  }
   [rulerToggle, shadeToggle].forEach(toggle => {
     toggle.disabled = false;
     toggle.closest('.tog')?.classList.remove('is-disabled');
@@ -7700,6 +7704,12 @@ function stepChunk(direction) {
 function toggleChunkMode() {
   ensureChunkAnchor();
   const on = chunkModeOn();
+  const rulerToggle = document.getElementById('rulerT');
+  const shadeToggle = document.getElementById('shadeT');
+  if (on) {
+    if (rulerToggle?.checked) rulerToggle.checked = false;
+    if (shadeToggle?.checked) shadeToggle.checked = false;
+  }
   const shadeTop = document.getElementById('rShadeTop');
   const shadeBot = document.getElementById('rShadeBot');
   document.querySelectorAll('.chunk-group').forEach(el => el.classList.toggle('collapsed', !on));
@@ -7775,14 +7785,15 @@ function toggleRuler() {
   const paragraphShadeTop = document.getElementById('rShadeTop');
   const paragraphShadeBot = document.getElementById('rShadeBot');
   const rulerLine = document.getElementById('rulerLine');
+  const showChunkBandShading = chunkOn && readingMode !== 'flow';
   rulerLine.classList.toggle('on', on && !chunkModeOn());
-  paragraphShadeTop.classList.toggle('on', shd || chunkModeOn());
-  paragraphShadeBot.classList.toggle('on', shd || chunkModeOn());
-  if (!chunkModeOn()) {
+  paragraphShadeTop.classList.toggle('on', shd || showChunkBandShading);
+  paragraphShadeBot.classList.toggle('on', shd || showChunkBandShading);
+  if (!chunkModeOn() || readingMode === 'flow') {
     paragraphShadeTop.style.background = 'rgba(0,0,0,0.70)';
     paragraphShadeBot.style.background = 'rgba(0,0,0,0.70)';
   }
-  if (chunkModeOn()) updateChunkOverlay();
+  if (showChunkBandShading) updateChunkOverlay();
   updateFlowHighlight();
 }
 

@@ -29,3 +29,8 @@
 - Context: when deriving dynamic chunk/ruler shading from CSS custom properties such as `--accent-dim`.
 - Guidance: parse theme colors into numeric RGBA channels before computing derived alpha blends; avoid treating CSS color strings as structured objects.
 - Reason: prevents invalid gradient strings that silently break shading visuals.
+
+### [Flow Chunking] Keep chunk mode exclusive with ruler/shading
+- Context: when wiring focus-aid toggles in Flow reading mode.
+- Guidance: enabling chunk mode should clear ruler and paragraph shading toggles, and flow chunking should avoid the fixed top/bottom shading bands.
+- Reason: preserves J/K chunk stepping behavior and keeps chunk focus visuals aligned with expected flow UX.
