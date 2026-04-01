@@ -1623,6 +1623,7 @@ body.low-interruption-active .flow-gesture-timer,
 body.low-interruption-active .flow-hold-timer,
 body.low-interruption-active .flow-speed-hud,
 body.low-interruption-active .flow-word-renderer,
+body.low-interruption-active .reading-mode-dock,
 body.low-interruption-active .flow-definition-popout,
 body.low-interruption-active .ruler,
 body.low-interruption-active .ruler-line,
@@ -5275,6 +5276,9 @@ function startSessionTimer(minutes, options = {}) {
     : null;
   updateSessionMeta();
   updateLowInterruptionMode();
+  if (sessionSupportState.lowInterruption) {
+    setSidebarOpen(false);
+  }
   void enterFullscreenForSession();
   document.querySelectorAll('.session-btn').forEach(btn => {
     btn.classList.toggle('on', Number(btn.dataset.minutes) === plannedDurationMinutes);
