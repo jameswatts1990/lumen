@@ -2013,11 +2013,12 @@ const BASE_PAGE_WIDTH = 760;
 let maxW = BASE_PAGE_WIDTH;
 let gap = 16;
 let scrolling = false;
-let scrollSpeed = 0.8;
+let scrollSpeed = 0.4;
 let scrollRAF = null;
 let lastScrollTs = 0;
 let scrollCarry = 0;
 const AUTO_SCROLL_BASE_PX_PER_SECOND = 96;
+const AUTO_SCROLL_UI_TO_EFFECTIVE_MULTIPLIER = 0.5;
 let currentMode = 'day';
 let rendering = false;
 let focusDepth = 220;
@@ -2387,6 +2388,15 @@ function getAutoScrollWpmBounds() {
   };
 }
 
+function uiAutoScrollSpeedToEffective(uiSpeed) {
+  return uiSpeed * AUTO_SCROLL_UI_TO_EFFECTIVE_MULTIPLIER;
+}
+
+function effectiveAutoScrollSpeedToUi(effectiveSpeed) {
+  if (!AUTO_SCROLL_UI_TO_EFFECTIVE_MULTIPLIER) return effectiveSpeed;
+  return effectiveSpeed / AUTO_SCROLL_UI_TO_EFFECTIVE_MULTIPLIER;
+}
+
 function describeWpmEquivalency(wpm) {
   if (wpm <= 130) return 'Equivalent: deliberate study pace for dense text.';
   if (wpm <= 220) return 'Equivalent: average adult reading speed.';
@@ -2399,7 +2409,8 @@ function describeWpmEquivalency(wpm) {
 function getAutoScrollWpmValue() {
   const slider = document.getElementById('scrollSR');
   const parsed = Number(slider?.value);
-  const speedMagnitude = Number.isFinite(parsed) ? Math.abs(parsed) : Math.abs(DEFAULT_SETTINGS.autoScrollSpeed);
+  const uiSpeedMagnitude = Number.isFinite(parsed) ? Math.abs(parsed) : Math.abs(DEFAULT_SETTINGS.autoScrollSpeed);
+  const speedMagnitude = Math.abs(uiAutoScrollSpeedToEffective(uiSpeedMagnitude));
   const estimatedWpm = Math.round(speedMagnitude * FLOW_BASE_WPM) || FLOW_SPEED_READ_FALLBACK_WPM;
   const { min, max } = getAutoScrollWpmBounds();
   return Math.min(max, Math.max(min, estimatedWpm));
@@ -2426,7 +2437,7 @@ function setAutoScrollWpm(nextWpm) {
   const nextSpeedMagnitude = safeWpm / FLOW_BASE_WPM;
   const sliderMin = Number(slider.min);
   const sliderMax = Number(slider.max);
-  const signedSpeed = direction * nextSpeedMagnitude;
+  const signedSpeed = direction * effectiveAutoScrollSpeedToUi(nextSpeedMagnitude);
   const clampedSpeed = Math.min(sliderMax, Math.max(sliderMin, signedSpeed));
   slider.value = String(Math.round(clampedSpeed * 10) / 10);
   slider.dispatchEvent(new Event('input', { bubbles: true }));
@@ -6048,7 +6059,7 @@ wire('lhR',     'lhV',    '',  v => v.toFixed(2), () => applyReadingMode());
 wire('lsR',     'lsV',    'px', v => v.toFixed(2)+'px', () => applyReadingMode());
 wire('wsR',     'wsV',    'px', v => v.toFixed(1)+'px', () => applyReadingMode());
 wire('scrollSR','scrollSV','', v => `${v.toFixed(1)}x`, v => {
-  scrollSpeed = v;
+  scrollSpeed = uiAutoScrollSpeedToEffective(v);
   queueFlowSpeedReadTimingSync();
   syncAutoScrollWpmUi();
 });
