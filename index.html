@@ -3606,6 +3606,7 @@ function initSidebarSectionToggles() {
   };
 
   sections.forEach((section, index) => {
+    if (section.dataset.collapsibleInit === 'true') return;
     const label = section.querySelector(':scope > .sec-label');
     if (!label) return;
     const sectionId = section.id || `sidebarSection${index + 1}`;
@@ -3646,7 +3647,18 @@ function initSidebarSectionToggles() {
       }
       setSectionCollapsed(section, toggleBtn, !shouldExpand);
     });
+
+    section.dataset.collapsibleInit = 'true';
   });
+}
+
+function setSidebarSectionVisible(section, visible) {
+  if (!section) return;
+  section.hidden = !visible;
+  if (!visible) {
+    section.classList.add('is-collapsed');
+    section.querySelector(':scope > .sec-toggle')?.setAttribute('aria-expanded', 'false');
+  }
 }
 
 function enhanceEvidenceBadges() {
@@ -7091,6 +7103,8 @@ function applyFilters() {
 function syncReadingModeControls() {
   const typographyEnabled = readingMode === 'overlay' || readingMode === 'flow';
   const isFlow = readingMode === 'flow';
+  const docType = String(currentDocMeta?.type || '').toLowerCase();
+  const isEmailDoc = ['eml', 'msg', 'email', 'mail-thread', 'mail'].includes(docType);
   document.querySelectorAll('.typography-group').forEach(el => el.classList.toggle('collapsed', !typographyEnabled));
   const fontSel = document.getElementById('fontSel');
   if (fontSel) {
@@ -7127,6 +7141,12 @@ function syncReadingModeControls() {
   document.getElementById('chunkV').textContent = chunkLengthLabel(Number(document.getElementById('chunkR').value));
   const focusModeHint = document.getElementById('focusModeHint');
   if (focusModeHint) focusModeHint.hidden = !isFlow;
+
+  setSidebarSectionVisible(document.getElementById('typographySection'), typographyEnabled);
+  setSidebarSectionVisible(document.getElementById('emailOrderSection'), isEmailDoc && isFlow);
+  document.querySelectorAll('#sidebarPanel .sidebar-scroll > .sec.flow-only-group').forEach(section => {
+    setSidebarSectionVisible(section, isFlow);
+  });
 }
 
 function syncChunkFocusAidExclusivity() {
