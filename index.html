@@ -8708,7 +8708,6 @@ document.getElementById('sessionInsightsToggle').addEventListener('click', () =>
   const shell = document.getElementById('sessionInsightsShell');
   if (!shell) return;
   setSessionInsightsCollapsed(!shell.classList.contains('is-collapsed'));
-});
 document.getElementById('sessionFullscreenT').addEventListener('change', e => {
   sessionSupportState.sessionFullscreen = e.target.checked;
   saveSessionSupportState();
