@@ -1998,6 +1998,38 @@ body.low-interruption-active .prog {
         <input type="file" id="importDataFileIn" accept="application/json,.json" hidden>
       </div>
 
+      <!-- Recent Documents -->
+      <div class="sec is-collapsed">
+        <div class="sec-label">Recent Documents</div>
+        <div class="sec-hint">Jump back into recently opened files and restore your last saved reading position.</div>
+        <div class="session-meta" id="sessionMeta">No active session.</div>
+        <hr class="session-divider" aria-hidden="true">
+        <div class="resume-row" style="padding: 0 20px 8px;">
+          <button class="pbtn" id="chunkRecoverBtn" type="button" disabled>Return to previous chunk</button>
+        </div>
+        <div class="resume-title" style="padding: 0 20px 4px;">Recent documents</div>
+        <div class="recent-doc-toolbar">
+          <select class="recent-doc-sort" id="recentDocSortSel" aria-label="Sort recent documents">
+            <option value="last-opened">Sort: last opened</option>
+            <option value="saved">Sort: last saved</option>
+            <option value="title">Sort: title</option>
+          </select>
+        </div>
+        <ul class="recent-doc-list" id="recentDocList" aria-live="polite">
+          <li class="recent-doc-item">
+            <span class="recent-doc-meta">No recent documents yet.</span>
+          </li>
+        </ul>
+        <div class="resume-card" id="resumeCard" aria-live="polite">
+          <div class="resume-title">Resume previous spot</div>
+          <div class="resume-text" id="resumeText">No saved position yet.</div>
+          <div class="resume-row">
+            <button class="pbtn" id="resumeRestoreBtn" type="button">Restore</button>
+            <button class="pbtn" id="resumeDismissBtn" type="button">Dismiss</button>
+          </div>
+        </div>
+      </div>
+
 
       <!-- Email Thread Order -->
       <div class="sec is-collapsed" id="emailOrderSection">
