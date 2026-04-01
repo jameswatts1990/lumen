@@ -503,12 +503,13 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
 .scbtn.on { background: var(--accent); color: #1a1200; border-color: var(--accent); }
 .scbtn-hint { font-size: 11.5px; color: var(--text-muted); }
 
-.session-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 4px 20px 10px; }
+.session-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; padding: 4px 20px 10px; }
 .session-btn { padding: 7px 0; font-size: 12px; }
 .session-btn.on { background: var(--accent); color: #1a1200; border-color: var(--accent); }
 .session-meta { padding: 0 20px 8px; font-size: 11.5px; color: var(--text-muted); line-height: 1.45; }
+#deleteStatsBtn { padding-left: 20px; padding-right: 20px; }
 .session-insights-block {
-  margin: 0 20px 10px;
+  margin: 10px 20px 10px;
   border: 1px solid var(--control-border);
   border-radius: 8px;
   background: rgba(25, 20, 14, 0.62);
@@ -536,7 +537,7 @@ input[type=range]::-webkit-slider-thumb:hover { box-shadow: 0 0 0 6px var(--acce
   border-bottom-color: transparent;
 }
 .session-insights-block:not(.is-collapsed) .session-insights-toggle {
-  border-bottom-color: var(--control-border);
+  border-bottom-color: transparent;
 }
 .session-insights-title {
   font-family: 'DM Mono', monospace;
@@ -2052,11 +2053,12 @@ body.low-interruption-active .prog {
         <div class="sec-label">Session Support</div>
         <div class="sec-hint">Timebox focused reading and quickly resume where you left off.</div>
         <div class="session-grid">
+          <button class="pbtn session-btn" id="session2Btn" type="button" data-minutes="2">2 min</button>
           <button class="pbtn session-btn" id="session5Btn" type="button" data-minutes="5">5 min</button>
           <button class="pbtn session-btn" id="session10Btn" type="button" data-minutes="10">10 min</button>
           <button class="pbtn session-btn" id="session15Btn" type="button" data-minutes="15">15 min</button>
         </div>
-        <div class="session-meta" id="sessionMeta">No active session.</div>
+        <div class="session-meta" id="sessionMeta">No active session. Sessions completed today: 0.</div>
         <div class="trow">
           <div class="trow-info">
             <div class="trow-lbl">Low interruption mode</div>
@@ -2464,6 +2466,7 @@ body.low-interruption-active .prog {
 <div class="session-done-popup" id="sessionDonePopup" role="status" aria-live="polite">
   <span id="sessionDoneText">Session complete.</span>
   <div class="session-done-actions" aria-label="Start another timer">
+    <button class="session-done-restart" type="button" data-minutes="2">+2m</button>
     <button class="session-done-restart" type="button" data-minutes="5">+5m</button>
     <button class="session-done-restart" type="button" data-minutes="10">+10m</button>
     <button class="session-done-restart" type="button" data-minutes="15">+15m</button>
@@ -2675,7 +2678,6 @@ let sessionSupportState = {
   }
 };
 let sessionTick = null;
-let sessionsCompletedThisSession = 0;
 let activeSessionRecord = null;
 let sessionManagedFullscreen = false;
 let statsState = {
@@ -4775,7 +4777,7 @@ function loadStatsState() {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return;
     statsState.enabled = parsed.enabled !== false;
-    statsState.sessions = Array.isArray(parsed.sessions) ? parsed.sessions.slice(-400) : [];
+    statsState.sessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
   } catch (err) {
     console.warn('Unable to load stats state:', err);
   }
@@ -4784,7 +4786,7 @@ function loadStatsState() {
 function saveStatsState() {
   localStorage.setItem(STATS_STORAGE_KEY, JSON.stringify({
     enabled: statsState.enabled !== false,
-    sessions: Array.isArray(statsState.sessions) ? statsState.sessions.slice(-400) : []
+    sessions: Array.isArray(statsState.sessions) ? statsState.sessions : []
   }));
 }
 
@@ -4801,7 +4803,6 @@ function persistSessionStat(record) {
     next.wordsReadEstimate = Math.round(record.wordsReadEstimate);
   }
   statsState.sessions.push(next);
-  statsState.sessions = statsState.sessions.slice(-400);
   saveStatsState();
   renderReadingInsights();
 }
@@ -5159,6 +5160,15 @@ async function exitFullscreenForSession() {
   }
 }
 
+function getSessionsCompletedToday() {
+  const sessions = Array.isArray(statsState.sessions) ? statsState.sessions : [];
+  const todayKey = getIsoDay(Date.now());
+  return sessions.reduce((count, session) => {
+    const day = getIsoDay(Number(session.endedAt || session.startedAt || Date.now()));
+    return count + (day === todayKey ? 1 : 0);
+  }, 0);
+}
+
 function updateSessionMeta() {
   const meta = document.getElementById('sessionMeta');
   const remainingMs = getRemainingSessionMs();
@@ -5167,7 +5177,7 @@ function updateSessionMeta() {
   const chunkStatus = document.getElementById('chunkStatus');
   const lowInterruptionOn = Boolean(sessionSupportState.lowInterruption);
   if (remainingMs <= 0) {
-    meta.textContent = `No active session. Sessions completed: ${sessionsCompletedThisSession}.`;
+    meta.textContent = `No active session. Sessions completed today: ${getSessionsCompletedToday()}.`;
     document.querySelectorAll('.session-btn').forEach(btn => btn.classList.remove('on'));
     timerOverlay.classList.remove('on');
     chunkStatus.classList.remove('with-timer');
@@ -5177,7 +5187,7 @@ function updateSessionMeta() {
   const min = Math.floor(remainingMs / 60000);
   const sec = Math.floor((remainingMs % 60000) / 1000);
   const formatted = `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-  meta.textContent = `Session running • ${formatted} left • Completed this session: ${sessionsCompletedThisSession}`;
+  meta.textContent = `Session running • ${formatted} left • Completed today: ${getSessionsCompletedToday()}`;
   timerValue.textContent = formatted;
   timerOverlay.classList.toggle('on', !lowInterruptionOn);
   chunkStatus.classList.toggle('with-timer', !lowInterruptionOn);
@@ -5202,7 +5212,6 @@ function stopSessionTimer(clearSchedule = true, markCompleted = false) {
     sessionTick = null;
   }
   if (markCompleted && finishedMinutes > 0) {
-    sessionsCompletedThisSession += 1;
     showSessionDonePopup(finishedMinutes);
   }
   if (activeSessionRecord && finishedMinutes > 0) {
