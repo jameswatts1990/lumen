@@ -1590,6 +1590,9 @@ body.low-interruption-active .flow-speed-hud {
           <label class="tog"><input type="checkbox" id="lowInterruptT"><span class="tog-tk"></span></label>
         </div>
         <div class="session-meta" id="sessionMeta">No active session.</div>
+        <div class="resume-row" style="padding: 0 20px 8px;">
+          <button class="pbtn" id="chunkRecoverBtn" type="button" disabled>Return to previous chunk</button>
+        </div>
         <div class="resume-card" id="resumeCard" aria-live="polite">
           <div class="resume-title">Resume previous spot</div>
           <div class="resume-text" id="resumeText">No saved position yet.</div>
@@ -2110,7 +2113,11 @@ let compareView = 'current';
 let sessionSupportState = {
   durationMin: 0,
   sessionEndTs: 0,
-  lowInterruption: false
+  lowInterruption: false,
+  chunkMemory: {
+    current: null,
+    previous: null
+  }
 };
 let sessionTick = null;
 let sessionsCompletedThisSession = 0;
@@ -3456,6 +3463,133 @@ function handleDeleteProfile() {
   useProfile(DEFAULT_PROFILE_ID);
 }
 
+function getChunkMemoryForCurrentDoc() {
+  const docId = getCurrentDocId();
+  const chunkMemory = sessionSupportState.chunkMemory || {};
+  const current = chunkMemory.current;
+  const previous = chunkMemory.previous;
+  return {
+    current: current && current.docId === docId ? current : null,
+    previous: previous && previous.docId === docId ? previous : null
+  };
+}
+
+function updateChunkRecoverButton() {
+  const btn = document.getElementById('chunkRecoverBtn');
+  if (!btn) return;
+  const { previous } = getChunkMemoryForCurrentDoc();
+  btn.disabled = !previous;
+  if (!previous) {
+    btn.textContent = 'Return to previous chunk';
+    btn.title = 'No previous chunk is available yet.';
+    return;
+  }
+  const kind = previous.readingMode === 'flow' ? 'Flow chunk' : `Page ${previous.page || 1} chunk`;
+  btn.textContent = `Return to previous chunk (${kind})`;
+  btn.title = `Jump back to the chunk saved at ${formatSessionDate(previous.savedAt)}.`;
+}
+
+function captureChunkSnapshot() {
+  if (!chunkModeOn()) return null;
+  const docId = getCurrentDocId();
+  if (!docId) return null;
+  const snapshot = {
+    docId,
+    readingMode,
+    page: currentPage || 1,
+    scrollTop: Math.round(reader.scrollTop),
+    chunkHeight: Number(document.getElementById('chunkR').value) || 1,
+    savedAt: Date.now()
+  };
+  if (readingMode === 'flow') {
+    snapshot.flowChunkIndex = Math.max(0, Number(flowChunkIndex) || 0);
+  } else {
+    snapshot.chunkCenterY = Math.round(chunkCenterY || 0);
+  }
+  return snapshot;
+}
+
+function sameChunkSnapshot(a, b) {
+  if (!a || !b) return false;
+  if (a.docId !== b.docId || a.readingMode !== b.readingMode || a.page !== b.page) return false;
+  if (a.readingMode === 'flow') return Number(a.flowChunkIndex || 0) === Number(b.flowChunkIndex || 0);
+  return Math.abs(Number(a.chunkCenterY || 0) - Number(b.chunkCenterY || 0)) <= 2;
+}
+
+function rememberChunkSnapshot({ promotePrevious = true } = {}) {
+  const snapshot = captureChunkSnapshot();
+  if (!snapshot) {
+    updateChunkRecoverButton();
+    return;
+  }
+  const memory = sessionSupportState.chunkMemory || { current: null, previous: null };
+  if (sameChunkSnapshot(memory.current, snapshot)) {
+    memory.current = { ...memory.current, ...snapshot };
+    sessionSupportState.chunkMemory = memory;
+    saveSessionSupportState();
+    updateChunkRecoverButton();
+    return;
+  }
+  if (promotePrevious && memory.current) {
+    memory.previous = memory.current;
+  }
+  memory.current = snapshot;
+  sessionSupportState.chunkMemory = memory;
+  saveSessionSupportState();
+  updateChunkRecoverButton();
+}
+
+async function restoreChunkSnapshot(snapshot, { asRecovery = false } = {}) {
+  if (!snapshot || snapshot.docId !== getCurrentDocId()) return false;
+  if (snapshot.readingMode && snapshot.readingMode !== readingMode) {
+    setReadingMode(snapshot.readingMode);
+    await applyReadingMode();
+  }
+  const chunkToggle = document.getElementById('chunkT');
+  if (chunkToggle && !chunkToggle.checked) {
+    chunkToggle.checked = true;
+    toggleChunkMode();
+  }
+  if (snapshot.chunkHeight) {
+    setRangeValue('chunkR', snapshot.chunkHeight);
+    document.getElementById('chunkV').textContent = chunkLengthLabel(Number(document.getElementById('chunkR').value));
+  }
+  requestAnimationFrame(() => {
+    reader.scrollTop = Number(snapshot.scrollTop) || 0;
+    if (snapshot.readingMode === 'flow') {
+      const list = getFlowHighlightables();
+      const chunkSize = Math.max(1, Number(document.getElementById('chunkR').value) || 1);
+      flowChunkIndex = Math.max(0, Number(snapshot.flowChunkIndex) || 0);
+      clampFlowChunkIndex(list, chunkSize);
+      updateFlowHighlight();
+      scrollFlowChunkIntoView(list, chunkSize);
+    } else {
+      chunkCenterY = Math.max(0, Number(snapshot.chunkCenterY) || chunkCenterY || 0);
+      ensureChunkAnchor();
+      updateChunkOverlay();
+    }
+    updateProgressAndStatus();
+  });
+  if (asRecovery) {
+    const memory = sessionSupportState.chunkMemory || { current: null, previous: null };
+    memory.previous = memory.current || null;
+    memory.current = { ...snapshot, savedAt: Date.now() };
+    sessionSupportState.chunkMemory = memory;
+    saveSessionSupportState();
+  }
+  updateChunkRecoverButton();
+  return true;
+}
+
+function restoreCurrentChunkFromSessionMemory() {
+  const { current } = getChunkMemoryForCurrentDoc();
+  if (!current) {
+    updateChunkRecoverButton();
+    return;
+  }
+  restoreChunkSnapshot(current).catch(err => console.warn('Unable to restore current chunk from session memory:', err));
+}
+
 function formatSessionDate(ts) {
   if (!ts) return '—';
   return new Date(ts).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
@@ -3485,11 +3619,15 @@ function saveDocProgress() {
   const docId = getCurrentDocId();
   if (!docId || (!pdf && !textDoc)) return;
   const map = loadDocProgressMap();
+  rememberChunkSnapshot({ promotePrevious: false });
   map[docId] = {
     scrollTop: Math.round(reader.scrollTop),
     page: currentPage || 1,
     profileId: lastUsedProfileId,
     readingMode,
+    chunkSnapshot: (sessionSupportState.chunkMemory && sessionSupportState.chunkMemory.current && sessionSupportState.chunkMemory.current.docId === docId)
+      ? sessionSupportState.chunkMemory.current
+      : null,
     savedAt: Date.now(),
     label: currentDocMeta?.label || currentDocMeta?.name || 'Document'
   };
@@ -3521,6 +3659,9 @@ async function restoreSavedPosition() {
     reader.scrollTop = Number(info.scrollTop) || 0;
     updateProgressAndStatus();
   });
+  if (info.chunkSnapshot) {
+    restoreChunkSnapshot(info.chunkSnapshot).catch(err => console.warn('Unable to restore saved chunk snapshot:', err));
+  }
   pendingResumeState = null;
   refreshResumeCard();
 }
@@ -3536,6 +3677,8 @@ function maybeOfferResumeForCurrentDoc() {
   }
   pendingResumeState = saved;
   refreshResumeCard();
+  updateChunkRecoverButton();
+  restoreCurrentChunkFromSessionMemory();
 }
 
 function getAvailableReadingModesForCurrentContent() {
@@ -3576,6 +3719,9 @@ function loadSessionSupportState() {
       ...sessionSupportState,
       ...parsed
     };
+    if (!sessionSupportState.chunkMemory || typeof sessionSupportState.chunkMemory !== 'object') {
+      sessionSupportState.chunkMemory = { current: null, previous: null };
+    }
   } catch (err) {
     console.warn('Unable to load session support settings:', err);
   }
@@ -6098,6 +6244,7 @@ function stepChunk(direction) {
     clampFlowChunkIndex(list, stepSize);
     updateFlowHighlight();
     scrollFlowChunkIntoView(list, stepSize);
+    rememberChunkSnapshot();
     return;
   }
   ensureChunkAnchor();
@@ -6114,6 +6261,7 @@ function stepChunk(direction) {
   chunkCenterY = nextCenter;
   ensureChunkAnchor();
   updateChunkOverlay();
+  rememberChunkSnapshot();
 }
 
 function toggleChunkMode() {
@@ -6149,6 +6297,8 @@ function toggleChunkMode() {
   toggleRuler();
   updateChunkOverlay();
   updateFlowHighlight();
+  if (on) rememberChunkSnapshot({ promotePrevious: false });
+  updateChunkRecoverButton();
 }
 
 reader.addEventListener('mousemove', e => {
@@ -6672,6 +6822,11 @@ document.getElementById('lowInterruptT').addEventListener('change', e => {
   updateLowInterruptionMode();
 });
 document.getElementById('sessionDoneDismissBtn').addEventListener('click', () => hideSessionDonePopup());
+document.getElementById('chunkRecoverBtn').addEventListener('click', async () => {
+  const { previous } = getChunkMemoryForCurrentDoc();
+  if (!previous) return;
+  await restoreChunkSnapshot(previous, { asRecovery: true });
+});
 document.getElementById('resumeRestoreBtn').addEventListener('click', () => restoreSavedPosition());
 document.getElementById('resumeDismissBtn').addEventListener('click', () => {
   pendingResumeState = null;
@@ -6764,6 +6919,7 @@ document.addEventListener('keydown', e => {
 /* ── Profile system init ── */
 const persistedSettings = loadSettings();
 loadSessionSupportState();
+updateChunkRecoverButton();
 loadProfilesState();
 refreshProfileSelect();
 document.getElementById('profileSel').addEventListener('change', e => useProfile(e.target.value));
