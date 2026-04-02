@@ -1,0 +1,114 @@
+/* Bump this querystring after font updates to avoid stale caches on long-lived deployments. */
+/* Server note: set Cache-Control: public, max-age=31536000, immutable for /assets/fonts/* paths. */
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  src:
+    local('Atkinson Hyperlegible Regular'),
+    local('Atkinson Hyperlegible'),
+    url('https://cdn.jsdelivr.net/npm/@fontsource/atkinson-hyperlegible@5.2.6/files/atkinson-hyperlegible-latin-400-normal.woff2') format('woff2'),
+    url('https://unpkg.com/@fontsource/atkinson-hyperlegible@5.2.6/files/atkinson-hyperlegible-latin-400-normal.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Atkinson Hyperlegible';
+  src:
+    local('Atkinson Hyperlegible Bold'),
+    local('Atkinson Hyperlegible'),
+    url('https://cdn.jsdelivr.net/npm/@fontsource/atkinson-hyperlegible@5.2.6/files/atkinson-hyperlegible-latin-700-normal.woff2') format('woff2'),
+    url('https://unpkg.com/@fontsource/atkinson-hyperlegible@5.2.6/files/atkinson-hyperlegible-latin-700-normal.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexic';
+  src:
+    url('../fonts/opendyslexic/OpenDyslexic-Regular.woff2?v=2026-03-31') format('woff2'),
+    url('../fonts/opendyslexic/OpenDyslexic-Regular.woff?v=2026-03-31') format('woff'),
+    url('../fonts/opendyslexic/OpenDyslexic-Regular.otf?v=2026-03-31') format('opentype'),
+    local('OpenDyslexic Regular'),
+    local('OpenDyslexic-Regular'),
+    url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/alternates/OpenDyslexic-Regular.otf') format('opentype'),
+    url('https://unpkg.com/opendyslexic@1.0.3/alternates/OpenDyslexic-Regular.otf') format('opentype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexic';
+  src:
+    url('../fonts/opendyslexic/OpenDyslexic-Bold.woff2?v=2026-03-31') format('woff2'),
+    url('../fonts/opendyslexic/OpenDyslexic-Bold.woff?v=2026-03-31') format('woff'),
+    url('../fonts/opendyslexic/OpenDyslexic-Bold.otf?v=2026-03-31') format('opentype'),
+    local('OpenDyslexic Bold'),
+    local('OpenDyslexic-Bold'),
+    url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/alternates/OpenDyslexic-Bold.otf') format('opentype'),
+    url('https://unpkg.com/opendyslexic@1.0.3/alternates/OpenDyslexic-Bold.otf') format('opentype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexicAlta';
+  src:
+    url('../fonts/opendyslexic/OpenDyslexic-Regular.woff2?v=2026-03-31') format('woff2'),
+    url('../fonts/opendyslexic/OpenDyslexic-Regular.woff?v=2026-03-31') format('woff'),
+    url('../fonts/opendyslexic/OpenDyslexic-Regular.otf?v=2026-03-31') format('opentype'),
+    local('OpenDyslexic Regular'),
+    local('OpenDyslexic-Regular'),
+    url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/alternates/OpenDyslexic-Regular.otf') format('opentype'),
+    url('https://unpkg.com/opendyslexic@1.0.3/alternates/OpenDyslexic-Regular.otf') format('opentype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'OpenDyslexicAlta';
+  src:
+    url('../fonts/opendyslexic/OpenDyslexic-Bold.woff2?v=2026-03-31') format('woff2'),
+    url('../fonts/opendyslexic/OpenDyslexic-Bold.woff?v=2026-03-31') format('woff'),
+    url('../fonts/opendyslexic/OpenDyslexic-Bold.otf?v=2026-03-31') format('opentype'),
+    local('OpenDyslexic Bold'),
+    local('OpenDyslexic-Bold'),
+    url('https://cdn.jsdelivr.net/npm/opendyslexic@1.0.3/alternates/OpenDyslexic-Bold.otf') format('opentype'),
+    url('https://unpkg.com/opendyslexic@1.0.3/alternates/OpenDyslexic-Bold.otf') format('opentype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --app-bg: #16120d;
+  --sidebar-bg: #1e1912;
+  --sidebar-border: #302820;
+  --accent: #c8874a;
+  --accent-critical: #e26a5a;
+  --flow-orp-color: #9e2a1f;
+  --accent-dim: rgba(200,135,74,0.12);
+  --accent-mid: rgba(200,135,74,0.3);
+  --text-primary: #ede6d8;
+  --text-secondary: #c5b8a4;
+  --text-muted: #95866f;
+  --control-bg: #252015;
+  --control-border: #38301f;
+  --slider-track: #38301f;
+  --empty-title-color: var(--text-primary);
+  --empty-desc-color: #e5d1b6;
+  --empty-icon-shadow: rgba(9, 6, 2, 0.26);
+  --empty-icon-glow: rgba(255, 236, 201, 0.18);
+  --sidebar-width: 404px;
+  --sidebar-offset: var(--sidebar-width);
+  --sidebar-toggle-gap: 8px;
+}
+
+html, body { height: 100%; overflow: hidden; background: var(--app-bg); font-family: 'Lora', Georgia, serif; color: var(--text-primary); font-size: 15px; }
+html {
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  font-size: 0.9375rem;
+}

@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc -l /u/github/jw24/lumen/lumen/assets/vendor/*.js)",
+      "Bash(while read:*)",
+      "Bash(do echo:*)",
+      "Bash(done)",
+      "Bash(find /u/github/jw24/lumen/lumen -type f ! -path \"*/.git/*\" -exec ls -lh {})",
+      "Read(//u/github/jw24/lumen/lumen/**)",
+      "Bash(grep -n \"^[a-z].*\\(\\);\\\\s*$\\\\|^await \\\\|^void \" /u/github/jw24/lumen/lumen/index.html)",
+      "Bash(powershell -Command \":*)"
+    ]
+  }
+}
