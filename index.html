@@ -5880,58 +5880,112 @@ function cleanEmailBodyText(text) {
   return normalizeReadableText(hideUrlsInText(cleaned.join('\n')));
 }
 
-function extractBestEmailBody(raw) {
-  const normalized = String(raw || '').replace(/\r\n?/g, '\n');
+function parseContentDispositionHeader(contentDisposition = '') {
+  const parsed = parseContentTypeHeader(contentDisposition);
+  return {
+    disposition: parsed.mimeType,
+    params: parsed.params
+  };
+}
+
+function splitEmailHeadersAndBody(rawPart = '') {
+  const normalized = String(rawPart || '').replace(/\r\n?/g, '\n');
   const splitIdx = normalized.indexOf('\n\n');
   if (splitIdx === -1) {
+    return {
+      headers: {},
+      bodyRaw: normalized
+    };
+  }
+  return {
+    headers: parseRfc822Headers(normalized.slice(0, splitIdx)),
+    bodyRaw: normalized.slice(splitIdx + 2)
+  };
+}
+
+function splitMultipartBodyParts(bodyRaw = '', boundary = '') {
+  if (!boundary) return [];
+  const marker = `--${boundary}`;
+  const closeMarker = `--${boundary}--`;
+  const lines = String(bodyRaw || '').replace(/\r\n?/g, '\n').split('\n');
+  const parts = [];
+  let currentLines = null;
+
+  for (const line of lines) {
+    if (line === marker || line.trim() === marker) {
+      if (Array.isArray(currentLines)) parts.push(currentLines.join('\n').trim());
+      currentLines = [];
+      continue;
+    }
+    if (line === closeMarker || line.trim() === closeMarker) {
+      if (Array.isArray(currentLines)) parts.push(currentLines.join('\n').trim());
+      currentLines = null;
+      break;
+    }
+    if (Array.isArray(currentLines)) currentLines.push(line);
+  }
+
+  if (Array.isArray(currentLines) && currentLines.length) {
+    parts.push(currentLines.join('\n').trim());
+  }
+  return parts.filter(Boolean);
+}
+
+function collectMimeBodyCandidates(rawPart, inheritedCharset = '', sink = []) {
+  const { headers, bodyRaw } = splitEmailHeadersAndBody(rawPart);
+  const typeInfo = parseContentTypeHeader(headers['content-type'] || '');
+  const dispositionInfo = parseContentDispositionHeader(headers['content-disposition'] || '');
+  const mimeType = typeInfo.mimeType || 'text/plain';
+  const charset = typeInfo.params.charset || inheritedCharset || '';
+
+  if (mimeType.startsWith('multipart/')) {
+    const childParts = splitMultipartBodyParts(bodyRaw, typeInfo.params.boundary || '');
+    childParts.forEach((childPart) => {
+      collectMimeBodyCandidates(childPart, charset, sink);
+    });
+    return sink;
+  }
+
+  if (dispositionInfo.disposition === 'attachment') return sink;
+
+  const decodedPart = decodeEmailTransferBody(bodyRaw, {
+    transferEncoding: headers['content-transfer-encoding'],
+    charset
+  });
+  if (mimeType.includes('text/plain')) {
+    sink.push({ priority: 0, order: sink.length, bodyText: decodedPart });
+  } else if (mimeType.includes('text/html')) {
+    sink.push({ priority: 1, order: sink.length, bodyText: stripToPlainText(decodedPart, '.html') });
+  }
+  return sink;
+}
+
+function extractBestEmailBody(raw) {
+  const normalized = String(raw || '').replace(/\r\n?/g, '\n');
+  const { headers: rootHeaders, bodyRaw: rootBody } = splitEmailHeadersAndBody(normalized);
+  if (!Object.keys(rootHeaders).length) {
     return { headers: {}, bodyText: normalized };
   }
 
-  const rootHeaderText = normalized.slice(0, splitIdx);
-  const rootBody = normalized.slice(splitIdx + 2);
-  const rootHeaders = parseRfc822Headers(rootHeaderText);
   const rootType = parseContentTypeHeader(rootHeaders['content-type'] || '');
-  const contentType = rootType.mimeType;
   const rootCharset = rootType.params.charset || '';
+  const candidates = collectMimeBodyCandidates(normalized, rootCharset, []);
 
-  if (!contentType.includes('multipart/')) {
+  if (candidates.length) {
+    candidates.sort((a, b) => (a.priority - b.priority) || (a.order - b.order));
+    return { headers: rootHeaders, bodyText: candidates[0].bodyText };
+  }
+
+  if (!rootType.mimeType.includes('multipart/')) {
     const decoded = decodeEmailTransferBody(rootBody, {
       transferEncoding: rootHeaders['content-transfer-encoding'],
       charset: rootCharset
     });
-    const bodyText = contentType.includes('text/html') ? stripToPlainText(decoded, '.html') : decoded;
+    const bodyText = rootType.mimeType.includes('text/html') ? stripToPlainText(decoded, '.html') : decoded;
     return { headers: rootHeaders, bodyText };
   }
 
-  const boundaryMatch = /boundary="?([^";]+)"?/i.exec(rootHeaders['content-type'] || '');
-  if (!boundaryMatch) return { headers: rootHeaders, bodyText: rootBody };
-  const boundary = boundaryMatch[1];
-  const boundaryToken = `--${boundary}`;
-  const parts = rootBody.split(boundaryToken).map(part => part.trim()).filter(part => part && part !== '--');
-
-  let fallbackText = '';
-  for (const part of parts) {
-    const cleanedPart = part.replace(/--$/, '').trim();
-    if (!cleanedPart) continue;
-    const partSplit = cleanedPart.indexOf('\n\n');
-    if (partSplit === -1) continue;
-    const partHeaders = parseRfc822Headers(cleanedPart.slice(0, partSplit));
-    const partBodyRaw = cleanedPart.slice(partSplit + 2);
-    const partTypeInfo = parseContentTypeHeader(partHeaders['content-type'] || '');
-    const partType = partTypeInfo.mimeType;
-    const decodedPart = decodeEmailTransferBody(partBodyRaw, {
-      transferEncoding: partHeaders['content-transfer-encoding'],
-      charset: partTypeInfo.params.charset || rootCharset
-    });
-    if (partType.includes('text/plain')) {
-      return { headers: rootHeaders, bodyText: decodedPart };
-    }
-    if (!fallbackText && partType.includes('text/html')) {
-      fallbackText = stripToPlainText(decodedPart, '.html');
-    }
-  }
-
-  return { headers: rootHeaders, bodyText: fallbackText || rootBody };
+  return { headers: rootHeaders, bodyText: rootBody };
 }
 
 function splitEmailThreadMessages(bodyText, rootHeaders = {}) {
