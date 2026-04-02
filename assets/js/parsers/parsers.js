@@ -103,7 +103,12 @@ upZone.addEventListener('dragleave', () => upZone.classList.remove('drag'));
 upZone.addEventListener('drop', async e => {
   e.preventDefault(); upZone.classList.remove('drag');
   const f = e.dataTransfer.files[0];
-  if (await shouldAcceptFileForImport(f)) loadSourceFile(f);
+  if (await shouldAcceptFileForImport(f)) {
+    loadSourceFile(f).catch(err => {
+      console.error('[LUMEN] loadSourceFile error:', err);
+      renderReaderNotice('<strong>Could not load this file.</strong><p>' + escapeHtml(String(err?.message || err || 'Unknown error')) + '</p>');
+    });
+  }
 });
 
 upZone.addEventListener('mouseenter', () => upZone.classList.add('is-paste-ready'));
@@ -162,7 +167,12 @@ reader.addEventListener('drop', async e => {
   e.preventDefault();
   reader.classList.remove('drop-ready');
   const f = e.dataTransfer?.files?.[0];
-  if (await shouldAcceptFileForImport(f)) loadSourceFile(f);
+  if (await shouldAcceptFileForImport(f)) {
+    loadSourceFile(f).catch(err => {
+      console.error('[LUMEN] loadSourceFile error:', err);
+      renderReaderNotice('<strong>Could not load this file.</strong><p>' + escapeHtml(String(err?.message || err || 'Unknown error')) + '</p>');
+    });
+  }
 });
 
 window.addEventListener('dragover', e => {
@@ -629,7 +639,8 @@ function splitMultipartBodyParts(bodyRaw = '', boundary = '') {
   return parts.filter(Boolean);
 }
 
-function collectMimeBodyCandidates(rawPart, inheritedCharset = '', sink = []) {
+function collectMimeBodyCandidates(rawPart, inheritedCharset = '', sink = [], depth = 0) {
+  if (depth > 20) return sink;
   const { headers, bodyRaw } = splitEmailHeadersAndBody(rawPart);
   const typeInfo = parseContentTypeHeader(headers['content-type'] || '');
   const dispositionInfo = parseContentDispositionHeader(headers['content-disposition'] || '');
@@ -637,9 +648,11 @@ function collectMimeBodyCandidates(rawPart, inheritedCharset = '', sink = []) {
   const charset = typeInfo.params.charset || inheritedCharset || '';
 
   if (mimeType.startsWith('multipart/')) {
-    const childParts = splitMultipartBodyParts(bodyRaw, typeInfo.params.boundary || '');
+    const boundary = typeInfo.params.boundary || '';
+    if (!boundary || !bodyRaw.includes(`--${boundary}`)) return sink;
+    const childParts = splitMultipartBodyParts(bodyRaw, boundary);
     childParts.forEach((childPart) => {
-      collectMimeBodyCandidates(childPart, charset, sink);
+      collectMimeBodyCandidates(childPart, charset, sink, depth + 1);
     });
     return sink;
   }
@@ -859,16 +872,24 @@ function buildMsgFailureGuidance(fileName = 'message.msg', runtimeState = getMsg
 
 async function parseOutlookMsgFile(file) {
   if (!window.MSGReader) return null;
-  const bytes = await file.arrayBuffer();
+  let bytes;
+  try {
+    bytes = await file.arrayBuffer();
+  } catch (err) {
+    console.warn('[LUMEN] parseOutlookMsgFile: arrayBuffer failed:', err);
+    return null;
+  }
   let parsedData = null;
   try {
     const reader = new window.MSGReader(new Uint8Array(bytes));
     parsedData = reader.getFileData();
-  } catch (_) {
+  } catch (err) {
+    console.warn('[LUMEN] parseOutlookMsgFile: Uint8Array parse failed:', err);
     try {
       const fallbackReader = new window.MSGReader(bytes);
       parsedData = fallbackReader.getFileData();
-    } catch (__){
+    } catch (err2) {
+      console.warn('[LUMEN] parseOutlookMsgFile: ArrayBuffer fallback failed:', err2);
       return null;
     }
   }
@@ -931,7 +952,13 @@ function decodeLatin1PrintableStrings(buffer) {
 }
 
 async function extractMsgTextFallback(file) {
-  const bytes = await file.arrayBuffer();
+  let bytes;
+  try {
+    bytes = await file.arrayBuffer();
+  } catch (err) {
+    console.warn('[LUMEN] extractMsgTextFallback: arrayBuffer failed:', err);
+    return null;
+  }
   const utf16Segments = decodeUtf16LePrintableStrings(bytes);
   const latinSegments = decodeLatin1PrintableStrings(bytes);
   const candidates = [...utf16Segments, ...latinSegments]
@@ -972,82 +999,100 @@ async function extractMsgTextFallback(file) {
 }
 
 async function loadEmailFile(file) {
-  const isMsgFile = await isLikelyMsgFile(file);
-  if (isMsgFile) {
-    await (window.__msgReaderReadyPromise || Promise.resolve());
-    const msgRuntime = getMsgReaderRuntimeState();
-    if (!msgRuntime.available) {
-      renderReaderNotice([
-        '<strong>Structured .msg parsing unavailable</strong>',
-        '<p>The structured parser did not load in this session, so Lumen will attempt limited binary recovery.</p>',
-        '<ul>',
-        '<li>Recovered text may miss attachments, thread headers, and some metadata.</li>',
-        '<li>For highest fidelity, export this message as <code>.eml</code> and import again.</li>',
-        '</ul>'
-      ].join(''));
+  try {
+    const isMsgFile = await isLikelyMsgFile(file);
+    if (isMsgFile) {
+      await (window.__msgReaderReadyPromise || Promise.resolve()).catch(err => {
+        console.warn('[LUMEN] MSGReader bootstrap rejected:', err);
+      });
+      const msgRuntime = getMsgReaderRuntimeState();
+      if (!msgRuntime.available) {
+        renderReaderNotice([
+          '<strong>Structured .msg parsing unavailable</strong>',
+          '<p>The structured parser did not load in this session, so Lumen will attempt limited binary recovery.</p>',
+          '<ul>',
+          '<li>Recovered text may miss attachments, thread headers, and some metadata.</li>',
+          '<li>For highest fidelity, export this message as <code>.eml</code> and import again.</li>',
+          '</ul>'
+        ].join(''));
+      }
+      const parsedMsg = await parseOutlookMsgFile(file);
+      if (parsedMsg?.plainText) {
+        logMsgImportTelemetry('structured-parse', {
+          filename: file.name,
+          recovered: false
+        });
+        setCurrentDocumentMeta({
+          id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
+          label: file.name,
+          type: 'email-file'
+        });
+        emailThreadModel = parsedMsg.thread;
+        return reRenderEmailThreadFromModel(file.name, `Email · ${file.name}`, { persist: true });
+      }
+      const recoveredMsg = await extractMsgTextFallback(file);
+      if (recoveredMsg?.plainText) {
+        logMsgImportTelemetry('binary-recovery-parse', {
+          filename: file.name,
+          recovered: true
+        });
+        setCurrentDocumentMeta({
+          id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
+          label: file.name,
+          type: 'email-file'
+        });
+        emailThreadModel = recoveredMsg.thread;
+        return reRenderEmailThreadFromModel(
+          file.name,
+          `Email · ${file.name}${recoveredMsg.fallback ? ' · Limited recovery' : ''}`,
+          { persist: true }
+        );
+      }
     }
-    const parsedMsg = await parseOutlookMsgFile(file);
-    if (parsedMsg?.plainText) {
-      logMsgImportTelemetry('structured-parse', {
-        filename: file.name,
-        recovered: false
-      });
-      setCurrentDocumentMeta({
-        id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
-        label: file.name,
-        type: 'email-file'
-      });
-      emailThreadModel = parsedMsg.thread;
-      return reRenderEmailThreadFromModel(file.name, `Email · ${file.name}`, { persist: true });
-    }
-    const recoveredMsg = await extractMsgTextFallback(file);
-    if (recoveredMsg?.plainText) {
-      logMsgImportTelemetry('binary-recovery-parse', {
-        filename: file.name,
-        recovered: true
-      });
-      setCurrentDocumentMeta({
-        id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
-        label: file.name,
-        type: 'email-file'
-      });
-      emailThreadModel = recoveredMsg.thread;
-      return reRenderEmailThreadFromModel(
-        file.name,
-        `Email · ${file.name}${recoveredMsg.fallback ? ' · Limited recovery' : ''}`,
-        { persist: true }
-      );
-    }
-  }
 
-  const raw = await file.text();
-  if (isMsgFile) {
-    const sample = String(raw || '').slice(0, 4096);
-    const printableCount = (sample.match(/[\x09\x0A\x0D\x20-\x7E]/g) || []).length;
-    const printableRatio = sample.length ? printableCount / sample.length : 0;
-    if (printableRatio < 0.7) {
-      const runtime = getMsgReaderRuntimeState();
-      logMsgImportTelemetry('failure-guidance', {
-        filename: file.name,
-        printableRatio: Number(printableRatio.toFixed(3))
-      });
-      setCurrentDocumentMeta({
-        id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
-        label: file.name,
-        type: 'email-file'
-      });
-      renderReaderNotice(buildMsgFailureGuidance(file.name, runtime));
+    let raw;
+    try {
+      raw = await file.text();
+    } catch (err) {
+      console.warn('[LUMEN] loadEmailFile: file.text() failed:', err);
+      renderReaderNotice(buildMsgFailureGuidance(file.name));
       return;
     }
+    if (isMsgFile) {
+      const sample = String(raw || '').slice(0, 4096);
+      const printableCount = (sample.match(/[\x09\x0A\x0D\x20-\x7E]/g) || []).length;
+      const printableRatio = sample.length ? printableCount / sample.length : 0;
+      if (printableRatio < 0.7) {
+        const runtime = getMsgReaderRuntimeState();
+        logMsgImportTelemetry('failure-guidance', {
+          filename: file.name,
+          printableRatio: Number(printableRatio.toFixed(3))
+        });
+        setCurrentDocumentMeta({
+          id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
+          label: file.name,
+          type: 'email-file'
+        });
+        renderReaderNotice(buildMsgFailureGuidance(file.name, runtime));
+        return;
+      }
+    }
+    const parsedThread = parseEmailToThread(raw, file.name);
+    setCurrentDocumentMeta({
+      id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
+      label: file.name,
+      type: 'email-file'
+    });
+    emailThreadModel = parsedThread;
+    return reRenderEmailThreadFromModel(file.name, `Email · ${file.name}`, { persist: true });
+  } catch (err) {
+    console.error('[LUMEN] loadEmailFile error:', err);
+    renderReaderNotice(
+      '<strong>Failed to load email file.</strong><p>' +
+      escapeHtml(String(err?.message || 'An unexpected error occurred.')) +
+      '</p><p>Try exporting this message as <code>.eml</code> from Outlook and importing that instead.</p>'
+    );
   }
-  const parsedThread = parseEmailToThread(raw, file.name);
-  setCurrentDocumentMeta({
-    id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
-    label: file.name,
-    type: 'email-file'
-  });
-  emailThreadModel = parsedThread;
-  return reRenderEmailThreadFromModel(file.name, `Email · ${file.name}`, { persist: true });
 }
 
 function tryParseUrl(rawUrl) {
