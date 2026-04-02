@@ -6,6 +6,7 @@
 <title>Lumen — Mindful Document Reader</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@kenjiuno/msgreader@1.24.0/msg.reader.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -5875,16 +5876,100 @@ function buildEmailThreadPlainText(parsedThread, order = emailThreadOrder) {
   return cleanEmailBodyText([intro, ...blocks].filter(Boolean).join('\n\n'));
 }
 
+function stringifyEmailParticipant(entry) {
+  if (!entry) return '';
+  if (typeof entry === 'string') return entry.trim();
+  if (Array.isArray(entry)) return entry.map(item => stringifyEmailParticipant(item)).filter(Boolean).join(', ');
+  const name = String(entry.name || entry.displayName || '').trim();
+  const email = String(entry.email || entry.emailAddress || '').trim();
+  if (name && email) return `${name} <${email}>`;
+  return name || email;
+}
+
+function parseOutlookMsgDate(value) {
+  if (!value) return '';
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
+  if (typeof value === 'number') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
+  }
+  const asText = String(value).trim();
+  if (!asText) return '';
+  const parsed = new Date(asText);
+  return Number.isNaN(parsed.getTime()) ? asText : parsed.toISOString();
+}
+
+async function parseOutlookMsgFile(file) {
+  if (!window.MSGReader) return null;
+  const bytes = await file.arrayBuffer();
+  let parsedData = null;
+  try {
+    const reader = new window.MSGReader(bytes);
+    parsedData = reader.getFileData();
+  } catch (_) {
+    return null;
+  }
+  if (!parsedData || typeof parsedData !== 'object') return null;
+
+  const from = stringifyEmailParticipant(parsedData.senderName || parsedData.senderEmail || parsedData.from || parsedData.author);
+  const subject = String(parsedData.subject || '').trim();
+  const date = parseOutlookMsgDate(parsedData.messageDeliveryTime || parsedData.clientSubmitTime || parsedData.date);
+  const to = stringifyEmailParticipant(parsedData.recipients || parsedData.to);
+  const cc = stringifyEmailParticipant(parsedData.cc);
+  const body = cleanEmailBodyText(parsedData.body || parsedData.bodyText || parsedData.message || parsedData.htmlBody || parsedData.compressedRtf || '');
+
+  const headerLines = [
+    from ? `From: ${from}` : '',
+    to ? `To: ${to}` : '',
+    cc ? `Cc: ${cc}` : '',
+    subject ? `Subject: ${subject}` : '',
+    date ? `Date: ${date}` : ''
+  ].filter(Boolean).join('\n');
+
+  const plainText = cleanEmailBodyText([headerLines, body].filter(Boolean).join('\n\n'));
+  if (!plainText) return null;
+
+  const thread = {
+    messages: [{
+      sender: from,
+      date,
+      body: body || plainText
+    }],
+    latestMessage: null,
+    sourceMeta: {
+      filename: file.name || 'message.msg',
+      format: 'msg',
+      subject,
+      totalMessages: 1
+    }
+  };
+  thread.latestMessage = thread.messages[0];
+  return { plainText, thread };
+}
+
 async function loadEmailFile(file) {
   const lowerName = (file.name || '').toLowerCase();
-  const raw = await file.text();
+  const isMsgFile = lowerName.endsWith('.msg');
+  if (isMsgFile) {
+    const parsedMsg = await parseOutlookMsgFile(file);
+    if (parsedMsg?.plainText) {
+      setCurrentDocumentMeta({
+        id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
+        label: file.name,
+        type: 'email-file'
+      });
+      emailThreadModel = parsedMsg.thread;
+      return reRenderEmailThreadFromModel(file.name, `Email · ${file.name}`, { persist: true });
+    }
+  }
 
-  if (lowerName.endsWith('.msg')) {
+  const raw = await file.text();
+  if (isMsgFile) {
     const sample = String(raw || '').slice(0, 4096);
     const printableCount = (sample.match(/[\x09\x0A\x0D\x20-\x7E]/g) || []).length;
     const printableRatio = sample.length ? printableCount / sample.length : 0;
     if (printableRatio < 0.7) {
-      const guidance = `This .msg file is not readable as plain text in the browser.\n\nTo keep your reading flow uninterrupted, export the email as .eml or forward it to yourself and save it as .txt, then drop it here again.`;
+      const guidance = `This .msg file could not be fully parsed in-browser.\n\nTry exporting this message as .eml for best results, then drag it in again.`;
       setCurrentDocumentMeta({
         id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
         label: file.name,
@@ -5893,7 +5978,6 @@ async function loadEmailFile(file) {
       return loadTextDocument(guidance, file.name, `Email file · ${file.name}`);
     }
   }
-
   const parsedThread = parseEmailToThread(raw, file.name);
   setCurrentDocumentMeta({
     id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
