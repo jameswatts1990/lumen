@@ -6,7 +6,7 @@
 <title>Lumen — Mindful Document Reader</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@kenjiuno/msgreader@1.24.0/msg.reader.min.js"></script>
+<script src="./assets/vendor/msgreader-bootstrap.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
@@ -6067,6 +6067,44 @@ function parseOutlookMsgDate(value) {
   return Number.isNaN(parsed.getTime()) ? asText : parsed.toISOString();
 }
 
+function getMsgReaderRuntimeState() {
+  const runtime = window.__msgReaderRuntime || {};
+  return {
+    available: typeof window.MSGReader === 'function',
+    source: runtime.source || 'unknown',
+    attemptedSources: Array.isArray(runtime.attemptedSources) ? runtime.attemptedSources : [],
+    errors: Array.isArray(runtime.errors) ? runtime.errors : []
+  };
+}
+
+function logMsgImportTelemetry(path, details = {}) {
+  const runtime = getMsgReaderRuntimeState();
+  const payload = {
+    marker: 'msg-import-path',
+    path,
+    parserAvailable: runtime.available,
+    parserSource: runtime.source,
+    attemptedSources: runtime.attemptedSources,
+    ...details
+  };
+  console.info('[LUMEN_MSG_IMPORT]', payload);
+}
+
+function buildMsgFailureGuidance(fileName = 'message.msg', runtimeState = getMsgReaderRuntimeState()) {
+  const parserState = runtimeState.available
+    ? `Structured parser was available (${runtimeState.source}).`
+    : 'Structured parser was unavailable in this session.';
+  return [
+    `<strong>.msg import needs recovery</strong>`,
+    `<p>${parserState} We attempted binary recovery but couldn't extract enough readable content from <code>${escapeHtml(fileName)}</code>.</p>`,
+    '<ul>',
+    '<li>Re-export this email as <code>.eml</code> from Outlook, then import it here.</li>',
+    '<li>If possible, copy the message body into <code>.txt</code> or <code>.html</code> and import that file.</li>',
+    '<li>For compliance archives, request the original MIME source from the sender/admin.</li>',
+    '</ul>'
+  ].join('');
+}
+
 async function parseOutlookMsgFile(file) {
   if (!window.MSGReader) return null;
   const bytes = await file.arrayBuffer();
@@ -6184,8 +6222,24 @@ async function extractMsgTextFallback(file) {
 async function loadEmailFile(file) {
   const isMsgFile = await isLikelyMsgFile(file);
   if (isMsgFile) {
+    await (window.__msgReaderReadyPromise || Promise.resolve());
+    const msgRuntime = getMsgReaderRuntimeState();
+    if (!msgRuntime.available) {
+      renderReaderNotice([
+        '<strong>Structured .msg parsing unavailable</strong>',
+        '<p>The structured parser did not load in this session, so Lumen will attempt limited binary recovery.</p>',
+        '<ul>',
+        '<li>Recovered text may miss attachments, thread headers, and some metadata.</li>',
+        '<li>For highest fidelity, export this message as <code>.eml</code> and import again.</li>',
+        '</ul>'
+      ].join(''));
+    }
     const parsedMsg = await parseOutlookMsgFile(file);
     if (parsedMsg?.plainText) {
+      logMsgImportTelemetry('structured-parse', {
+        filename: file.name,
+        recovered: false
+      });
       setCurrentDocumentMeta({
         id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
         label: file.name,
@@ -6196,6 +6250,10 @@ async function loadEmailFile(file) {
     }
     const recoveredMsg = await extractMsgTextFallback(file);
     if (recoveredMsg?.plainText) {
+      logMsgImportTelemetry('binary-recovery-parse', {
+        filename: file.name,
+        recovered: true
+      });
       setCurrentDocumentMeta({
         id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
         label: file.name,
@@ -6204,7 +6262,7 @@ async function loadEmailFile(file) {
       emailThreadModel = recoveredMsg.thread;
       return reRenderEmailThreadFromModel(
         file.name,
-        `Email · ${file.name}${recoveredMsg.fallback ? ' · Recovered text' : ''}`,
+        `Email · ${file.name}${recoveredMsg.fallback ? ' · Limited recovery' : ''}`,
         { persist: true }
       );
     }
@@ -6216,13 +6274,18 @@ async function loadEmailFile(file) {
     const printableCount = (sample.match(/[\x09\x0A\x0D\x20-\x7E]/g) || []).length;
     const printableRatio = sample.length ? printableCount / sample.length : 0;
     if (printableRatio < 0.7) {
-      const guidance = `This .msg file could not be fully parsed in-browser.\n\nTry exporting this message as .eml for best results, then drag it in again.`;
+      const runtime = getMsgReaderRuntimeState();
+      logMsgImportTelemetry('failure-guidance', {
+        filename: file.name,
+        printableRatio: Number(printableRatio.toFixed(3))
+      });
       setCurrentDocumentMeta({
         id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
         label: file.name,
         type: 'email-file'
       });
-      return loadTextDocument(guidance, file.name, `Email file · ${file.name}`);
+      renderReaderNotice(buildMsgFailureGuidance(file.name, runtime));
+      return;
     }
   }
   const parsedThread = parseEmailToThread(raw, file.name);
