@@ -5773,49 +5773,129 @@ function cleanEmailBodyText(text) {
   return normalizeReadableText(hideUrlsInText(cleaned.join('\n')));
 }
 
+function splitMimeHeadersAndBody(rawPart) {
+  const normalized = String(rawPart || '').replace(/\r\n?/g, '\n');
+  const splitIdx = normalized.indexOf('\n\n');
+  if (splitIdx === -1) return { headerText: '', bodyText: normalized };
+  return {
+    headerText: normalized.slice(0, splitIdx),
+    bodyText: normalized.slice(splitIdx + 2)
+  };
+}
+
+function extractMimeBoundary(contentType) {
+  if (!contentType) return '';
+  const quoted = /boundary="([^"]+)"/i.exec(contentType);
+  if (quoted?.[1]) return quoted[1];
+  const unquoted = /boundary=([^;\s]+)/i.exec(contentType);
+  return unquoted?.[1] || '';
+}
+
+function splitMultipartBodyByBoundary(bodyText, boundary) {
+  if (!boundary) return [];
+  const normalized = String(bodyText || '').replace(/\r\n?/g, '\n');
+  const lines = normalized.split('\n');
+  const delimiter = `--${boundary}`;
+  const closeDelimiter = `${delimiter}--`;
+  const parts = [];
+  let collecting = false;
+  let current = [];
+
+  const pushCurrent = () => {
+    if (!current.length) return;
+    const partText = current.join('\n').trim();
+    if (partText) parts.push(partText);
+    current = [];
+  };
+
+  for (const line of lines) {
+    const token = line.trim();
+    if (token === delimiter || token === closeDelimiter) {
+      if (collecting) pushCurrent();
+      collecting = token !== closeDelimiter;
+      if (!collecting) break;
+      continue;
+    }
+    if (collecting) current.push(line);
+  }
+
+  return parts;
+}
+
+function parseMimePart(rawPart) {
+  const { headerText, bodyText } = splitMimeHeadersAndBody(rawPart);
+  const headers = parseRfc822Headers(headerText);
+  const contentType = String(headers['content-type'] || 'text/plain').toLowerCase();
+  const disposition = String(headers['content-disposition'] || '').toLowerCase();
+  const isAttachment = /(^|;)\s*attachment\b/i.test(disposition);
+  const transferEncoding = headers['content-transfer-encoding'] || '';
+
+  if (contentType.includes('multipart/')) {
+    const boundary = extractMimeBoundary(headers['content-type'] || '');
+    const children = splitMultipartBodyByBoundary(bodyText, boundary).map(part => parseMimePart(part));
+    return {
+      headers,
+      bodyText,
+      contentType,
+      transferEncoding,
+      isAttachment,
+      children
+    };
+  }
+
+  return {
+    headers,
+    bodyText,
+    contentType,
+    transferEncoding,
+    isAttachment,
+    children: []
+  };
+}
+
+function extractMimeBodyCandidates(node, candidates = []) {
+  if (!node) return candidates;
+  if (node.children?.length) {
+    node.children.forEach(child => extractMimeBodyCandidates(child, candidates));
+    return candidates;
+  }
+  if (node.isAttachment) return candidates;
+
+  const decoded = decodeEmailTransferBody(node.bodyText, node.transferEncoding);
+  if (!decoded.trim()) return candidates;
+  if (node.contentType.includes('text/plain')) {
+    candidates.push({ type: 'plain', bodyText: decoded });
+    return candidates;
+  }
+  if (node.contentType.includes('text/html')) {
+    candidates.push({ type: 'html', bodyText: stripToPlainText(decoded, '.html') });
+  }
+  return candidates;
+}
+
 function extractBestEmailBody(raw) {
   const normalized = String(raw || '').replace(/\r\n?/g, '\n');
-  const splitIdx = normalized.indexOf('\n\n');
-  if (splitIdx === -1) {
-    return { headers: {}, bodyText: normalized };
+  const { headerText, bodyText: rootBody } = splitMimeHeadersAndBody(normalized);
+  const rootHeaders = parseRfc822Headers(headerText);
+
+  if (!headerText.trim()) {
+    return { headers: {}, bodyText: rootBody || normalized };
   }
 
-  const rootHeaderText = normalized.slice(0, splitIdx);
-  const rootBody = normalized.slice(splitIdx + 2);
-  const rootHeaders = parseRfc822Headers(rootHeaderText);
-  const contentType = (rootHeaders['content-type'] || '').toLowerCase();
+  const mimeTree = parseMimePart(normalized);
+  const candidates = extractMimeBodyCandidates(mimeTree, []);
+  const plainCandidate = candidates.find(candidate => candidate.type === 'plain' && candidate.bodyText.trim());
+  if (plainCandidate) return { headers: rootHeaders, bodyText: plainCandidate.bodyText };
 
-  if (!contentType.includes('multipart/')) {
-    const decoded = decodeEmailTransferBody(rootBody, rootHeaders['content-transfer-encoding']);
-    const bodyText = contentType.includes('text/html') ? stripToPlainText(decoded, '.html') : decoded;
-    return { headers: rootHeaders, bodyText };
-  }
+  const htmlCandidate = candidates.find(candidate => candidate.type === 'html' && candidate.bodyText.trim());
+  if (htmlCandidate) return { headers: rootHeaders, bodyText: htmlCandidate.bodyText };
 
-  const boundaryMatch = /boundary="?([^";]+)"?/i.exec(rootHeaders['content-type'] || '');
-  if (!boundaryMatch) return { headers: rootHeaders, bodyText: rootBody };
-  const boundary = boundaryMatch[1];
-  const boundaryToken = `--${boundary}`;
-  const parts = rootBody.split(boundaryToken).map(part => part.trim()).filter(part => part && part !== '--');
-
-  let fallbackText = '';
-  for (const part of parts) {
-    const cleanedPart = part.replace(/--$/, '').trim();
-    if (!cleanedPart) continue;
-    const partSplit = cleanedPart.indexOf('\n\n');
-    if (partSplit === -1) continue;
-    const partHeaders = parseRfc822Headers(cleanedPart.slice(0, partSplit));
-    const partBodyRaw = cleanedPart.slice(partSplit + 2);
-    const partType = (partHeaders['content-type'] || '').toLowerCase();
-    const decodedPart = decodeEmailTransferBody(partBodyRaw, partHeaders['content-transfer-encoding']);
-    if (partType.includes('text/plain')) {
-      return { headers: rootHeaders, bodyText: decodedPart };
-    }
-    if (!fallbackText && partType.includes('text/html')) {
-      fallbackText = stripToPlainText(decodedPart, '.html');
-    }
-  }
-
-  return { headers: rootHeaders, bodyText: fallbackText || rootBody };
+  const decodedRoot = decodeEmailTransferBody(rootBody, rootHeaders['content-transfer-encoding']);
+  const rootContentType = String(rootHeaders['content-type'] || '').toLowerCase();
+  return {
+    headers: rootHeaders,
+    bodyText: rootContentType.includes('text/html') ? stripToPlainText(decodedRoot, '.html') : decodedRoot
+  };
 }
 
 function splitEmailThreadMessages(bodyText, rootHeaders = {}) {
