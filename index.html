@@ -5904,10 +5904,15 @@ async function parseOutlookMsgFile(file) {
   const bytes = await file.arrayBuffer();
   let parsedData = null;
   try {
-    const reader = new window.MSGReader(bytes);
+    const reader = new window.MSGReader(new Uint8Array(bytes));
     parsedData = reader.getFileData();
   } catch (_) {
-    return null;
+    try {
+      const fallbackReader = new window.MSGReader(bytes);
+      parsedData = fallbackReader.getFileData();
+    } catch (__){
+      return null;
+    }
   }
   if (!parsedData || typeof parsedData !== 'object') return null;
 
@@ -5947,6 +5952,67 @@ async function parseOutlookMsgFile(file) {
   return { plainText, thread };
 }
 
+function decodeUtf16LePrintableStrings(buffer) {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer || 0);
+  if (!bytes.length) return [];
+  const decoded = new TextDecoder('utf-16le', { fatal: false }).decode(bytes);
+  return decoded
+    .split(/\u0000+/)
+    .map(chunk => normalizeReadableText(chunk))
+    .filter(chunk => chunk.length > 6 && /[A-Za-z]/.test(chunk));
+}
+
+function decodeLatin1PrintableStrings(buffer) {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer || 0);
+  if (!bytes.length) return [];
+  const decoded = new TextDecoder('latin1', { fatal: false }).decode(bytes);
+  return decoded
+    .split(/\u0000|[\x01-\x08\x0B\x0C\x0E-\x1F]+/g)
+    .map(chunk => normalizeReadableText(chunk))
+    .filter(chunk => chunk.length > 6 && /[A-Za-z]/.test(chunk));
+}
+
+async function extractMsgTextFallback(file) {
+  const bytes = await file.arrayBuffer();
+  const utf16Segments = decodeUtf16LePrintableStrings(bytes);
+  const latinSegments = decodeLatin1PrintableStrings(bytes);
+  const candidates = [...utf16Segments, ...latinSegments]
+    .filter((segment, index, arr) => arr.indexOf(segment) === index)
+    .map(segment => cleanEmailBodyText(segment))
+    .filter(Boolean);
+
+  if (!candidates.length) return null;
+
+  const body = candidates
+    .filter(segment => {
+      const lineCount = segment.split('\n').filter(Boolean).length;
+      const wordCount = segment.split(/\s+/).filter(Boolean).length;
+      return lineCount >= 2 || wordCount >= 18;
+    })
+    .sort((a, b) => b.length - a.length)[0] || candidates.sort((a, b) => b.length - a.length)[0];
+
+  if (!body) return null;
+  const plainText = cleanEmailBodyText(body);
+  if (!plainText) return null;
+
+  const thread = {
+    messages: [{
+      sender: '',
+      date: '',
+      body: plainText
+    }],
+    latestMessage: null,
+    sourceMeta: {
+      filename: file.name || 'message.msg',
+      format: 'msg',
+      subject: '',
+      totalMessages: 1
+    }
+  };
+  thread.latestMessage = thread.messages[0];
+  return { plainText, thread, fallback: true };
+}
+
 async function loadEmailFile(file) {
   const lowerName = (file.name || '').toLowerCase();
   const isMsgFile = lowerName.endsWith('.msg');
@@ -5960,6 +6026,20 @@ async function loadEmailFile(file) {
       });
       emailThreadModel = parsedMsg.thread;
       return reRenderEmailThreadFromModel(file.name, `Email · ${file.name}`, { persist: true });
+    }
+    const recoveredMsg = await extractMsgTextFallback(file);
+    if (recoveredMsg?.plainText) {
+      setCurrentDocumentMeta({
+        id: `file:${file.name}:${file.size}:${file.lastModified || 0}`,
+        label: file.name,
+        type: 'email-file'
+      });
+      emailThreadModel = recoveredMsg.thread;
+      return reRenderEmailThreadFromModel(
+        file.name,
+        `Email · ${file.name}${recoveredMsg.fallback ? ' · Recovered text' : ''}`,
+        { persist: true }
+      );
     }
   }
 
